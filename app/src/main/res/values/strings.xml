@@ -1,0 +1,22 @@
+<resources>
+    <string name="app_name">D0C View</string>
+    <string name="developer_name">Vilson Sonkar</string>
+    <string name="action_search">Search documents</string>
+    <string name="action_sort">Sort documents</string>
+    <string name="action_toggle_theme">Toggle dark or light mode</string>
+    <string name="action_settings">Settings</string>
+    <string name="action_share">Share</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_print">Print</string>
+    <string name="action_info">Info</string>
+    <string name="action_rename">Rename</string>
+    <string name="action_more_options">More options</string>
+    <string name="action_page_view_mode">Switch page view mode</string>
+    <string name="action_clear_selection">Clear selection</string>
+    <string name="action_select_all">Select all</string>
+    <string name="grant_storage_title">Enable Full Document Scan</string>
+    <string name="grant_storage_desc">Allow offline access to automatically scan all device folders, including hidden (.) dot folders.</string>
+    <string name="grant_storage_button">Grant Access</string>
+    <string name="empty_category_title">No %1$s documents found</string>
+    <string name="empty_category_subtitle">Pull to refresh, grant storage access, or import a file offline.</string>
+</resources>

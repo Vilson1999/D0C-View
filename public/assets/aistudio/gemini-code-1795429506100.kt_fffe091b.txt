@@ -1,0 +1,226 @@
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+@Composable
+fun DocViewerAppIcon(
+    modifier: Modifier = Modifier,
+    size: Dp = 180.dp
+) {
+    val textMeasurer = rememberTextMeasurer()
+
+    val tabs = listOf(
+        TabData("PDF", Color(0xFFE53935)),
+        TabData("DOC", Color(0xFF1E88E5)),
+        TabData("PPT", Color(0xFFF4511E)),
+        TabData("XML", Color(0xFF8E24AA)),
+        TabData("TEXT", Color(0xFF16A085))
+    )
+
+    val bgGradient = Brush.sweepGradient(
+        colors = listOf(
+            Color(0xFFE53935), // Red
+            Color(0xFF1E88E5), // Blue
+            Color(0xFFFB8C00), // Orange
+            Color(0xFF16A085), // Teal/Green
+            Color(0xFF8E24AA), // Purple
+            Color(0xFF1E88E5), // Blue
+            Color(0xFFE53935)  // Red
+        )
+    )
+
+    Canvas(modifier = modifier.size(size)) {
+        val w = this.size.width
+        val h = this.size.height
+
+        // 1. Rounded square background with multi-color gradient
+        drawRoundRect(
+            brush = bgGradient,
+            topLeft = Offset.Zero,
+            size = Size(w, h),
+            cornerRadius = CornerRadius(w * 0.22f, h * 0.22f)
+        )
+
+        // 2. Back sheet behind the tabs
+        val backSheetLeft = w * 0.25f
+        val backSheetTop = h * 0.31f
+        val backSheetWidth = w * 0.50f
+        val backSheetHeight = h * 0.34f
+        drawRoundRect(
+            color = Color(0xFFF3EFEA),
+            topLeft = Offset(backSheetLeft, backSheetTop),
+            size = Size(backSheetWidth, backSheetHeight),
+            cornerRadius = CornerRadius(w * 0.03f, w * 0.03f)
+        )
+
+        // 3. Stacked document tabs (PDF, DOC, PPT, XML, TEXT)
+        val startY = h * 0.22f
+        val tabHeight = h * 0.085f
+        val stepY = h * 0.068f
+        val baseLeft = w * 0.31f
+        val shiftStepX = -w * 0.015f
+        val tabWidth = w * 0.44f
+
+        tabs.forEachIndexed { index, tab ->
+            val left = baseLeft + (index * shiftStepX)
+            val top = startY + (index * stepY)
+
+            // Tab body / right strip
+            drawRoundRect(
+                color = tab.color,
+                topLeft = Offset(left + tabWidth * 0.22f, top + tabHeight * 0.32f),
+                size = Size(tabWidth * 0.78f, tabHeight * 0.68f),
+                cornerRadius = CornerRadius(w * 0.015f, w * 0.015f)
+            )
+
+            // Subtle placeholder lines inside tab
+            val lineColor = Color.White.copy(alpha = 0.28f)
+            val lineStartX = left + tabWidth * 0.52f
+            val lineEndX = left + tabWidth * 0.92f
+            drawLine(
+                color = lineColor,
+                start = Offset(lineStartX, top + tabHeight * 0.56f),
+                end = Offset(lineEndX, top + tabHeight * 0.56f),
+                strokeWidth = h * 0.01f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = lineColor,
+                start = Offset(lineStartX, top + tabHeight * 0.76f),
+                end = Offset(lineStartX + (lineEndX - lineStartX) * 0.75f, top + tabHeight * 0.76f),
+                strokeWidth = h * 0.01f,
+                cap = StrokeCap.Round
+            )
+
+            // Angled/rounded tab header
+            val tabHeaderPath = Path().apply {
+                val r = w * 0.018f
+                moveTo(left, top + tabHeight)
+                lineTo(left, top + r)
+                quadraticTo(left, top, left + r, top)
+                lineTo(left + tabWidth * 0.34f, top)
+                quadraticTo(
+                    left + tabWidth * 0.38f, top,
+                    left + tabWidth * 0.40f, top + tabHeight * 0.35f
+                )
+                lineTo(left + tabWidth * 0.45f, top + tabHeight)
+                close()
+            }
+            drawPath(path = tabHeaderPath, color = tab.color)
+
+            // Mini white page badge on left of tab
+            val badgeW = w * 0.032f
+            val badgeH = h * 0.042f
+            val badgeX = left + w * 0.018f
+            val badgeY = top + (tabHeight - badgeH) * 0.58f
+            drawRoundRect(
+                color = Color.White.copy(alpha = 0.92f),
+                topLeft = Offset(badgeX, badgeY),
+                size = Size(badgeW, badgeH),
+                cornerRadius = CornerRadius(w * 0.006f, w * 0.006f)
+            )
+
+            // Format label (PDF, DOC, PPT, XML, TEXT)
+            val labelResult = textMeasurer.measure(
+                text = tab.label,
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = (size.value * 0.052f).sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            drawText(
+                textLayoutResult = labelResult,
+                topLeft = Offset(
+                    x = badgeX + badgeW + w * 0.012f,
+                    y = top + (tabHeight - labelResult.size.height) * 0.58f
+                )
+            )
+        }
+
+        // 4. Front white folder shape
+        val folderLeft = w * 0.22f
+        val folderRight = w * 0.78f
+        val folderTop = h * 0.52f
+        val folderBottom = h * 0.77f
+        val cornerR = w * 0.03f
+
+        val folderPath = Path().apply {
+            moveTo(folderLeft, folderTop + cornerR)
+            quadraticTo(folderLeft, folderTop, folderLeft + cornerR, folderTop)
+            lineTo(folderLeft + w * 0.14f, folderTop)
+            quadraticTo(
+                folderLeft + w * 0.165f, folderTop,
+                folderLeft + w * 0.18f, folderTop + h * 0.025f
+            )
+            lineTo(folderRight - cornerR, folderTop + h * 0.025f)
+            quadraticTo(
+                folderRight, folderTop + h * 0.025f,
+                folderRight, folderTop + h * 0.025f + cornerR
+            )
+            lineTo(folderRight, folderBottom - cornerR)
+            quadraticTo(folderRight, folderBottom, folderRight - cornerR, folderBottom)
+            lineTo(folderLeft + cornerR, folderBottom)
+            quadraticTo(folderLeft, folderBottom, folderLeft, folderBottom - cornerR)
+            close()
+        }
+        drawPath(
+            path = folderPath,
+            brush = Brush.verticalGradient(
+                colors = listOf(Color(0xFFFFFFFF), Color(0xFFE9EEF3)),
+                startY = folderTop,
+                endY = folderBottom
+            )
+        )
+
+        // 5. Magnifying glass centered on the front folder
+        val lensCenter = Offset(w * 0.485f, h * 0.645f)
+        val lensRadius = w * 0.052f
+        val strokeWidth = w * 0.016f
+
+        drawCircle(
+            color = Color(0xFFB7C2CD),
+            radius = lensRadius,
+            center = lensCenter,
+            style = Stroke(width = strokeWidth)
+        )
+
+        val angleRad = Math.toRadians(45.0)
+        val handleStart = Offset(
+            x = lensCenter.x + (lensRadius * Math.cos(angleRad)).toFloat(),
+            y = lensCenter.y + (lensRadius * Math.sin(angleRad)).toFloat()
+        )
+        val handleEnd = Offset(
+            x = handleStart.x + (w * 0.045f * Math.cos(angleRad)).toFloat(),
+            y = handleStart.y + (w * 0.045f * Math.sin(angleRad)).toFloat()
+        )
+        drawLine(
+            color = Color(0xFFB7C2CD),
+            start = handleStart,
+            end = handleEnd,
+            strokeWidth = strokeWidth * 1.15f,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+private data class TabData(
+    val label: String,
+    val color: Color
+)

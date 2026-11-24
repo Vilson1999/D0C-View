@@ -1,0 +1,6 @@
+{
+  "name": "D0C View",
+  "description": "Offline document viewer by Vilson Sonkar for PDF, DOC, XML, PPT, and TEXT files with automatic internal, external, and dot-folder scanning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

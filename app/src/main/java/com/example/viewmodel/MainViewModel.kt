@@ -1,0 +1,505 @@
+package com.example.viewmodel
+
+import android.app.Application
+import android.net.Uri
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.data.DocumentCacheManager
+import com.example.data.DocumentScanner
+import com.example.data.SettingsRepository
+import com.example.model.AppSettings
+import com.example.model.DocType
+import com.example.model.DocumentItem
+import com.example.model.PageViewMode
+import com.example.model.SortOption
+import com.example.model.ThemeMode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+
+data class HomeUiState(
+    val isScanning: Boolean = false,
+    val hasFullStorageAccess: Boolean = false,
+    val selectedCategory: DocType = DocType.PDF,
+    val visibleDocTypes: List<DocType> = DocType.entries,
+    val searchQuery: String = "",
+    val isSearchActive: Boolean = false,
+    val selectedDocIds: Set<String> = emptySet(),
+    val documentsByType: Map<DocType, List<DocumentItem>> = DocType.entries.associateWith { emptyList() },
+    val rawCountsByType: Map<DocType, Int> = DocType.entries.associateWith { 0 },
+    val allDocumentsCount: Int = 0,
+    val dotFolderDocCount: Int = 0,
+    val cacheSizeBytes: Long = 0L,
+    val settings: AppSettings = AppSettings()
+) {
+    val isSelectionMode: Boolean get() = selectedDocIds.isNotEmpty()
+    val visibleDocuments: List<DocumentItem> get() = documentsByType[selectedCategory].orEmpty()
+    val selectedDocuments: List<DocumentItem>
+        get() = if (selectedDocIds.isEmpty()) emptyList()
+        else documentsByType.values.flatten().filter { it.id in selectedDocIds }
+}
+
+object DocumentQueryProcessor {
+    fun filterAndSort(
+        documents: List<DocumentItem>,
+        query: String,
+        sortOption: SortOption,
+        typeFilter: DocType? = null,
+        visibleTypes: Set<DocType> = DocType.entries.toSet()
+    ): List<DocumentItem> {
+        val trimmed = query.trim()
+        val matched = documents.asSequence()
+            .filter { it.type in visibleTypes }
+            .filter { typeFilter == null || it.type == typeFilter }
+            .filter {
+                trimmed.isEmpty() ||
+                    it.name.contains(trimmed, ignoreCase = true) ||
+                    it.parentFolderName.contains(trimmed, ignoreCase = true) ||
+                    it.path.contains(trimmed, ignoreCase = true)
+            }
+            .toList()
+        return sortDocuments(matched, sortOption)
+    }
+
+    fun groupByType(
+        documents: List<DocumentItem>,
+        query: String,
+        sortOption: SortOption,
+        visibleTypes: Set<DocType> = DocType.entries.toSet()
+    ): Map<DocType, List<DocumentItem>> {
+        val sortedFiltered = filterAndSort(documents, query, sortOption, visibleTypes = visibleTypes)
+        return DocType.entries.associateWith { type ->
+            if (type in visibleTypes) sortedFiltered.filter { it.type == type } else emptyList()
+        }
+    }
+
+    fun sortDocuments(list: List<DocumentItem>, sortOption: SortOption): List<DocumentItem> =
+        when (sortOption) {
+            SortOption.DATE_DESC -> list.sortedByDescending { it.lastModified }
+            SortOption.DATE_ASC -> list.sortedBy { it.lastModified }
+            SortOption.NAME_ASC -> list.sortedBy { it.name.lowercase() }
+            SortOption.NAME_DESC -> list.sortedByDescending { it.name.lowercase() }
+            SortOption.SIZE_DESC -> list.sortedByDescending { it.sizeBytes }
+            SortOption.SIZE_ASC -> list.sortedBy { it.sizeBytes }
+        }
+}
+
+class MainViewModel(application: Application) : AndroidViewModel(application) {
+
+    private val settingsRepo = SettingsRepository(application)
+    private val scanner = DocumentScanner(application)
+    private val cacheManager = DocumentCacheManager(application)
+    private var scanJob: Job? = null
+
+    private val _rawDocuments = MutableStateFlow<List<DocumentItem>>(emptyList())
+    val foundDocuments: StateFlow<List<DocumentItem>> = _rawDocuments.asStateFlow()
+
+    private val _isScanning = MutableStateFlow(false)
+    private val _hasFullAccess = MutableStateFlow(scanner.hasFullStorageAccess())
+    private val _selectedCategory = MutableStateFlow(DocType.PDF)
+    private val _searchQuery = MutableStateFlow("")
+    private val _isSearchActive = MutableStateFlow(false)
+    private val _selectedDocIds = MutableStateFlow<Set<String>>(emptySet())
+    private val _cacheSizeBytes = MutableStateFlow(0L)
+
+    private var lastKnownStorageAccess = _hasFullAccess.value
+    private val renamedIdAliases = HashMap<String, String>()
+    private var activeViewingExternalDoc: DocumentItem? = null
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    val messages = _messages.asSharedFlow()
+
+    private val _openExternalDoc = MutableStateFlow<DocumentItem?>(null)
+    val openExternalDoc: StateFlow<DocumentItem?> = _openExternalDoc.asStateFlow()
+
+    val settingsFlow: StateFlow<AppSettings> = settingsRepo.settingsFlow
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
+
+    val homeUiState: StateFlow<HomeUiState> = combine(
+        _rawDocuments,
+        _isScanning,
+        _hasFullAccess,
+        _selectedCategory,
+        _searchQuery,
+        _isSearchActive,
+        _selectedDocIds,
+        _cacheSizeBytes,
+        settingsFlow
+    ) { values ->
+        @Suppress("UNCHECKED_CAST")
+        val rawDocs = values[0] as List<DocumentItem>
+        val scanning = values[1] as Boolean
+        val fullAccess = values[2] as Boolean
+        val category = values[3] as DocType
+        val query = values[4] as String
+        val searchActive = values[5] as Boolean
+        @Suppress("UNCHECKED_CAST")
+        val selectedIds = values[6] as Set<String>
+        val cacheBytes = values[7] as Long
+        val settings = values[8] as AppSettings
+
+        val visibleTypes = DocType.entries.filter { it in settings.visibleDocTypes }
+        val rawCounts = DocType.entries.associateWith { type -> rawDocs.count { it.type == type } }
+        val grouped = DocumentQueryProcessor.groupByType(
+            documents = rawDocs,
+            query = query,
+            sortOption = settings.sortOption,
+            visibleTypes = settings.visibleDocTypes
+        )
+        val effectiveCategory = when {
+            category in settings.visibleDocTypes -> category
+            visibleTypes.isNotEmpty() -> visibleTypes.first()
+            else -> category
+        }
+        val visibleIds = rawDocs
+            .asSequence()
+            .filter { it.type in settings.visibleDocTypes }
+            .map { it.id }
+            .toSet()
+        val activeSelectedIds = if (selectedIds.isEmpty()) emptySet() else selectedIds.intersect(visibleIds)
+
+        HomeUiState(
+            isScanning = scanning,
+            hasFullStorageAccess = fullAccess,
+            selectedCategory = effectiveCategory,
+            visibleDocTypes = visibleTypes,
+            searchQuery = query,
+            isSearchActive = searchActive,
+            selectedDocIds = activeSelectedIds,
+            documentsByType = grouped,
+            rawCountsByType = rawCounts,
+            allDocumentsCount = visibleTypes.sumOf { rawCounts[it] ?: 0 },
+            dotFolderDocCount = rawDocs.count { it.type in settings.visibleDocTypes && it.isFromDotFolder },
+            cacheSizeBytes = cacheBytes,
+            settings = settings
+        )
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+
+    init {
+        viewModelScope.launch {
+            val initialSettings = settingsRepo.settingsFlow.first()
+            val cachedDocs = withContext(Dispatchers.IO) {
+                cacheManager.loadDocumentIndex()
+                    .filter { initialSettings.scanDotFolders || !it.isFromDotFolder }
+                    .filter { !it.isFilePath || File(it.path).exists() }
+            }
+            if (cachedDocs.isNotEmpty() && _rawDocuments.value.isEmpty()) {
+                _rawDocuments.value = cachedDocs
+            }
+            refreshStorageAccessAndScan()
+            refreshCacheSize()
+        }
+    }
+
+    fun refreshStorageAccessAndScan() {
+        val currentAccess = scanner.hasFullStorageAccess()
+        lastKnownStorageAccess = currentAccess
+        _hasFullAccess.value = currentAccess
+        scanDocuments(forceRestart = true)
+    }
+
+    fun onForegroundResume() {
+        val currentAccess = scanner.hasFullStorageAccess()
+        _hasFullAccess.value = currentAccess
+        if (currentAccess != lastKnownStorageAccess) {
+            lastKnownStorageAccess = currentAccess
+            scanDocuments(forceRestart = true)
+        }
+    }
+
+    fun scanDocuments(forceRestart: Boolean = false) {
+        if (scanJob?.isActive == true) {
+            if (!forceRestart) return
+            scanJob?.cancel()
+        }
+        scanJob = viewModelScope.launch {
+            _isScanning.value = true
+            try {
+                val access = scanner.hasFullStorageAccess()
+                lastKnownStorageAccess = access
+                _hasFullAccess.value = access
+                val currentSettings = settingsRepo.settingsFlow.first()
+                val baselineMap = withContext(Dispatchers.IO) {
+                    _rawDocuments.value
+                        .filter { currentSettings.scanDotFolders || !it.isFromDotFolder }
+                        .filter { !it.isFilePath || File(it.path).exists() }
+                        .filter { it.isFilePath || it.uriString in currentSettings.importedFileUris }
+                        .associateByTo(LinkedHashMap()) { it.id }
+                }
+
+                scanner.streamScanAllDocuments(currentSettings).collect { update ->
+                    if (!update.isComplete) {
+                        if (baselineMap.isEmpty()) {
+                            _rawDocuments.value = update.documents
+                        } else {
+                            val merged = LinkedHashMap(baselineMap)
+                            update.documents.forEach { merged[it.id] = it }
+                            _rawDocuments.value = merged.values.toList()
+                        }
+                    } else {
+                        _rawDocuments.value = update.documents
+                        withContext(Dispatchers.IO) {
+                            cacheManager.saveDocumentIndex(update.documents)
+                        }
+                        _cacheSizeBytes.value = cacheManager.pruneUnnecessaryCache(
+                            validDocs = update.documents,
+                            aggressive = currentSettings.autoCleanRenderCache
+                        )
+                    }
+                }
+            } finally {
+                _isScanning.value = false
+            }
+        }
+    }
+
+    fun selectCategory(type: DocType) {
+        _selectedCategory.value = type
+    }
+
+    fun toggleSearch() {
+        val next = !_isSearchActive.value
+        _isSearchActive.value = next
+        if (!next) _searchQuery.value = ""
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
+    }
+
+    fun toggleDarkLightQuick(currentlyDark: Boolean) {
+        viewModelScope.launch {
+            settingsRepo.setThemeMode(if (currentlyDark) ThemeMode.LIGHT else ThemeMode.DARK)
+        }
+    }
+
+    fun setThemeMode(mode: ThemeMode) {
+        viewModelScope.launch { settingsRepo.setThemeMode(mode) }
+    }
+
+    fun setSortOption(option: SortOption) {
+        viewModelScope.launch { settingsRepo.setSortOption(option) }
+    }
+
+    fun setScanDotFolders(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepo.setScanDotFolders(enabled)
+            scanDocuments(forceRestart = true)
+        }
+    }
+
+    fun setShowDotFolderBadge(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setShowDotFolderBadge(enabled) }
+    }
+
+    fun setDefaultPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setDefaultPageViewMode(mode) }
+    }
+
+    fun setXmlSyntaxHighlight(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setXmlSyntaxHighlight(enabled) }
+    }
+
+    fun setShowLineNumbers(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setShowLineNumbers(enabled) }
+    }
+
+    fun setReaderFontSizeSp(sizeSp: Float) {
+        viewModelScope.launch { settingsRepo.setReaderFontSizeSp(sizeSp) }
+    }
+
+    fun setAutoCleanRenderCache(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setAutoCleanRenderCache(enabled) }
+    }
+
+    fun setDocTypeVisible(type: DocType, visible: Boolean) {
+        viewModelScope.launch { settingsRepo.setDocTypeVisible(type, visible) }
+    }
+
+    fun setAllDocTypesVisible(visible: Boolean) {
+        viewModelScope.launch { settingsRepo.setAllDocTypesVisible(visible) }
+    }
+
+    fun toggleSelection(docId: String) {
+        val current = _selectedDocIds.value.toMutableSet()
+        if (!current.add(docId)) {
+            current.remove(docId)
+        }
+        _selectedDocIds.value = current
+    }
+
+    fun startSelectionWith(docId: String) {
+        _selectedDocIds.value = _selectedDocIds.value + docId
+    }
+
+    fun selectAllInCurrentCategory() {
+        val currentDocs = homeUiState.value.documentsByType[_selectedCategory.value].orEmpty()
+        _selectedDocIds.value = currentDocs.map { it.id }.toSet()
+    }
+
+    fun clearSelection() {
+        _selectedDocIds.value = emptySet()
+    }
+
+    fun getSelectedDocuments(): List<DocumentItem> {
+        val ids = _selectedDocIds.value
+        return _rawDocuments.value.filter { it.id in ids }
+    }
+
+    fun findDocumentById(docId: String): DocumentItem? {
+        var resolvedId = docId
+        val visited = HashSet<String>()
+        while (resolvedId in renamedIdAliases && visited.add(resolvedId)) {
+            resolvedId = renamedIdAliases[resolvedId] ?: break
+        }
+        return _rawDocuments.value.firstOrNull { it.id == resolvedId }
+            ?: _openExternalDoc.value?.takeIf { it.id == resolvedId }
+            ?: activeViewingExternalDoc?.takeIf { it.id == resolvedId }
+    }
+
+    fun renameDocument(doc: DocumentItem, newName: String, onRenamed: ((DocumentItem) -> Unit)? = null) {
+        viewModelScope.launch {
+            scanner.renameDocument(doc, newName)
+                .onSuccess { updated ->
+                    renamedIdAliases[doc.id] = updated.id
+                    val nextList = _rawDocuments.value.map {
+                        if (it.id == doc.id) updated else it
+                    }
+                    _rawDocuments.value = nextList
+                    if (_openExternalDoc.value?.id == doc.id) {
+                        _openExternalDoc.value = updated
+                    }
+                    if (activeViewingExternalDoc?.id == doc.id) {
+                        activeViewingExternalDoc = updated
+                    }
+                    _selectedDocIds.value = _selectedDocIds.value.map {
+                        if (it == doc.id) updated.id else it
+                    }.toSet()
+                    withContext(Dispatchers.IO) {
+                        cacheManager.evictForDocuments(listOf(doc))
+                        cacheManager.saveDocumentIndex(nextList)
+                    }
+                    refreshCacheSize()
+                    _messages.tryEmit("Renamed to ${updated.name}")
+                    onRenamed?.invoke(updated)
+                }
+                .onFailure { err ->
+                    _messages.tryEmit(err.localizedMessage ?: "Rename failed")
+                }
+        }
+    }
+
+    fun deleteDocuments(docs: List<DocumentItem>, onComplete: (() -> Unit)? = null) {
+        viewModelScope.launch {
+            var deletedCount = 0
+            val deletedDocs = ArrayList<DocumentItem>()
+            val deletedIds = HashSet<String>()
+            for (doc in docs) {
+                if (scanner.deleteDocument(doc)) {
+                    deletedCount++
+                    deletedIds.add(doc.id)
+                    deletedDocs.add(doc)
+                }
+            }
+            if (deletedIds.isNotEmpty()) {
+                val nextList = _rawDocuments.value.filterNot { it.id in deletedIds }
+                _rawDocuments.value = nextList
+                _selectedDocIds.value = _selectedDocIds.value - deletedIds
+                withContext(Dispatchers.IO) {
+                    cacheManager.evictForDocuments(deletedDocs)
+                    cacheManager.saveDocumentIndex(nextList)
+                }
+                refreshCacheSize()
+            }
+            if (deletedCount > 0) {
+                _messages.tryEmit(
+                    if (deletedCount == 1) "Document deleted" else "$deletedCount documents deleted"
+                )
+                onComplete?.invoke()
+            } else {
+                _messages.tryEmit("Unable to delete document (read-only storage)")
+            }
+        }
+    }
+
+    fun onSafFolderPicked(uri: Uri) {
+        viewModelScope.launch {
+            settingsRepo.addCustomFolderUri(uri.toString())
+            scanDocuments(forceRestart = true)
+            _messages.tryEmit("Folder added to offline scanner")
+        }
+    }
+
+    fun removeSafFolder(uriString: String) {
+        viewModelScope.launch {
+            settingsRepo.removeCustomFolderUri(uriString)
+            scanDocuments(forceRestart = true)
+        }
+    }
+
+    fun onImportedFilePicked(uri: Uri) {
+        viewModelScope.launch {
+            settingsRepo.addImportedFileUri(uri.toString())
+            val resolved = scanner.resolveContentUriToDocument(uri)
+            if (resolved != null) {
+                _selectedCategory.value = resolved.type
+            }
+            scanDocuments(forceRestart = true)
+        }
+    }
+
+    fun handleIncomingViewUri(uri: Uri) {
+        viewModelScope.launch {
+            val resolved = withContext(Dispatchers.IO) {
+                scanner.resolveContentUriToDocument(uri)
+            }
+            if (resolved != null) {
+                activeViewingExternalDoc = resolved
+                _openExternalDoc.value = resolved
+            }
+        }
+    }
+
+    fun consumeExternalDocNavigation(doc: DocumentItem) {
+        activeViewingExternalDoc = doc
+        if (_openExternalDoc.value?.id == doc.id) {
+            _openExternalDoc.value = null
+        }
+    }
+
+    fun clearExternalDoc() {
+        _openExternalDoc.value = null
+        activeViewingExternalDoc = null
+    }
+
+    fun clearCache() {
+        viewModelScope.launch {
+            val deletedBytes = withContext(Dispatchers.IO) {
+                cacheManager.clearAllCache()
+            }
+            _cacheSizeBytes.value = withContext(Dispatchers.IO) {
+                cacheManager.getTotalCacheSizeBytes()
+            }
+            _messages.tryEmit(
+                if (deletedBytes > 0) "Cache cleared" else "Cache is already clean"
+            )
+        }
+    }
+
+    private fun refreshCacheSize() {
+        viewModelScope.launch(Dispatchers.IO) {
+            _cacheSizeBytes.value = cacheManager.getTotalCacheSizeBytes()
+        }
+    }
+}
