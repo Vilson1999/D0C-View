@@ -108,6 +108,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
 
     LaunchedEffect(Unit) {
         viewModel.messages.collect { msg ->
+            snackbarHostState.currentSnackbarData?.dismiss()
             snackbarHostState.showSnackbar(msg)
         }
     }
@@ -209,9 +210,10 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         uiState = uiState,
                         isDarkTheme = isDarkTheme,
                         onSelectCategory = viewModel::selectCategory,
-                        onToggleDarkLight = { viewModel.toggleDarkLightQuick(isDarkTheme) },
+                        onCycleThemeMode = { viewModel.cycleThemeMode(uiState.settings.themeMode) },
                         onSelectSort = viewModel::setSortOption,
                         onToggleSearch = viewModel::toggleSearch,
+                        onCloseSearch = viewModel::closeSearch,
                         onSearchQueryChange = viewModel::setSearchQuery,
                         onOpenSettings = {
                             navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
@@ -233,7 +235,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onDeleteDocuments = { docs -> viewModel.deleteDocuments(docs) },
                         onRequestStorageAccess = requestStorageAccess,
                         onImportFile = openImportFile,
-                        onRescan = viewModel::scanDocuments,
+                        onRescan = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
                         onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) }
                     )
                 }
@@ -280,19 +282,18 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onBack = { navController.popBackStack() },
                         onSetThemeMode = viewModel::setThemeMode,
                         onSetDocTypeVisible = viewModel::setDocTypeVisible,
-                        onSetAllDocTypesVisible = viewModel::setAllDocTypesVisible,
                         onSetScanDotFolders = viewModel::setScanDotFolders,
-                        onSetShowDotFolderBadge = viewModel::setShowDotFolderBadge,
                         onSetDefaultPageViewMode = viewModel::setDefaultPageViewMode,
                         onSetXmlSyntaxHighlight = viewModel::setXmlSyntaxHighlight,
                         onSetShowLineNumbers = viewModel::setShowLineNumbers,
                         onSetReaderFontSizeSp = viewModel::setReaderFontSizeSp,
+                        onSetAutoHideReaderUi = viewModel::setAutoHideReaderUi,
                         onSetAutoCleanRenderCache = viewModel::setAutoCleanRenderCache,
                         onRequestStorageAccess = requestStorageAccess,
                         onPickCustomFolder = { folderPickerLauncher.launch(null) },
                         onRemoveCustomFolder = viewModel::removeSafFolder,
                         onImportFile = openImportFile,
-                        onRescanNow = viewModel::scanDocuments,
+                        onRescanNow = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
                         onClearCache = viewModel::clearCache
                     )
                 }
@@ -312,7 +313,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                                 launchSingleTop = true
                             }
                         },
-                        onRescan = viewModel::scanDocuments,
+                        onRescan = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
                         onSelectSort = viewModel::setSortOption,
                         onRenameDocument = { doc, name -> viewModel.renameDocument(doc, name) },
                         onDeleteDocuments = { docs -> viewModel.deleteDocuments(docs) }

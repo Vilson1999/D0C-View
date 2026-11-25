@@ -30,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val XML_SYNTAX_HIGHLIGHT = booleanPreferencesKey("xml_syntax_highlight")
         val SHOW_LINE_NUMBERS = booleanPreferencesKey("show_line_numbers")
         val READER_FONT_SIZE_SP = floatPreferencesKey("reader_font_size_sp")
+        val AUTO_HIDE_READER_UI = booleanPreferencesKey("auto_hide_reader_ui")
         val AUTO_CLEAN_RENDER_CACHE = booleanPreferencesKey("auto_clean_render_cache")
         val CUSTOM_FOLDER_URIS = stringSetPreferencesKey("custom_folder_uris")
         val IMPORTED_FILE_URIS = stringSetPreferencesKey("imported_file_uris")
@@ -52,6 +53,7 @@ class SettingsRepository(private val context: Context) {
             xmlSyntaxHighlight = prefs[Keys.XML_SYNTAX_HIGHLIGHT] ?: true,
             showLineNumbers = prefs[Keys.SHOW_LINE_NUMBERS] ?: true,
             readerFontSizeSp = prefs[Keys.READER_FONT_SIZE_SP] ?: 15f,
+            autoHideReaderUi = prefs[Keys.AUTO_HIDE_READER_UI] ?: true,
             autoCleanRenderCache = prefs[Keys.AUTO_CLEAN_RENDER_CACHE] ?: true,
             visibleDocTypes = DocType.entries.filterNotTo(LinkedHashSet()) { it.name in hiddenTypeNames },
             customFolderUris = prefs[Keys.CUSTOM_FOLDER_URIS] ?: emptySet(),
@@ -89,6 +91,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setReaderFontSizeSp(sizeSp: Float) {
         context.dataStore.edit { it[Keys.READER_FONT_SIZE_SP] = sizeSp.coerceIn(11f, 24f) }
+    }
+
+    suspend fun setAutoHideReaderUi(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.AUTO_HIDE_READER_UI] = enabled }
     }
 
     suspend fun setAutoCleanRenderCache(enabled: Boolean) {

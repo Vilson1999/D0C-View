@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.Xml
+import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
 import kotlinx.coroutines.CoroutineScope
@@ -120,20 +121,23 @@ class DocumentParser(private val context: Context) {
 
     private val cacheManager = DocumentCacheManager(context.applicationContext)
 
-    suspend fun parse(doc: DocumentItem): ParsedDocument = withContext(Dispatchers.IO) {
-        if (doc.type != DocType.PDF) {
+    suspend fun parse(
+        doc: DocumentItem,
+        settings: AppSettings = AppSettings()
+    ): ParsedDocument = withContext(Dispatchers.IO) {
+        if (doc.type == DocType.TEXT) {
             cacheManager.getMemoryParsed(doc)?.let { return@withContext it }
             cacheManager.loadDiskParsed(doc)?.let { return@withContext it }
         }
         runCatching {
             val parsed = when (doc.type) {
                 DocType.PDF -> parsePdf(doc)
-                DocType.DOC -> parseWord(doc)
-                DocType.PPT -> parseSlides(doc)
-                DocType.XML -> parseXml(doc)
+                DocType.DOC -> parseWordAsPdf(doc, settings)
+                DocType.PPT -> parseSlidesAsPdf(doc)
+                DocType.XML -> parseXmlAsPdf(doc, settings)
                 DocType.TEXT -> parsePlainText(doc)
             }
-            if (parsed !is ParsedDocument.Pdf && parsed !is ParsedDocument.Error) {
+            if (parsed is ParsedDocument.PlainText) {
                 cacheManager.saveDiskParsed(doc, parsed)
             }
             parsed
@@ -165,6 +169,19 @@ class DocumentParser(private val context: Context) {
     private fun parsePdf(doc: DocumentItem): ParsedDocument {
         val pfd = openParcelFileDescriptor(doc)
             ?: return ParsedDocument.Error("Cannot access PDF file offline.")
+        return openPdfFromPfd(pfd, DocumentCacheManager.docKey(doc))
+    }
+
+    private fun openConvertedPdf(pdfFile: File, sessionKey: String): ParsedDocument {
+        val pfd = runCatching {
+            ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
+        }.getOrElse { err ->
+            return ParsedDocument.Error("Cannot open rendered PDF: ${err.localizedMessage ?: "I/O error"}")
+        }
+        return openPdfFromPfd(pfd, sessionKey)
+    }
+
+    private fun openPdfFromPfd(pfd: ParcelFileDescriptor, sessionKey: String): ParsedDocument {
         return runCatching {
             val renderer = PdfRenderer(pfd)
             if (renderer.pageCount == 0) {
@@ -174,7 +191,7 @@ class DocumentParser(private val context: Context) {
             } else {
                 ParsedDocument.Pdf(
                     PdfDocumentSession(
-                        docKey = DocumentCacheManager.docKey(doc),
+                        docKey = sessionKey,
                         pfd = pfd,
                         renderer = renderer,
                         cacheManager = cacheManager
@@ -221,28 +238,64 @@ class DocumentParser(private val context: Context) {
         }
     }
 
-    private fun parseWord(doc: DocumentItem): ParsedDocument {
+    private fun parseWordAsPdf(doc: DocumentItem, settings: AppSettings): ParsedDocument {
+        val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
+        val variantTag = "doc_fs${fontSizeKey}"
+        val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
+        val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey)
+        }
+
         val bytes = readBytesBounded(doc)
             ?: return ParsedDocument.Error("Cannot read document file.")
 
-        if (bytes.isEmpty()) {
-            return ParsedDocument.Word(listOf(WordPage(1, listOf(WordBlock("(Empty document)")))))
-        }
-
-        val blocks = if (isZipArchive(bytes) || doc.extension == "docx") {
-            parseDocxBytes(bytes)
+        val finalBlocks = if (bytes.isEmpty()) {
+            listOf(WordBlock("(Empty document)"))
         } else {
-            parseLegacyDocBytes(bytes)
+            val blocks = when {
+                isZipArchive(bytes) || doc.extension == "docx" -> parseDocxBytes(bytes)
+                doc.extension == "rtf" || isRtfHeader(bytes) -> parseRtfBytes(bytes)
+                else -> parseLegacyDocBytes(bytes)
+            }
+            blocks.ifEmpty {
+                listOf(WordBlock("No readable text content found in ${doc.name}."))
+            }
         }
 
-        val finalBlocks = blocks.ifEmpty {
-            listOf(WordBlock("No readable text content found in ${doc.name}."))
+        val ok = OfficeAndXmlToPdfConverter.convertWordToPdf(
+            blocks = finalBlocks,
+            baseFontSizeSp = settings.readerFontSizeSp,
+            outputFile = cachedPdf
+        )
+        return if (ok) {
+            openConvertedPdf(cachedPdf, sessionKey)
+        } else {
+            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
         }
+    }
 
-        val pages = finalBlocks.chunked(20).mapIndexed { index, chunk ->
-            WordPage(pageNumber = index + 1, blocks = chunk)
-        }
-        return ParsedDocument.Word(pages)
+    private fun isRtfHeader(bytes: ByteArray): Boolean {
+        if (bytes.size < 5) return false
+        val head = String(bytes, 0, minOf(bytes.size, 16), Charsets.US_ASCII)
+        return head.trimStart().startsWith("{\\rtf")
+    }
+
+    private fun parseRtfBytes(bytes: ByteArray): List<WordBlock> {
+        val raw = String(bytes, Charsets.ISO_8859_1)
+        val stripped = raw
+            .replace(Regex("""\\par\b\s*"""), "\n")
+            .replace(Regex("""\\line\b\s*"""), "\n")
+            .replace(Regex("""\\tab\b\s*"""), "    ")
+            .replace(Regex("""\\'[0-9a-fA-F]{2}"""), " ")
+            .replace(Regex("""\\[a-zA-Z]+-?\d*\s?"""), "")
+            .replace("{", "")
+            .replace("}", "")
+        return stripped.lines()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("Times New Roman") && !it.startsWith("Calibri") && !it.startsWith("Arial") }
+            .mapIndexed { idx, line -> WordBlock(text = line, isHeading = idx == 0 && line.length < 80) }
     }
 
     private fun parseDocxBytes(bytes: ByteArray): List<WordBlock> {
@@ -369,24 +422,40 @@ class DocumentParser(private val context: Context) {
         return blocks
     }
 
-    private fun parseSlides(doc: DocumentItem): ParsedDocument {
+    private fun parseSlidesAsPdf(doc: DocumentItem): ParsedDocument {
+        val variantTag = "ppt_v1"
+        val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
+        val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey)
+        }
+
         val bytes = readBytesBounded(doc)
             ?: return ParsedDocument.Error("Cannot read presentation file.")
 
-        if (bytes.isEmpty()) {
-            return ParsedDocument.Slides(listOf(SlidePage(1, doc.name, listOf("Empty presentation"))))
-        }
-
-        val slides = if (isZipArchive(bytes) || doc.extension == "pptx") {
-            parsePptxBytes(bytes)
+        val finalSlides = if (bytes.isEmpty()) {
+            listOf(SlidePage(1, doc.name, listOf("Empty presentation")))
         } else {
-            parseLegacyPptBytes(bytes)
+            val slides = if (isZipArchive(bytes) || doc.extension == "pptx") {
+                parsePptxBytes(bytes)
+            } else {
+                parseLegacyPptBytes(bytes)
+            }
+            slides.ifEmpty {
+                listOf(SlidePage(1, doc.name, listOf("No readable slide content found.")))
+            }
         }
 
-        val finalSlides = slides.ifEmpty {
-            listOf(SlidePage(1, doc.name, listOf("No readable slide content found.")))
+        val ok = OfficeAndXmlToPdfConverter.convertSlidesToPdf(
+            slides = finalSlides,
+            outputFile = cachedPdf
+        )
+        return if (ok) {
+            openConvertedPdf(cachedPdf, sessionKey)
+        } else {
+            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
         }
-        return ParsedDocument.Slides(finalSlides)
     }
 
     private fun parsePptxBytes(bytes: ByteArray): List<SlidePage> {
@@ -548,13 +617,34 @@ class DocumentParser(private val context: Context) {
         return sb.toString()
     }
 
-    private fun parseXml(doc: DocumentItem): ParsedDocument {
+    private fun parseXmlAsPdf(doc: DocumentItem, settings: AppSettings): ParsedDocument {
+        val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
+        val hlFlag = if (settings.xmlSyntaxHighlight) 1 else 0
+        val lnFlag = if (settings.showLineNumbers) 1 else 0
+        val variantTag = "xml_fs${fontSizeKey}_hl${hlFlag}_ln${lnFlag}"
+        val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
+        val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey)
+        }
+
         val raw = readTextSmart(doc)
             ?: return ParsedDocument.Error("Cannot read XML file.")
         val formatted = prettyFormatXmlIfNeeded(raw)
-        val lines = formatted.lines()
-        val pages = if (lines.isEmpty()) listOf(listOf("")) else lines.chunked(42)
-        return ParsedDocument.CodeXml(formattedXml = formatted, pages = pages)
+
+        val ok = OfficeAndXmlToPdfConverter.convertXmlToPdf(
+            formattedXml = formatted,
+            syntaxHighlight = settings.xmlSyntaxHighlight,
+            showLineNumbers = settings.showLineNumbers,
+            baseFontSizeSp = settings.readerFontSizeSp,
+            outputFile = cachedPdf
+        )
+        return if (ok) {
+            openConvertedPdf(cachedPdf, sessionKey)
+        } else {
+            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
+        }
     }
 
     private fun prettyFormatXmlIfNeeded(raw: String): String {

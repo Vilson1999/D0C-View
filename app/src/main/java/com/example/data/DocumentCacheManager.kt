@@ -24,6 +24,7 @@ class DocumentCacheManager(private val context: Context) {
     private val indexFile: File get() = File(cacheRoot, INDEX_FILE_NAME)
     private val pdfPagesDir: File get() = File(cacheRoot, PDF_PAGES_DIR)
     private val parsedDocsDir: File get() = File(cacheRoot, PARSED_DOCS_DIR)
+    private val convertedPdfsDir: File get() = File(cacheRoot, CONVERTED_PDFS_DIR)
 
     fun loadDocumentIndex(): List<DocumentItem> {
         return loadIndexFromFile(indexFile)
@@ -217,6 +218,11 @@ class DocumentCacheManager(private val context: Context) {
         }
     }
 
+    fun getConvertedPdfFile(doc: DocumentItem, variantTag: String): File {
+        if (!convertedPdfsDir.exists()) convertedPdfsDir.mkdirs()
+        return File(convertedPdfsDir, "${docKey(doc)}_${variantTag}.pdf")
+    }
+
     fun evictForDocuments(docs: List<DocumentItem>) {
         val keys = docs.mapTo(HashSet()) { docKey(it) }
         if (keys.isEmpty()) return
@@ -229,6 +235,11 @@ class DocumentCacheManager(private val context: Context) {
             }
         }
         parsedDocsDir.listFiles()?.forEach { file ->
+            if (extractDocKeyPrefix(file.name) in keys) {
+                file.delete()
+            }
+        }
+        convertedPdfsDir.listFiles()?.forEach { file ->
             if (extractDocKeyPrefix(file.name) in keys) {
                 file.delete()
             }
@@ -269,6 +280,7 @@ class DocumentCacheManager(private val context: Context) {
         const val INDEX_FILE_NAME = "doc_index_v1.tsv"
         const val PDF_PAGES_DIR = "pdf_pages"
         const val PARSED_DOCS_DIR = "parsed_docs"
+        const val CONVERTED_PDFS_DIR = "converted_pdfs"
         private const val CACHE_SCHEMA_VERSION = 1
         private const val KIND_WORD = 1
         private const val KIND_SLIDES = 2
@@ -363,14 +375,14 @@ class DocumentCacheManager(private val context: Context) {
             // 1. Delete stray root temp/unknown files while preserving index and managed cache dirs
             cacheRoot.listFiles()?.forEach { child ->
                 when (child.name) {
-                    INDEX_FILE_NAME, PDF_PAGES_DIR, PARSED_DOCS_DIR -> Unit
+                    INDEX_FILE_NAME, PDF_PAGES_DIR, PARSED_DOCS_DIR, CONVERTED_PDFS_DIR -> Unit
                     else -> runCatching { child.deleteRecursively() }
                 }
             }
 
             // 2. Clean orphaned, temporary, or expired entries in managed cache folders
             val managedFiles = mutableListOf<File>()
-            for (dirName in arrayOf(PDF_PAGES_DIR, PARSED_DOCS_DIR)) {
+            for (dirName in arrayOf(PDF_PAGES_DIR, PARSED_DOCS_DIR, CONVERTED_PDFS_DIR)) {
                 val dir = File(cacheRoot, dirName)
                 if (!dir.exists() || !dir.isDirectory) continue
                 dir.listFiles()?.forEach { entry ->

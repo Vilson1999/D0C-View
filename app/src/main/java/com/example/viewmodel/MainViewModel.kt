@@ -94,6 +94,22 @@ object DocumentQueryProcessor {
             SortOption.SIZE_DESC -> list.sortedByDescending { it.sizeBytes }
             SortOption.SIZE_ASC -> list.sortedBy { it.sizeBytes }
         }
+
+    fun resolveHomePillTypes(
+        documents: List<DocumentItem>,
+        enabledTypes: Set<DocType>
+    ): List<DocType> {
+        val enabledOrdered = DocType.entries.filter { it in enabledTypes }
+        if (enabledOrdered.isEmpty()) return emptyList()
+        val populated = enabledOrdered.filter { type -> documents.any { it.type == type } }
+        return populated.ifEmpty { enabledOrdered }
+    }
+
+    fun nextThemeMode(current: ThemeMode): ThemeMode = when (current) {
+        ThemeMode.SYSTEM -> ThemeMode.DARK
+        ThemeMode.DARK -> ThemeMode.LIGHT
+        ThemeMode.LIGHT -> ThemeMode.SYSTEM
+    }
 }
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
@@ -150,7 +166,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val cacheBytes = values[7] as Long
         val settings = values[8] as AppSettings
 
-        val visibleTypes = DocType.entries.filter { it in settings.visibleDocTypes }
+        val visibleTypes = DocumentQueryProcessor.resolveHomePillTypes(
+            documents = rawDocs,
+            enabledTypes = settings.visibleDocTypes
+        )
         val rawCounts = DocType.entries.associateWith { type -> rawDocs.count { it.type == type } }
         val grouped = DocumentQueryProcessor.groupByType(
             documents = rawDocs,
@@ -159,7 +178,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             visibleTypes = settings.visibleDocTypes
         )
         val effectiveCategory = when {
-            category in settings.visibleDocTypes -> category
+            category in visibleTypes -> category
             visibleTypes.isNotEmpty() -> visibleTypes.first()
             else -> category
         }
@@ -211,11 +230,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun refreshStorageAccessAndScan() {
+    fun refreshStorageAccessAndScan(userInitiated: Boolean = false) {
         val currentAccess = scanner.hasFullStorageAccess()
         lastKnownStorageAccess = currentAccess
         _hasFullAccess.value = currentAccess
-        scanDocuments(forceRestart = true)
+        scanDocuments(forceRestart = true, userInitiated = userInitiated)
     }
 
     fun onForegroundResume() {
@@ -227,7 +246,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun scanDocuments(forceRestart: Boolean = false) {
+    fun scanDocuments(forceRestart: Boolean = false, userInitiated: Boolean = false) {
         if (scanJob?.isActive == true) {
             if (!forceRestart) return
             scanJob?.cancel()
@@ -265,6 +284,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             validDocs = update.documents,
                             aggressive = currentSettings.autoCleanRenderCache
                         )
+                        if (userInitiated) {
+                            val visibleCount = update.documents.count { it.type in currentSettings.visibleDocTypes }
+                            _messages.tryEmit(
+                                if (visibleCount == 1) "Scan complete • 1 document found"
+                                else "Scan complete • $visibleCount documents found"
+                            )
+                        }
                     }
                 }
             } finally {
@@ -283,13 +309,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (!next) _searchQuery.value = ""
     }
 
+    fun closeSearch() {
+        if (_isSearchActive.value || _searchQuery.value.isNotEmpty()) {
+            _isSearchActive.value = false
+            _searchQuery.value = ""
+        }
+    }
+
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
     }
 
-    fun toggleDarkLightQuick(currentlyDark: Boolean) {
+    fun cycleThemeMode(currentMode: ThemeMode) {
+        val next = DocumentQueryProcessor.nextThemeMode(currentMode)
         viewModelScope.launch {
-            settingsRepo.setThemeMode(if (currentlyDark) ThemeMode.LIGHT else ThemeMode.DARK)
+            settingsRepo.setThemeMode(next)
         }
     }
 
@@ -326,6 +360,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setReaderFontSizeSp(sizeSp: Float) {
         viewModelScope.launch { settingsRepo.setReaderFontSizeSp(sizeSp) }
+    }
+
+    fun setAutoHideReaderUi(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setAutoHideReaderUi(enabled) }
     }
 
     fun setAutoCleanRenderCache(enabled: Boolean) {

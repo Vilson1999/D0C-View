@@ -42,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -61,22 +60,30 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.model.DocType
 import com.example.model.DocumentItem
 import com.example.model.SortOption
+import com.example.model.ThemeMode
 import com.example.ui.components.AppIcons
 import com.example.ui.components.CategoryPillsRow
 import com.example.ui.components.DeleteConfirmDialog
@@ -86,6 +93,7 @@ import com.example.ui.components.DocumentInfoSheet
 import com.example.ui.components.EmptyDocumentsIllustration
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.SortOptionsSheet
+import com.example.ui.components.TopBarSearchField
 import com.example.viewmodel.HomeUiState
 import kotlinx.coroutines.flow.distinctUntilChanged
 
@@ -95,9 +103,10 @@ fun HomeScreen(
     uiState: HomeUiState,
     isDarkTheme: Boolean,
     onSelectCategory: (DocType) -> Unit,
-    onToggleDarkLight: () -> Unit,
+    onCycleThemeMode: () -> Unit,
     onSelectSort: (SortOption) -> Unit,
     onToggleSearch: () -> Unit,
+    onCloseSearch: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onOpenScannedList: () -> Unit,
@@ -115,7 +124,16 @@ fun HomeScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
     val visibleTypes = uiState.visibleDocTypes
+    var searchBarBounds by remember { mutableStateOf<Rect?>(null) }
+
+    LaunchedEffect(uiState.isSearchActive) {
+        if (!uiState.isSearchActive) {
+            searchBarBounds = null
+        }
+    }
 
     val pagerState = rememberPagerState(
         initialPage = visibleTypes.indexOf(uiState.selectedCategory).coerceAtLeast(0),
@@ -213,6 +231,53 @@ fun HomeScreen(
         visibleTypes.associateWith { uiState.documentsByType[it]?.size ?: 0 }
     }
 
+    val currentOnCloseSearch by rememberUpdatedState(onCloseSearch)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(uiState.isSearchActive, uiState.isSelectionMode) {
+                if (!uiState.isSearchActive || uiState.isSelectionMode) return@pointerInput
+                awaitPointerEventScope {
+                    var downPos: Offset? = null
+                    var isTapCandidate = false
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Final)
+                        val change = event.changes.firstOrNull() ?: continue
+                        when (event.type) {
+                            PointerEventType.Press -> {
+                                val bounds = searchBarBounds
+                                if (bounds == null || !bounds.contains(change.position)) {
+                                    downPos = change.position
+                                    isTapCandidate = true
+                                } else {
+                                    downPos = null
+                                    isTapCandidate = false
+                                }
+                            }
+                            PointerEventType.Move -> {
+                                val start = downPos
+                                if (isTapCandidate && start != null) {
+                                    if ((change.position - start).getDistance() > viewConfiguration.touchSlop) {
+                                        isTapCandidate = false
+                                    }
+                                }
+                            }
+                            PointerEventType.Release -> {
+                                if (isTapCandidate && event.changes.none { it.pressed }) {
+                                    keyboardController?.hide()
+                                    focusManager.clearFocus(force = true)
+                                    currentOnCloseSearch()
+                                }
+                                downPos = null
+                                isTapCandidate = false
+                            }
+                            else -> Unit
+                        }
+                    }
+                }
+            }
+    ) {
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
@@ -230,41 +295,17 @@ fun HomeScreen(
                     )
                 } else {
                     HomeTopBar(
-                        totalDocs = uiState.allDocumentsCount,
-                        isDarkTheme = isDarkTheme,
+                        themeMode = uiState.settings.themeMode,
                         isSearchActive = uiState.isSearchActive,
-                        onToggleDarkLight = onToggleDarkLight,
+                        searchQuery = uiState.searchQuery,
+                        onSearchQueryChange = onSearchQueryChange,
+                        onCycleThemeMode = onCycleThemeMode,
                         onOpenSort = { showSortSheet = true },
-                        onToggleSearch = onToggleSearch,
+                        onOpenSearch = onToggleSearch,
+                        onCloseSearch = onCloseSearch,
+                        onSearchBarBoundsChange = { searchBarBounds = it },
                         onOpenScannedList = onOpenScannedList,
                         onOpenSettings = onOpenSettings
-                    )
-                }
-
-                // Expandable search bar
-                AnimatedVisibility(
-                    visible = uiState.isSearchActive && !uiState.isSelectionMode,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
-                ) {
-                    OutlinedTextField(
-                        value = uiState.searchQuery,
-                        onValueChange = onSearchQueryChange,
-                        placeholder = { Text("Search name, folder, or .dot path…") },
-                        singleLine = true,
-                        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-                        trailingIcon = {
-                            if (uiState.searchQuery.isNotEmpty()) {
-                                IconButton(onClick = { onSearchQueryChange("") }) {
-                                    Icon(Icons.Rounded.Close, contentDescription = "Clear search")
-                                }
-                            }
-                        },
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 6.dp)
-                            .testTag("search_input")
                     )
                 }
 
@@ -468,94 +509,109 @@ fun HomeScreen(
             onDismiss = { infoTargets = null }
         )
     }
+    }
 }
 
 @Composable
 private fun HomeTopBar(
-    totalDocs: Int,
-    isDarkTheme: Boolean,
+    themeMode: ThemeMode,
     isSearchActive: Boolean,
-    onToggleDarkLight: () -> Unit,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onCycleThemeMode: () -> Unit,
     onOpenSort: () -> Unit,
-    onToggleSearch: () -> Unit,
+    onOpenSearch: () -> Unit,
+    onCloseSearch: () -> Unit,
+    onSearchBarBoundsChange: (Rect) -> Unit,
     onOpenScannedList: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        DocViewerAppIcon(
-            size = 38.dp,
+    if (isSearchActive) {
+        Box(
             modifier = Modifier
-                .padding(end = 10.dp)
-                .testTag("topbar_app_icon")
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = stringResource(R.string.app_name),
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-            Text(
-                text = if (totalDocs == 1) "1 offline document" else "$totalDocs offline documents",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
+        ) {
+            TopBarSearchField(
+                query = searchQuery,
+                placeholder = "Search documents…",
+                onQueryChange = onSearchQueryChange,
+                onClose = onCloseSearch,
+                inputTestTag = "search_input",
+                closeTestTag = "topbar_search_close_button"
             )
         }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DocViewerAppIcon(
+                size = 38.dp,
+                modifier = Modifier
+                    .padding(end = 10.dp)
+                    .testTag("topbar_app_icon")
+            )
+            Spacer(modifier = Modifier.weight(1f))
 
-        // Right side: All List, Dark/Light, Sort, Search, Settings
-        IconButton(
-            onClick = onOpenScannedList,
-            modifier = Modifier.testTag("topbar_scanned_list_button")
-        ) {
-            Icon(
-                imageVector = AppIcons.FormatListBulleted,
-                contentDescription = stringResource(R.string.action_all_documents),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        IconButton(
-            onClick = onToggleDarkLight,
-            modifier = Modifier.testTag("topbar_theme_toggle")
-        ) {
-            Icon(
-                imageVector = if (isDarkTheme) AppIcons.LightMode else AppIcons.DarkMode,
-                contentDescription = stringResource(R.string.action_toggle_theme),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        IconButton(
-            onClick = onOpenSort,
-            modifier = Modifier.testTag("topbar_sort_button")
-        ) {
-            Icon(
-                imageVector = AppIcons.Sort,
-                contentDescription = stringResource(R.string.action_sort),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        IconButton(
-            onClick = onToggleSearch,
-            modifier = Modifier.testTag("topbar_search_button")
-        ) {
-            Icon(
-                imageVector = if (isSearchActive) Icons.Rounded.Close else Icons.Rounded.Search,
-                contentDescription = stringResource(R.string.action_search),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
-        }
-        IconButton(
-            onClick = onOpenSettings,
-            modifier = Modifier.testTag("topbar_settings_button")
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.Settings,
-                contentDescription = stringResource(R.string.action_settings),
-                tint = MaterialTheme.colorScheme.onBackground
-            )
+            // Right side: All List, Theme (Auto/Dark/Light), Sort, Search, Settings
+            IconButton(
+                onClick = onOpenScannedList,
+                modifier = Modifier.testTag("topbar_scanned_list_button")
+            ) {
+                Icon(
+                    imageVector = AppIcons.FormatListBulleted,
+                    contentDescription = stringResource(R.string.action_all_documents),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            IconButton(
+                onClick = onCycleThemeMode,
+                modifier = Modifier.testTag("topbar_theme_toggle")
+            ) {
+                Icon(
+                    imageVector = when (themeMode) {
+                        ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
+                        ThemeMode.DARK -> AppIcons.DarkMode
+                        ThemeMode.LIGHT -> AppIcons.LightMode
+                    },
+                    contentDescription = stringResource(R.string.action_toggle_theme),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            IconButton(
+                onClick = onOpenSort,
+                modifier = Modifier.testTag("topbar_sort_button")
+            ) {
+                Icon(
+                    imageVector = AppIcons.Sort,
+                    contentDescription = stringResource(R.string.action_sort),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            IconButton(
+                onClick = onOpenSearch,
+                modifier = Modifier.testTag("topbar_search_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Search,
+                    contentDescription = stringResource(R.string.action_search),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
+            IconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier.testTag("topbar_settings_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Settings,
+                    contentDescription = stringResource(R.string.action_settings),
+                    tint = MaterialTheme.colorScheme.onBackground
+                )
+            }
         }
     }
 }

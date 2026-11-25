@@ -51,8 +51,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.BuildConfig
 import com.example.R
 import com.example.model.AppSettings
 import com.example.model.DocType
@@ -79,13 +81,12 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
-    onSetAllDocTypesVisible: (Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
-    onSetShowDotFolderBadge: (Boolean) -> Unit,
     onSetDefaultPageViewMode: (PageViewMode) -> Unit,
     onSetXmlSyntaxHighlight: (Boolean) -> Unit,
     onSetShowLineNumbers: (Boolean) -> Unit,
     onSetReaderFontSizeSp: (Float) -> Unit,
+    onSetAutoHideReaderUi: (Boolean) -> Unit,
     onSetAutoCleanRenderCache: (Boolean) -> Unit,
     onRequestStorageAccess: () -> Unit,
     onPickCustomFolder: () -> Unit,
@@ -150,26 +151,18 @@ fun SettingsScreen(
         ) {
             item(key = "folder_doc_visibility") {
                 val visibleCount = settings.visibleDocTypes.size
-                val allVisible = visibleCount == DocType.entries.size
                 SettingsFolder(
                     title = "Home Screen Documents",
                     subtitle = "Show or hide PDF, DOC, XML, PPT, TEXT ($visibleCount/${DocType.entries.size} shown)",
-                    itemCount = DocType.entries.size + 1,
+                    itemCount = DocType.entries.size,
                     folderColor = PdfPillColor,
                     expanded = visibilityExpanded,
                     onToggle = { visibilityExpanded = !visibilityExpanded },
                     testTag = "folder_doc_visibility"
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SettingsSwitchRow(
-                            title = "Show all document types",
-                            subtitle = if (allVisible) "All 5 formats shown on home" else "$visibleCount of ${DocType.entries.size} formats shown",
-                            checked = allVisible,
-                            onCheckedChange = onSetAllDocTypesVisible,
-                            modifier = Modifier.testTag("toggle_visibility_all")
-                        )
-                        DocType.entries.forEach { type ->
-                            HorizontalDivider()
+                        DocType.entries.forEachIndexed { index, type ->
+                            if (index > 0) HorizontalDivider()
                             val isShown = type in settings.visibleDocTypes
                             val foundCount = countsByType[type] ?: 0
                             DocTypeVisibilityRow(
@@ -186,8 +179,8 @@ fun SettingsScreen(
             item(key = "folder_appearance") {
                 SettingsFolder(
                     title = "Appearance & Display",
-                    subtitle = "Theme mode, .dot badge visibility",
-                    itemCount = 2,
+                    subtitle = "Theme mode (System, Light, Dark)",
+                    itemCount = 1,
                     folderColor = DocPillColor,
                     expanded = appearanceExpanded,
                     onToggle = { appearanceExpanded = !appearanceExpanded },
@@ -200,13 +193,6 @@ fun SettingsScreen(
                             selected = settings.themeMode,
                             labelFor = { it.label.removeSuffix(" Mode") },
                             onSelect = onSetThemeMode
-                        )
-                        HorizontalDivider()
-                        SettingsSwitchRow(
-                            title = "Show (.dot) folder badge",
-                            subtitle = "Highlight documents discovered inside hidden folders",
-                            checked = settings.showDotFolderBadge,
-                            onCheckedChange = onSetShowDotFolderBadge
                         )
                     }
                 }
@@ -323,8 +309,8 @@ fun SettingsScreen(
             item(key = "folder_reader") {
                 SettingsFolder(
                     title = "Reader & Formats",
-                    subtitle = "Page view mode, font size, XML syntax",
-                    itemCount = 4,
+                    subtitle = "Page view mode, auto-hide UI, font size, XML syntax",
+                    itemCount = 5,
                     folderColor = XmlPillColor,
                     expanded = readerExpanded,
                     onToggle = { readerExpanded = !readerExpanded },
@@ -337,6 +323,14 @@ fun SettingsScreen(
                             selected = settings.defaultPageViewMode,
                             labelFor = { it.label.removeSuffix(" View") },
                             onSelect = onSetDefaultPageViewMode
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Auto-hide reader UI",
+                            subtitle = "Hide top bar & page pill after 2s; tap screen to show or hide",
+                            checked = settings.autoHideReaderUi,
+                            onCheckedChange = onSetAutoHideReaderUi,
+                            modifier = Modifier.testTag("toggle_auto_hide_reader_ui")
                         )
                         HorizontalDivider()
                         Column {
@@ -377,9 +371,9 @@ fun SettingsScreen(
 
             item(key = "folder_compression") {
                 SettingsFolder(
-                    title = "Compression & App Info",
-                    subtitle = "D0C View, cache & build optimization",
-                    itemCount = 3,
+                    title = "Cache & Optimization",
+                    subtitle = "Auto-cleanup & temporary cache",
+                    itemCount = 2,
                     folderColor = TextPillColor,
                     expanded = compressionExpanded,
                     onToggle = { compressionExpanded = !compressionExpanded },
@@ -408,31 +402,58 @@ fun SettingsScreen(
                             }
                             OutlinedButton(onClick = onClearCache) { Text("Clear") }
                         }
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                    }
+                }
+            }
+
+            item(key = "settings_app_info_footer") {
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 700.dp)
+                        .padding(top = 4.dp, bottom = 8.dp)
+                        .testTag("settings_app_info_footer")
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 18.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        DocViewerAppIcon(
+                            size = 56.dp,
+                            modifier = Modifier.testTag("settings_app_icon")
+                        )
+                        Text(
+                            text = stringResource(R.string.app_name),
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier
+                                .padding(top = 4.dp)
+                                .testTag("settings_app_name")
+                        )
+                        Text(
+                            text = "Developer: ${stringResource(R.string.developer_name)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.testTag("settings_developer_name")
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(50),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
                         ) {
-                            DocViewerAppIcon(size = 54.dp)
-                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                                Text(text = "D0C View • v1.1", style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    text = "Developer: ${stringResource(R.string.developer_name)}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = "Package: com.docview.vilson",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "100% Offline • No Internet • No Background Services • ARMv7, ARMv8 & ARM Universal Compressed",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = "Version ${BuildConfig.VERSION_NAME}",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                modifier = Modifier
+                                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                                    .testTag("settings_app_version")
+                            )
                         }
                     }
                 }

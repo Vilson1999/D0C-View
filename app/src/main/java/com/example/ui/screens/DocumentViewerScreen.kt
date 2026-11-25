@@ -3,6 +3,11 @@ package com.example.ui.screens
 import android.app.Activity
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,13 +22,16 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -52,6 +60,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -85,6 +94,7 @@ import com.example.data.PdfDocumentSession
 import com.example.data.SlidePage
 import com.example.data.WordPage
 import com.example.model.AppSettings
+import com.example.model.DocType
 import com.example.model.DocumentItem
 import com.example.model.PageViewMode
 import com.example.ui.components.AppIcons
@@ -101,6 +111,7 @@ import com.example.ui.theme.XmlTagDark
 import com.example.ui.theme.XmlTagLight
 import com.example.ui.theme.XmlValueDark
 import com.example.ui.theme.XmlValueLight
+import kotlinx.coroutines.delay
 
 @Composable
 fun DocumentViewerScreen(
@@ -126,9 +137,47 @@ fun DocumentViewerScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
 
-    LaunchedEffect(currentDoc.id, currentDoc.uriString) {
+    var isReaderUiVisible by remember(document.id) { mutableStateOf(true) }
+    var uiInteractionNonce by remember(document.id) { mutableIntStateOf(0) }
+
+    val parseKey = when (currentDoc.type) {
+        DocType.DOC -> "${currentDoc.id}|${currentDoc.uriString}|${settings.readerFontSizeSp.toInt()}"
+        DocType.XML -> "${currentDoc.id}|${currentDoc.uriString}|${settings.readerFontSizeSp.toInt()}|${settings.xmlSyntaxHighlight}|${settings.showLineNumbers}"
+        else -> "${currentDoc.id}|${currentDoc.uriString}"
+    }
+
+    LaunchedEffect(parseKey) {
         parsedDoc = null
-        parsedDoc = parser.parse(currentDoc)
+        isReaderUiVisible = true
+        parsedDoc = parser.parse(currentDoc, settings)
+    }
+
+    LaunchedEffect(settings.autoHideReaderUi) {
+        if (!settings.autoHideReaderUi) {
+            isReaderUiVisible = true
+        }
+    }
+
+    val hasOpenOverlay = menuExpanded || showRenameDialog || showDeleteDialog || showInfoSheet
+    LaunchedEffect(
+        isReaderUiVisible,
+        settings.autoHideReaderUi,
+        parsedDoc,
+        hasOpenOverlay,
+        uiInteractionNonce
+    ) {
+        val loaded = parsedDoc != null && parsedDoc !is ParsedDocument.Error
+        if (settings.autoHideReaderUi && isReaderUiVisible && loaded && !hasOpenOverlay) {
+            delay(2000L)
+            isReaderUiVisible = false
+        }
+    }
+
+    val toggleReaderUi: () -> Unit = {
+        if (!hasOpenOverlay) {
+            isReaderUiVisible = !isReaderUiVisible
+            uiInteractionNonce++
+        }
     }
 
     DisposableEffect(parsedDoc) {
@@ -138,95 +187,17 @@ fun DocumentViewerScreen(
 
     BackHandler { onBack() }
 
+    val topBarReserve = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 48.dp
+    val navBarReserve = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 2.dp,
-                shadowElevation = 2.dp,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .height(48.dp)
-                        .padding(start = 14.dp, end = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = currentDoc.name,
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.Start,
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("viewer_doc_title")
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    IconButton(
-                        onClick = {
-                            pageViewMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
-                                PageViewMode.SINGLE_PAGE
-                            } else {
-                                PageViewMode.CONTINUOUS
-                            }
-                        },
-                        modifier = Modifier.testTag("viewer_page_mode_button")
-                    ) {
-                        Icon(
-                            imageVector = if (pageViewMode == PageViewMode.SINGLE_PAGE) {
-                                AppIcons.ViewCarousel
-                            } else {
-                                AppIcons.ViewStream
-                            },
-                            contentDescription = stringResource(R.string.action_page_view_mode),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-
-                    Box {
-                        IconButton(
-                            onClick = { menuExpanded = true },
-                            modifier = Modifier.testTag("viewer_more_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.MoreVert,
-                                contentDescription = stringResource(R.string.action_more_options),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        DocumentActionDropdownMenu(
-                            expanded = menuExpanded,
-                            onDismiss = { menuExpanded = false },
-                            onRename = { showRenameDialog = true },
-                            onShare = { DocumentActionsHelper.shareDocuments(context, listOf(currentDoc)) },
-                            onPrint = {
-                                if (activity != null) {
-                                    DocumentActionsHelper.printDocuments(activity, listOf(currentDoc))
-                                }
-                            },
-                            onInfo = { showInfoSheet = true },
-                            onDelete = { showDeleteDialog = true },
-                            tagPrefix = "viewer_menu"
-                        )
-                    }
-                }
-            }
-        }
-    ) { innerPadding ->
+        containerColor = MaterialTheme.colorScheme.background
+    ) { _ ->
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
-                .navigationBarsPadding(),
+                .testTag("viewer_reader_surface"),
             contentAlignment = Alignment.Center
         ) {
             when (val doc = parsedDoc) {
@@ -262,18 +233,35 @@ fun DocumentViewerScreen(
                         )
                     }
                 }
-                is ParsedDocument.Pdf -> PdfViewerContent(session = doc.session, mode = pageViewMode)
+                is ParsedDocument.Pdf -> PdfViewerContent(
+                    session = doc.session,
+                    mode = pageViewMode,
+                    showPagePill = isReaderUiVisible,
+                    topClearance = topBarReserve,
+                    bottomClearance = navBarReserve,
+                    onToggleUi = toggleReaderUi
+                )
                 is ParsedDocument.Word -> PagedOrContinuousViewer(
                     items = doc.pages,
                     mode = pageViewMode,
                     unitLabel = "Page",
+                    showPagePill = isReaderUiVisible,
+                    topClearance = topBarReserve,
+                    bottomClearance = navBarReserve,
+                    enableContainerTap = true,
+                    onToggleUi = toggleReaderUi,
                     keySelector = { it.pageNumber },
                     singleItemContent = { page ->
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
+                                .padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = topBarReserve + 12.dp,
+                                    bottom = navBarReserve + 52.dp
+                                ),
                             contentAlignment = Alignment.TopCenter
                         ) {
                             WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
@@ -287,13 +275,23 @@ fun DocumentViewerScreen(
                     items = doc.slides,
                     mode = pageViewMode,
                     unitLabel = "Slide",
+                    showPagePill = isReaderUiVisible,
+                    topClearance = topBarReserve,
+                    bottomClearance = navBarReserve,
+                    enableContainerTap = true,
+                    onToggleUi = toggleReaderUi,
                     keySelector = { it.slideNumber },
                     singleItemContent = { slide ->
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .verticalScroll(rememberScrollState())
-                                .padding(16.dp),
+                                .padding(
+                                    start = 16.dp,
+                                    end = 16.dp,
+                                    top = topBarReserve + 12.dp,
+                                    bottom = navBarReserve + 52.dp
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             SlideCard(
@@ -319,7 +317,11 @@ fun DocumentViewerScreen(
                     syntaxHighlight = settings.xmlSyntaxHighlight,
                     showLineNumbers = settings.showLineNumbers,
                     fontSizeSp = settings.readerFontSizeSp,
-                    isDarkTheme = isDarkTheme
+                    isDarkTheme = isDarkTheme,
+                    showPagePill = isReaderUiVisible,
+                    topClearance = topBarReserve,
+                    bottomClearance = navBarReserve,
+                    onToggleUi = toggleReaderUi
                 )
                 is ParsedDocument.PlainText -> TextAndXmlViewerContent(
                     fullText = doc.fullText,
@@ -329,8 +331,111 @@ fun DocumentViewerScreen(
                     syntaxHighlight = false,
                     showLineNumbers = settings.showLineNumbers,
                     fontSizeSp = settings.readerFontSizeSp,
-                    isDarkTheme = isDarkTheme
+                    isDarkTheme = isDarkTheme,
+                    showPagePill = isReaderUiVisible,
+                    topClearance = topBarReserve,
+                    bottomClearance = navBarReserve,
+                    onToggleUi = toggleReaderUi
                 )
+            }
+
+            AnimatedVisibility(
+                visible = isReaderUiVisible,
+                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .testTag("viewer_topbar")
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                    tonalElevation = 3.dp,
+                    shadowElevation = 4.dp,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(Unit) {
+                            detectTapGestures { uiInteractionNonce++ }
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .height(48.dp)
+                            .padding(start = 14.dp, end = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = currentDoc.name,
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Start,
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("viewer_doc_title")
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        IconButton(
+                            onClick = {
+                                pageViewMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
+                                    PageViewMode.SINGLE_PAGE
+                                } else {
+                                    PageViewMode.CONTINUOUS
+                                }
+                                uiInteractionNonce++
+                            },
+                            modifier = Modifier.testTag("viewer_page_mode_button")
+                        ) {
+                            Icon(
+                                imageVector = if (pageViewMode == PageViewMode.SINGLE_PAGE) {
+                                    AppIcons.ViewCarousel
+                                } else {
+                                    AppIcons.ViewStream
+                                },
+                                contentDescription = stringResource(R.string.action_page_view_mode),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    menuExpanded = true
+                                    uiInteractionNonce++
+                                },
+                                modifier = Modifier.testTag("viewer_more_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.MoreVert,
+                                    contentDescription = stringResource(R.string.action_more_options),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            DocumentActionDropdownMenu(
+                                expanded = menuExpanded,
+                                onDismiss = {
+                                    menuExpanded = false
+                                    uiInteractionNonce++
+                                },
+                                onRename = { showRenameDialog = true },
+                                onShare = { DocumentActionsHelper.shareDocuments(context, listOf(currentDoc)) },
+                                onPrint = {
+                                    if (activity != null) {
+                                        DocumentActionsHelper.printDocuments(activity, listOf(currentDoc))
+                                    }
+                                },
+                                onInfo = { showInfoSheet = true },
+                                onDelete = { showDeleteDialog = true },
+                                tagPrefix = "viewer_menu"
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -338,9 +443,13 @@ fun DocumentViewerScreen(
     if (showRenameDialog) {
         RenameDocumentDialog(
             document = currentDoc,
-            onDismiss = { showRenameDialog = false },
+            onDismiss = {
+                showRenameDialog = false
+                uiInteractionNonce++
+            },
             onConfirm = { newName ->
                 showRenameDialog = false
+                uiInteractionNonce++
                 onRenameDocument(currentDoc, newName) { updated -> currentDoc = updated }
             }
         )
@@ -349,7 +458,10 @@ fun DocumentViewerScreen(
     if (showDeleteDialog) {
         DeleteConfirmDialog(
             docs = listOf(currentDoc),
-            onDismiss = { showDeleteDialog = false },
+            onDismiss = {
+                showDeleteDialog = false
+                uiInteractionNonce++
+            },
             onConfirm = {
                 showDeleteDialog = false
                 onDeleteDocument(currentDoc) { onBack() }
@@ -358,7 +470,13 @@ fun DocumentViewerScreen(
     }
 
     if (showInfoSheet) {
-        DocumentInfoSheet(docs = listOf(currentDoc), onDismiss = { showInfoSheet = false })
+        DocumentInfoSheet(
+            docs = listOf(currentDoc),
+            onDismiss = {
+                showInfoSheet = false
+                uiInteractionNonce++
+            }
+        )
     }
 }
 
@@ -367,34 +485,62 @@ private fun <T> PagedOrContinuousViewer(
     items: List<T>,
     mode: PageViewMode,
     unitLabel: String,
+    showPagePill: Boolean,
+    topClearance: androidx.compose.ui.unit.Dp,
+    bottomClearance: androidx.compose.ui.unit.Dp,
+    enableContainerTap: Boolean,
+    onToggleUi: () -> Unit,
     keySelector: (T) -> Any,
     singleItemContent: @Composable (T) -> Unit,
     continuousItemContent: @Composable (Int, T) -> Unit
 ) {
+    val containerModifier = if (enableContainerTap) {
+        Modifier
+            .fillMaxSize()
+            .pointerInput(onToggleUi) {
+                detectTapGestures(onTap = { onToggleUi() })
+            }
+    } else {
+        Modifier.fillMaxSize()
+    }
+
     if (mode == PageViewMode.SINGLE_PAGE) {
         val total = items.size.coerceAtLeast(1)
         val pagerState = rememberPagerState(pageCount = { total })
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = containerModifier) {
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { idx ->
                 if (idx in items.indices) {
                     singleItemContent(items[idx])
                 }
             }
-            PageIndicatorPill(
-                text = "$unitLabel ${pagerState.currentPage + 1} / $total",
+            AnimatedVisibility(
+                visible = showPagePill,
+                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .padding(bottom = 14.dp)
-            )
+                    .testTag("viewer_page_pill")
+            ) {
+                PageIndicatorPill(
+                    text = "$unitLabel ${pagerState.currentPage + 1} / $total"
+                )
+            }
         }
     } else {
         val listState = rememberLazyListState()
         val current by remember { derivedStateOf { listState.firstVisibleItemIndex + 1 } }
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = containerModifier) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(14.dp),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = topClearance + 10.dp,
+                    bottom = bottomClearance + 52.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -402,12 +548,20 @@ private fun <T> PagedOrContinuousViewer(
                     continuousItemContent(idx, item)
                 }
             }
-            PageIndicatorPill(
-                text = "$unitLabel $current / ${items.size}",
+            AnimatedVisibility(
+                visible = showPagePill,
+                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
                     .padding(bottom = 14.dp)
-            )
+                    .testTag("viewer_page_pill")
+            ) {
+                PageIndicatorPill(
+                    text = "$unitLabel $current / ${items.size}"
+                )
+            }
         }
     }
 }
@@ -415,7 +569,11 @@ private fun <T> PagedOrContinuousViewer(
 @Composable
 private fun PdfViewerContent(
     session: PdfDocumentSession,
-    mode: PageViewMode
+    mode: PageViewMode,
+    showPagePill: Boolean,
+    topClearance: androidx.compose.ui.unit.Dp,
+    bottomClearance: androidx.compose.ui.unit.Dp,
+    onToggleUi: () -> Unit
 ) {
     val pageIndices = remember(session) { (0 until session.pageCount).toList() }
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
@@ -426,15 +584,26 @@ private fun PdfViewerContent(
             items = pageIndices,
             mode = mode,
             unitLabel = "Page",
+            showPagePill = showPagePill,
+            topClearance = topClearance,
+            bottomClearance = bottomClearance,
+            enableContainerTap = mode != PageViewMode.SINGLE_PAGE,
+            onToggleUi = onToggleUi,
             keySelector = { it },
             singleItemContent = { pageIndex ->
                 ZoomablePdfPage(
                     session = session,
                     pageIndex = pageIndex,
                     targetWidthPx = targetWidthPx,
+                    onSingleTap = onToggleUi,
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(horizontal = 8.dp, vertical = 12.dp)
+                        .padding(
+                            start = 8.dp,
+                            end = 8.dp,
+                            top = topClearance + 8.dp,
+                            bottom = bottomClearance + 12.dp
+                        )
                 )
             },
             continuousItemContent = { _, pageIndex ->
@@ -454,6 +623,7 @@ private fun ZoomablePdfPage(
     session: PdfDocumentSession,
     pageIndex: Int,
     targetWidthPx: Int,
+    onSingleTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var scale by remember(session, pageIndex) { mutableFloatStateOf(1f) }
@@ -466,8 +636,9 @@ private fun ZoomablePdfPage(
 
     Box(
         modifier = modifier
-            .pointerInput(session, pageIndex) {
+            .pointerInput(session, pageIndex, onSingleTap) {
                 detectTapGestures(
+                    onTap = { onSingleTap() },
                     onDoubleTap = {
                         if (scale > 1.05f) {
                             scale = 1f
@@ -673,7 +844,11 @@ private fun TextAndXmlViewerContent(
     syntaxHighlight: Boolean,
     showLineNumbers: Boolean,
     fontSizeSp: Float,
-    isDarkTheme: Boolean
+    isDarkTheme: Boolean,
+    showPagePill: Boolean,
+    topClearance: androidx.compose.ui.unit.Dp,
+    bottomClearance: androidx.compose.ui.unit.Dp,
+    onToggleUi: () -> Unit
 ) {
     if (mode == PageViewMode.SINGLE_PAGE) {
         val indexedPages = remember(pages) { pages.mapIndexed { idx, lines -> idx to lines } }
@@ -681,6 +856,11 @@ private fun TextAndXmlViewerContent(
             items = indexedPages,
             mode = PageViewMode.SINGLE_PAGE,
             unitLabel = "Page",
+            showPagePill = showPagePill,
+            topClearance = topClearance,
+            bottomClearance = bottomClearance,
+            enableContainerTap = true,
+            onToggleUi = onToggleUi,
             keySelector = { it.first },
             singleItemContent = { (pageIdx, pageLines) ->
                 val lineOffset = pageIdx * 42
@@ -690,7 +870,12 @@ private fun TextAndXmlViewerContent(
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(14.dp)
+                        .padding(
+                            start = 14.dp,
+                            end = 14.dp,
+                            top = topClearance + 10.dp,
+                            bottom = bottomClearance + 52.dp
+                        )
                 ) {
                     LazyColumn(
                         contentPadding = PaddingValues(14.dp),
@@ -715,13 +900,24 @@ private fun TextAndXmlViewerContent(
         val allLines = remember(fullText) { fullText.lines() }
         val listState = rememberLazyListState()
         val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex / 42) + 1 } }
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(onToggleUi) {
+                    detectTapGestures(onTap = { onToggleUi() })
+                }
+        ) {
             LazyColumn(
                 state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(MaterialTheme.colorScheme.surface),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 14.dp),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    end = 14.dp,
+                    top = topClearance + 12.dp,
+                    bottom = bottomClearance + 52.dp
+                ),
                 verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 itemsIndexed(allLines) { idx, line ->
@@ -736,12 +932,20 @@ private fun TextAndXmlViewerContent(
                 }
             }
             if (pages.size > 1) {
-                PageIndicatorPill(
-                    text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}",
+                AnimatedVisibility(
+                    visible = showPagePill,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
                         .padding(bottom = 14.dp)
-                )
+                        .testTag("viewer_page_pill")
+                ) {
+                    PageIndicatorPill(
+                        text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}"
+                    )
+                }
             }
         }
     }

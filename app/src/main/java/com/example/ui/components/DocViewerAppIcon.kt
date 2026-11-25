@@ -38,19 +38,15 @@ fun DocViewerAppIcon(
         val w = this.size.width
         val h = this.size.height
 
-        // Vibrant sweep gradient backdrop matching the adaptive launcher background
+        // Clean grey linear gradient backdrop matching the adaptive launcher background
         drawRect(
-            brush = Brush.sweepGradient(
-                colorStops = arrayOf(
-                    0.00f to Color(0xFFE53935),
-                    0.17f to Color(0xFF1E88E5),
-                    0.33f to Color(0xFFFB8C00),
-                    0.50f to Color(0xFF16A085),
-                    0.67f to Color(0xFF8E24AA),
-                    0.83f to Color(0xFF1E88E5),
-                    1.00f to Color(0xFFE53935)
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color(0xFF7A7D82),
+                    Color(0xFF52555A)
                 ),
-                center = Offset(w * 0.5f, h * 0.5f)
+                start = Offset.Zero,
+                end = Offset(w, h)
             )
         )
 

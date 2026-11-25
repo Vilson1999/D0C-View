@@ -15,6 +15,7 @@ data class AppSettings(
     val xmlSyntaxHighlight: Boolean = true,
     val showLineNumbers: Boolean = true,
     val readerFontSizeSp: Float = 15f,
+    val autoHideReaderUi: Boolean = true,
     val autoCleanRenderCache: Boolean = true,
     val visibleDocTypes: Set<DocType> = DocType.entries.toSet(),
     val customFolderUris: Set<String> = emptySet(),

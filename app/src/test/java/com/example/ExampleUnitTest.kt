@@ -55,6 +55,7 @@ class ExampleUnitTest {
     fun appSettings_defaultsToSinglePageViewMode() {
         val defaults = AppSettings()
         assertEquals(PageViewMode.SINGLE_PAGE, defaults.defaultPageViewMode)
+        assertTrue(defaults.autoHideReaderUi)
     }
 
     @Test
@@ -80,6 +81,7 @@ class ExampleUnitTest {
         try {
             val pdfDir = File(cacheRoot, DocumentCacheManager.PDF_PAGES_DIR).apply { mkdirs() }
             val parsedDir = File(cacheRoot, DocumentCacheManager.PARSED_DOCS_DIR).apply { mkdirs() }
+            val convertedDir = File(cacheRoot, DocumentCacheManager.CONVERTED_PDFS_DIR).apply { mkdirs() }
             val indexFile = File(cacheRoot, DocumentCacheManager.INDEX_FILE_NAME).apply {
                 writeText("idx")
             }
@@ -100,13 +102,22 @@ class ExampleUnitTest {
                 writeBytes(ByteArray(40))
                 setLastModified(now - 1000L)
             }
-            // Valid older file (still within maxAgeMs, but oldest for LRU eviction when over budget)
+            // Valid converted PDF (older than activeRecentFile, evicted when over LRU budget)
+            val activeConvertedPdf = File(convertedDir, "${secondKey}_doc_fs15.pdf").apply {
+                writeBytes(ByteArray(20))
+                setLastModified(now - 200_000L)
+            }
+            // Valid older file (still within maxAgeMs, oldest for LRU eviction when over budget)
             val activeOlderLruFile = File(parsedDir, "${secondKey}.dat").apply {
                 writeBytes(ByteArray(60))
                 setLastModified(now - 500_000L)
             }
-            // Orphaned file for deleted document (must be deleted)
+            // Orphaned files for deleted document (must be deleted)
             val orphanFile = File(pdfDir, "${orphanKey}_p0_w900.webp").apply {
+                writeBytes(ByteArray(20))
+                setLastModified(now - 1000L)
+            }
+            val orphanConvertedPdf = File(convertedDir, "${orphanKey}_xml_fs15.pdf").apply {
                 writeBytes(ByteArray(20))
                 setLastModified(now - 1000L)
             }
@@ -129,10 +140,12 @@ class ExampleUnitTest {
 
             assertTrue("Index file must be preserved", indexFile.exists())
             assertFalse("Orphaned cache must be deleted", orphanFile.exists())
+            assertFalse("Orphaned converted PDF must be deleted", orphanConvertedPdf.exists())
             assertFalse("Expired cache must be deleted", expiredFile.exists())
             assertFalse("Stray root cache must be deleted", strayRootTmp.exists())
             assertFalse("Leftover .tmp cache must be deleted", dirTmp.exists())
             assertFalse("Oldest LRU file exceeding budget must be evicted", activeOlderLruFile.exists())
+            assertTrue("Valid recent converted PDF within budget must remain", activeConvertedPdf.exists())
             assertTrue("Most recently used active file within budget must remain", activeRecentFile.exists())
         } finally {
             cacheRoot.deleteRecursively()
@@ -231,5 +244,56 @@ class ExampleUnitTest {
         assertEquals(emptyList<DocumentItem>(), hiddenPdfAndXml[DocType.PDF])
         assertEquals(emptyList<DocumentItem>(), hiddenPdfAndXml[DocType.XML])
         assertEquals(listOf("beta.docx"), hiddenPdfAndXml[DocType.DOC]?.map { it.name })
+    }
+
+    @Test
+    fun queryProcessor_resolvesHomePillsForPopulatedCategories() {
+        val allEnabled = DocType.entries.toSet()
+
+        // 1 populated category -> shows 1 pill
+        val oneCategory = listOf(fakeDoc("a.pdf", DocType.PDF, 100, 1000L))
+        assertEquals(listOf(DocType.PDF), DocumentQueryProcessor.resolveHomePillTypes(oneCategory, allEnabled))
+
+        // 2 populated categories -> shows 2 pills
+        val twoCategories = listOf(
+            fakeDoc("a.pdf", DocType.PDF, 100, 1000L),
+            fakeDoc("b.docx", DocType.DOC, 100, 1000L)
+        )
+        assertEquals(listOf(DocType.PDF, DocType.DOC), DocumentQueryProcessor.resolveHomePillTypes(twoCategories, allEnabled))
+
+        // 3 populated categories -> shows 3 pills
+        val threeCategories = twoCategories + fakeDoc("c.xml", DocType.XML, 100, 1000L)
+        assertEquals(
+            listOf(DocType.PDF, DocType.DOC, DocType.XML),
+            DocumentQueryProcessor.resolveHomePillTypes(threeCategories, allEnabled)
+        )
+
+        // Settings hides DOC -> excludes DOC pill
+        assertEquals(
+            listOf(DocType.PDF, DocType.XML),
+            DocumentQueryProcessor.resolveHomePillTypes(threeCategories, setOf(DocType.PDF, DocType.XML, DocType.PPT, DocType.TEXT))
+        )
+
+        // Empty document list -> falls back to all enabled pills
+        assertEquals(DocType.entries, DocumentQueryProcessor.resolveHomePillTypes(emptyList(), allEnabled))
+
+        // All disabled in Settings -> empty list
+        assertEquals(emptyList<DocType>(), DocumentQueryProcessor.resolveHomePillTypes(threeCategories, emptySet()))
+    }
+
+    @Test
+    fun queryProcessor_cyclesThemeModesInAutoDarkLightOrder() {
+        assertEquals(
+            com.example.model.ThemeMode.DARK,
+            DocumentQueryProcessor.nextThemeMode(com.example.model.ThemeMode.SYSTEM)
+        )
+        assertEquals(
+            com.example.model.ThemeMode.LIGHT,
+            DocumentQueryProcessor.nextThemeMode(com.example.model.ThemeMode.DARK)
+        )
+        assertEquals(
+            com.example.model.ThemeMode.SYSTEM,
+            DocumentQueryProcessor.nextThemeMode(com.example.model.ThemeMode.LIGHT)
+        )
     }
 }
