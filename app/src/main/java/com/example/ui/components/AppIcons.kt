@@ -954,47 +954,4 @@ object AppIcons {
             }
         }
     }
-
-    val FormatListBulleted: ImageVector by lazy {
-        materialIcon(name = "FormatListBulleted", autoMirror = true) {
-            materialPath {
-                moveTo(4f, 10.5f)
-                curveToRelative(-0.83f, 0f, -1.5f, 0.67f, -1.5f, 1.5f)
-                reflectiveCurveToRelative(0.67f, 1.5f, 1.5f, 1.5f)
-                reflectiveCurveToRelative(1.5f, -0.67f, 1.5f, -1.5f)
-                reflectiveCurveToRelative(-0.67f, -1.5f, -1.5f, -1.5f)
-                close()
-                moveTo(4f, 4.5f)
-                curveToRelative(-0.83f, 0f, -1.5f, 0.67f, -1.5f, 1.5f)
-                reflectiveCurveTo(3.17f, 7.5f, 4f, 7.5f)
-                reflectiveCurveTo(5.5f, 6.83f, 5.5f, 6f)
-                reflectiveCurveTo(4.83f, 4.5f, 4f, 4.5f)
-                close()
-                moveTo(4f, 16.5f)
-                curveToRelative(-0.83f, 0f, -1.5f, 0.68f, -1.5f, 1.5f)
-                reflectiveCurveToRelative(0.68f, 1.5f, 1.5f, 1.5f)
-                reflectiveCurveToRelative(1.5f, -0.68f, 1.5f, -1.5f)
-                reflectiveCurveToRelative(-0.67f, -1.5f, -1.5f, -1.5f)
-                close()
-                moveTo(7f, 19f)
-                horizontalLineToRelative(14f)
-                verticalLineToRelative(-2f)
-                horizontalLineTo(7f)
-                verticalLineToRelative(2f)
-                close()
-                moveTo(7f, 13f)
-                horizontalLineToRelative(14f)
-                verticalLineToRelative(-2f)
-                horizontalLineTo(7f)
-                verticalLineToRelative(2f)
-                close()
-                moveTo(7f, 5f)
-                verticalLineToRelative(2f)
-                horizontalLineToRelative(14f)
-                verticalLineTo(5f)
-                horizontalLineTo(7f)
-                close()
-            }
-        }
-    }
 }

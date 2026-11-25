@@ -116,7 +116,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 6.dp, vertical = 8.dp),
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -327,7 +327,7 @@ fun SettingsScreen(
                         HorizontalDivider()
                         SettingsSwitchRow(
                             title = "Auto-hide reader UI",
-                            subtitle = "Hide top bar & page pill after 2s; tap screen to show or hide",
+                            subtitle = "Hide top bar & page pill after 3s; tap screen to show or hide",
                             checked = settings.autoHideReaderUi,
                             onCheckedChange = onSetAutoHideReaderUi,
                             modifier = Modifier.testTag("toggle_auto_hide_reader_ui")

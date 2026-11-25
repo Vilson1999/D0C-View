@@ -168,7 +168,7 @@ fun DocumentViewerScreen(
     ) {
         val loaded = parsedDoc != null && parsedDoc !is ParsedDocument.Error
         if (settings.autoHideReaderUi && isReaderUiVisible && loaded && !hasOpenOverlay) {
-            delay(2000L)
+            delay(3000L)
             isReaderUiVisible = false
         }
     }
@@ -187,7 +187,7 @@ fun DocumentViewerScreen(
 
     BackHandler { onBack() }
 
-    val topBarReserve = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 48.dp
+    val topBarReserve = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 43.dp
     val navBarReserve = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
     Scaffold(
@@ -361,7 +361,7 @@ fun DocumentViewerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
-                            .height(48.dp)
+                            .height(43.dp)
                             .padding(start = 14.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {

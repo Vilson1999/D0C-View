@@ -4,6 +4,7 @@ import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.DocViewApplication
 import com.example.data.DocumentCacheManager
 import com.example.data.DocumentScanner
 import com.example.data.SettingsRepository
@@ -37,7 +38,6 @@ data class HomeUiState(
     val isSearchActive: Boolean = false,
     val selectedDocIds: Set<String> = emptySet(),
     val documentsByType: Map<DocType, List<DocumentItem>> = DocType.entries.associateWith { emptyList() },
-    val allVisibleDocuments: List<DocumentItem> = emptyList(),
     val rawCountsByType: Map<DocType, Int> = DocType.entries.associateWith { 0 },
     val allDocumentsCount: Int = 0,
     val dotFolderDocCount: Int = 0,
@@ -189,13 +189,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .toSet()
         val activeSelectedIds = if (selectedIds.isEmpty()) emptySet() else selectedIds.intersect(visibleIds)
 
-        val allVisible = DocumentQueryProcessor.filterAndSort(
-            documents = rawDocs,
-            query = "",
-            sortOption = settings.sortOption,
-            visibleTypes = settings.visibleDocTypes
-        )
-
         HomeUiState(
             isScanning = scanning,
             hasFullStorageAccess = fullAccess,
@@ -205,7 +198,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isSearchActive = searchActive,
             selectedDocIds = activeSelectedIds,
             documentsByType = grouped,
-            allVisibleDocuments = allVisible,
             rawCountsByType = rawCounts,
             allDocumentsCount = visibleTypes.sumOf { rawCounts[it] ?: 0 },
             dotFolderDocCount = rawDocs.count { it.type in settings.visibleDocTypes && it.isFromDotFolder },
@@ -214,7 +206,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
 
+    private val backgroundCloseListener: () -> Unit = {
+        scanJob?.cancel()
+    }
+
     init {
+        DocViewApplication.registerBackgroundCloseListener(backgroundCloseListener)
         viewModelScope.launch {
             val initialSettings = settingsRepo.settingsFlow.first()
             val cachedDocs = withContext(Dispatchers.IO) {
@@ -228,6 +225,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             refreshStorageAccessAndScan()
             refreshCacheSize()
         }
+    }
+
+    override fun onCleared() {
+        DocViewApplication.unregisterBackgroundCloseListener(backgroundCloseListener)
+        super.onCleared()
     }
 
     fun refreshStorageAccessAndScan(userInitiated: Boolean = false) {
@@ -253,6 +255,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         scanJob = viewModelScope.launch {
             _isScanning.value = true
+            DocViewApplication.beginBackgroundWork(getApplication())
             try {
                 val access = scanner.hasFullStorageAccess()
                 lastKnownStorageAccess = access
@@ -295,6 +298,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } finally {
                 _isScanning.value = false
+                DocViewApplication.endBackgroundWork(getApplication())
             }
         }
     }
@@ -532,15 +536,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearCache() {
         viewModelScope.launch {
-            val deletedBytes = withContext(Dispatchers.IO) {
-                cacheManager.clearAllCache()
+            DocViewApplication.beginBackgroundWork(getApplication())
+            try {
+                val deletedBytes = withContext(Dispatchers.IO) {
+                    cacheManager.clearAllCache()
+                }
+                _cacheSizeBytes.value = withContext(Dispatchers.IO) {
+                    cacheManager.getTotalCacheSizeBytes()
+                }
+                _messages.tryEmit(
+                    if (deletedBytes > 0) "Cache cleared" else "Cache is already clean"
+                )
+            } finally {
+                DocViewApplication.endBackgroundWork(getApplication())
             }
-            _cacheSizeBytes.value = withContext(Dispatchers.IO) {
-                cacheManager.getTotalCacheSizeBytes()
-            }
-            _messages.tryEmit(
-                if (deletedBytes > 0) "Cache cleared" else "Cache is already clean"
-            )
         }
     }
 

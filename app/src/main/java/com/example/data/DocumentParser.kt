@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import android.util.Xml
+import com.example.DocViewApplication
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
@@ -129,20 +130,25 @@ class DocumentParser(private val context: Context) {
             cacheManager.getMemoryParsed(doc)?.let { return@withContext it }
             cacheManager.loadDiskParsed(doc)?.let { return@withContext it }
         }
-        runCatching {
-            val parsed = when (doc.type) {
-                DocType.PDF -> parsePdf(doc)
-                DocType.DOC -> parseWordAsPdf(doc, settings)
-                DocType.PPT -> parseSlidesAsPdf(doc)
-                DocType.XML -> parseXmlAsPdf(doc, settings)
-                DocType.TEXT -> parsePlainText(doc)
+        DocViewApplication.beginBackgroundWork(context)
+        try {
+            runCatching {
+                val parsed = when (doc.type) {
+                    DocType.PDF -> parsePdf(doc)
+                    DocType.DOC -> parseWordAsPdf(doc, settings)
+                    DocType.PPT -> parseSlidesAsPdf(doc)
+                    DocType.XML -> parseXmlAsPdf(doc, settings)
+                    DocType.TEXT -> parsePlainText(doc)
+                }
+                if (parsed is ParsedDocument.PlainText) {
+                    cacheManager.saveDiskParsed(doc, parsed)
+                }
+                parsed
+            }.getOrElse { throwable ->
+                ParsedDocument.Error(throwable.localizedMessage ?: "Unable to open ${doc.name}")
             }
-            if (parsed is ParsedDocument.PlainText) {
-                cacheManager.saveDiskParsed(doc, parsed)
-            }
-            parsed
-        }.getOrElse { throwable ->
-            ParsedDocument.Error(throwable.localizedMessage ?: "Unable to open ${doc.name}")
+        } finally {
+            DocViewApplication.endBackgroundWork(context)
         }
     }
 

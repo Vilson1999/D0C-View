@@ -109,7 +109,6 @@ fun HomeScreen(
     onCloseSearch: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
-    onOpenScannedList: () -> Unit,
     onOpenDocument: (DocumentItem) -> Unit,
     onToggleSelection: (String) -> Unit,
     onStartSelection: (String) -> Unit,
@@ -304,7 +303,6 @@ fun HomeScreen(
                         onOpenSearch = onToggleSearch,
                         onCloseSearch = onCloseSearch,
                         onSearchBarBoundsChange = { searchBarBounds = it },
-                        onOpenScannedList = onOpenScannedList,
                         onOpenSettings = onOpenSettings
                     )
                 }
@@ -523,14 +521,13 @@ private fun HomeTopBar(
     onOpenSearch: () -> Unit,
     onCloseSearch: () -> Unit,
     onSearchBarBoundsChange: (Rect) -> Unit,
-    onOpenScannedList: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     if (isSearchActive) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .padding(horizontal = 12.dp, vertical = 2.dp)
                 .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
         ) {
             TopBarSearchField(
@@ -546,28 +543,18 @@ private fun HomeTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 6.dp, top = 8.dp, bottom = 4.dp),
+                .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 2.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             DocViewerAppIcon(
-                size = 38.dp,
+                size = 34.dp,
                 modifier = Modifier
                     .padding(end = 10.dp)
                     .testTag("topbar_app_icon")
             )
             Spacer(modifier = Modifier.weight(1f))
 
-            // Right side: All List, Theme (Auto/Dark/Light), Sort, Search, Settings
-            IconButton(
-                onClick = onOpenScannedList,
-                modifier = Modifier.testTag("topbar_scanned_list_button")
-            ) {
-                Icon(
-                    imageVector = AppIcons.FormatListBulleted,
-                    contentDescription = stringResource(R.string.action_all_documents),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
+            // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
             IconButton(
                 onClick = onCycleThemeMode,
                 modifier = Modifier.testTag("topbar_theme_toggle")
@@ -629,7 +616,7 @@ private fun SelectionTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .padding(horizontal = 8.dp, vertical = 3.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -678,8 +665,8 @@ private fun SelectionBottomToolbar(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomToolbarAction(

@@ -6,6 +6,7 @@ import com.example.model.DocType
 import com.example.model.DocumentItem
 import com.example.model.PageViewMode
 import com.example.model.SortOption
+import com.example.service.BackgroundLifecyclePolicy
 import com.example.viewmodel.DocumentQueryProcessor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -295,5 +296,25 @@ class ExampleUnitTest {
             com.example.model.ThemeMode.SYSTEM,
             DocumentQueryProcessor.nextThemeMode(com.example.model.ThemeMode.LIGHT)
         )
+    }
+
+    @Test
+    fun backgroundLifecyclePolicy_enforcesOneMinuteTimeoutAndOnDemandService() {
+        assertEquals(60_000L, BackgroundLifecyclePolicy.BACKGROUND_TIMEOUT_MS)
+
+        // Lite service only starts when active work > 0, not already running, and allowed
+        assertFalse(BackgroundLifecyclePolicy.shouldStartLiteService(activeWorkCount = 0, isServiceRunning = false, canStartService = true))
+        assertTrue(BackgroundLifecyclePolicy.shouldStartLiteService(activeWorkCount = 1, isServiceRunning = false, canStartService = true))
+        assertFalse(BackgroundLifecyclePolicy.shouldStartLiteService(activeWorkCount = 1, isServiceRunning = true, canStartService = true))
+        assertFalse(BackgroundLifecyclePolicy.shouldStartLiteService(activeWorkCount = 1, isServiceRunning = false, canStartService = false))
+
+        // Stops immediately once active work drops to 0
+        assertTrue(BackgroundLifecyclePolicy.shouldStopLiteService(activeWorkCount = 0, isServiceRunning = true))
+        assertFalse(BackgroundLifecyclePolicy.shouldStopLiteService(activeWorkCount = 1, isServiceRunning = true))
+
+        // Auto-closes only when in background for at least 1 minute
+        assertFalse(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 1, elapsedInBackgroundMs = 60_000L))
+        assertFalse(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 0, elapsedInBackgroundMs = 59_999L))
+        assertTrue(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 0, elapsedInBackgroundMs = 60_000L))
     }
 }

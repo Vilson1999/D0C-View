@@ -20,6 +20,4 @@
     <string name="grant_storage_button">Grant Access</string>
     <string name="empty_category_title">No %1$s documents found</string>
     <string name="empty_category_subtitle">Pull to refresh, grant storage access, or import a file offline.</string>
-    <string name="action_all_documents">All scanned documents</string>
-    <string name="scanned_documents_title">Scanned Documents</string>
 </resources>

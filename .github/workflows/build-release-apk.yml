@@ -56,19 +56,20 @@ jobs:
             echo "Using repository release keystore secrets."
           else
             FALLBACK_PASS="docview-release-key"
-            keytool -genkeypair \
+            base64 -d "${{ github.workspace }}/debug.keystore.base64" > "$KEYSTORE_FILE"
+            keytool -changealias \
               -keystore "$KEYSTORE_FILE" \
-              -storepass "$FALLBACK_PASS" \
-              -alias upload \
-              -keypass "$FALLBACK_PASS" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Vilson Sonkar, O=D0C View, C=IN"
+              -storepass android \
+              -alias androiddebugkey \
+              -destalias upload
+            keytool -storepasswd \
+              -keystore "$KEYSTORE_FILE" \
+              -storepass android \
+              -new "$FALLBACK_PASS"
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
-            echo "Generated fallback upload keystore."
+            echo "Prepared deterministic release keystore."
           fi
 
       - name: Run Unit Tests

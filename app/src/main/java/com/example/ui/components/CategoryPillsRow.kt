@@ -76,13 +76,19 @@ fun CategoryPillsRow(
         ) + fadeOut(),
         modifier = modifier
     ) {
+        val horizontalArrangement = if (visibleTypes.size <= 3) {
+            Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+        } else {
+            Arrangement.spacedBy(8.dp)
+        }
+
         LazyRow(
             state = rowState,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 4.dp),
             contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
             items(visibleTypes, key = { it.name }) { type ->
