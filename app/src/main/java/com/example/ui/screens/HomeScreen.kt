@@ -100,6 +100,7 @@ fun HomeScreen(
     onToggleSearch: () -> Unit,
     onSearchQueryChange: (String) -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenScannedList: () -> Unit,
     onOpenDocument: (DocumentItem) -> Unit,
     onToggleSelection: (String) -> Unit,
     onStartSelection: (String) -> Unit,
@@ -235,6 +236,7 @@ fun HomeScreen(
                         onToggleDarkLight = onToggleDarkLight,
                         onOpenSort = { showSortSheet = true },
                         onToggleSearch = onToggleSearch,
+                        onOpenScannedList = onOpenScannedList,
                         onOpenSettings = onOpenSettings
                     )
                 }
@@ -476,6 +478,7 @@ private fun HomeTopBar(
     onToggleDarkLight: () -> Unit,
     onOpenSort: () -> Unit,
     onToggleSearch: () -> Unit,
+    onOpenScannedList: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     Row(
@@ -503,7 +506,17 @@ private fun HomeTopBar(
             )
         }
 
-        // Right side: Dark/Light, Sort, Search, Settings
+        // Right side: All List, Dark/Light, Sort, Search, Settings
+        IconButton(
+            onClick = onOpenScannedList,
+            modifier = Modifier.testTag("topbar_scanned_list_button")
+        ) {
+            Icon(
+                imageVector = AppIcons.FormatListBulleted,
+                contentDescription = stringResource(R.string.action_all_documents),
+                tint = MaterialTheme.colorScheme.onBackground
+            )
+        }
         IconButton(
             onClick = onToggleDarkLight,
             modifier = Modifier.testTag("topbar_theme_toggle")

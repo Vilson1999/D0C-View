@@ -37,6 +37,7 @@ data class HomeUiState(
     val isSearchActive: Boolean = false,
     val selectedDocIds: Set<String> = emptySet(),
     val documentsByType: Map<DocType, List<DocumentItem>> = DocType.entries.associateWith { emptyList() },
+    val allVisibleDocuments: List<DocumentItem> = emptyList(),
     val rawCountsByType: Map<DocType, Int> = DocType.entries.associateWith { 0 },
     val allDocumentsCount: Int = 0,
     val dotFolderDocCount: Int = 0,
@@ -169,6 +170,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             .toSet()
         val activeSelectedIds = if (selectedIds.isEmpty()) emptySet() else selectedIds.intersect(visibleIds)
 
+        val allVisible = DocumentQueryProcessor.filterAndSort(
+            documents = rawDocs,
+            query = "",
+            sortOption = settings.sortOption,
+            visibleTypes = settings.visibleDocTypes
+        )
+
         HomeUiState(
             isScanning = scanning,
             hasFullStorageAccess = fullAccess,
@@ -178,6 +186,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isSearchActive = searchActive,
             selectedDocIds = activeSelectedIds,
             documentsByType = grouped,
+            allVisibleDocuments = allVisible,
             rawCountsByType = rawCounts,
             allDocumentsCount = visibleTypes.sumOf { rawCounts[it] ?: 0 },
             dotFolderDocCount = rawDocs.count { it.type in settings.visibleDocTypes && it.isFromDotFolder },

@@ -40,6 +40,7 @@ import androidx.navigation.navArgument
 import com.example.model.ThemeMode
 import com.example.ui.screens.DocumentViewerScreen
 import com.example.ui.screens.HomeScreen
+import com.example.ui.screens.ScannedDocumentsScreen
 import com.example.ui.screens.SettingsScreen
 import com.example.ui.theme.DocVaultTheme
 import com.example.viewmodel.MainViewModel
@@ -47,6 +48,7 @@ import com.example.viewmodel.MainViewModel
 private const val ROUTE_HOME = "home"
 private const val ROUTE_VIEWER = "viewer/{docId}"
 private const val ROUTE_SETTINGS = "settings"
+private const val ROUTE_SCANNED_LIST = "scanned_list"
 
 class MainActivity : ComponentActivity() {
 
@@ -214,6 +216,9 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onOpenSettings = {
                             navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
                         },
+                        onOpenScannedList = {
+                            navController.navigate(ROUTE_SCANNED_LIST) { launchSingleTop = true }
+                        },
                         onOpenDocument = { doc ->
                             val encodedId = Uri.encode(doc.id)
                             navController.navigate("viewer/$encodedId") {
@@ -289,6 +294,28 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onImportFile = openImportFile,
                         onRescanNow = viewModel::scanDocuments,
                         onClearCache = viewModel::clearCache
+                    )
+                }
+
+                composable(ROUTE_SCANNED_LIST) {
+                    ScannedDocumentsScreen(
+                        documents = uiState.allVisibleDocuments,
+                        visibleTypes = uiState.visibleDocTypes,
+                        isScanning = uiState.isScanning,
+                        isDarkTheme = isDarkTheme,
+                        showDotFolderBadge = uiState.settings.showDotFolderBadge,
+                        sortOption = uiState.settings.sortOption,
+                        onBack = { navController.popBackStack() },
+                        onOpenDocument = { doc ->
+                            val encodedId = Uri.encode(doc.id)
+                            navController.navigate("viewer/$encodedId") {
+                                launchSingleTop = true
+                            }
+                        },
+                        onRescan = viewModel::scanDocuments,
+                        onSelectSort = viewModel::setSortOption,
+                        onRenameDocument = { doc, name -> viewModel.renameDocument(doc, name) },
+                        onDeleteDocuments = { docs -> viewModel.deleteDocuments(docs) }
                     )
                 }
             }
