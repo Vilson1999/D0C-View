@@ -2,12 +2,27 @@ package com.example.ui.screens
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,6 +42,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -61,6 +77,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -95,6 +112,7 @@ import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.SortOptionsSheet
 import com.example.ui.components.TopBarSearchField
 import com.example.viewmodel.HomeUiState
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.flow.distinctUntilChanged
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -192,7 +210,13 @@ fun HomeScreen(
         if (targetIndex >= 0 && pagerState.currentPage != targetIndex) {
             programmaticTargetIndex = targetIndex
             try {
-                pagerState.animateScrollToPage(targetIndex)
+                pagerState.animateScrollToPage(
+                    page = targetIndex,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
             } finally {
                 if (programmaticTargetIndex == targetIndex) {
                     programmaticTargetIndex = null
@@ -286,25 +310,41 @@ fun HomeScreen(
                     .fillMaxWidth()
                     .statusBarsPadding()
             ) {
-                if (uiState.isSelectionMode) {
-                    SelectionTopBar(
-                        selectedCount = uiState.selectedDocIds.size,
-                        onClear = onClearSelection,
-                        onSelectAll = onSelectAll
-                    )
-                } else {
-                    HomeTopBar(
-                        themeMode = uiState.settings.themeMode,
-                        isSearchActive = uiState.isSearchActive,
-                        searchQuery = uiState.searchQuery,
-                        onSearchQueryChange = onSearchQueryChange,
-                        onCycleThemeMode = onCycleThemeMode,
-                        onOpenSort = { showSortSheet = true },
-                        onOpenSearch = onToggleSearch,
-                        onCloseSearch = onCloseSearch,
-                        onSearchBarBoundsChange = { searchBarBounds = it },
-                        onOpenSettings = onOpenSettings
-                    )
+                AnimatedContent(
+                    targetState = uiState.isSelectionMode,
+                    transitionSpec = {
+                        (slideInVertically(
+                            initialOffsetY = { -it / 3 },
+                            animationSpec = tween(220, easing = FastOutSlowInEasing)
+                        ) + fadeIn(tween(200))).togetherWith(
+                            slideOutVertically(
+                                targetOffsetY = { -it / 3 },
+                                animationSpec = tween(160)
+                            ) + fadeOut(tween(150))
+                        )
+                    },
+                    label = "homeTopBarModeSwitch"
+                ) { selectionMode ->
+                    if (selectionMode) {
+                        SelectionTopBar(
+                            selectedCount = uiState.selectedDocIds.size,
+                            onClear = onClearSelection,
+                            onSelectAll = onSelectAll
+                        )
+                    } else {
+                        HomeTopBar(
+                            themeMode = uiState.settings.themeMode,
+                            isSearchActive = uiState.isSearchActive,
+                            searchQuery = uiState.searchQuery,
+                            onSearchQueryChange = onSearchQueryChange,
+                            onCycleThemeMode = onCycleThemeMode,
+                            onOpenSort = { showSortSheet = true },
+                            onOpenSearch = onToggleSearch,
+                            onCloseSearch = onCloseSearch,
+                            onSearchBarBoundsChange = { searchBarBounds = it },
+                            onOpenSettings = onOpenSettings
+                        )
+                    }
                 }
 
                 // Category Pills Row (PDF, DOC, XML, PPT, TEXT) — hides when scrolling up
@@ -361,6 +401,13 @@ fun HomeScreen(
             } else {
                 HorizontalPager(
                     state = pagerState,
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ),
                     modifier = Modifier
                         .fillMaxSize()
                         .widthIn(max = 720.dp)
@@ -385,6 +432,14 @@ fun HomeScreen(
                     },
                     modifier = Modifier
                         .fillMaxSize()
+                        .graphicsLayer {
+                            val offset = ((pagerState.currentPage - pageIndex) +
+                                pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                            val pageScale = 1f - (0.035f * offset)
+                            scaleX = pageScale
+                            scaleY = pageScale
+                            alpha = 1f - (0.28f * offset)
+                        }
                         .testTag("document_pull_refresh_${pageType.name.lowercase()}")
                 ) {
                     if (docs.isEmpty()) {
@@ -460,7 +515,15 @@ fun HomeScreen(
                                         }
                                     },
                                     onInfo = { infoTargets = listOf(doc) },
-                                    onDelete = { deleteTargets = listOf(doc) }
+                                    onDelete = { deleteTargets = listOf(doc) },
+                                    modifier = Modifier.animateItem(
+                                        fadeInSpec = tween(180),
+                                        placementSpec = spring(
+                                            dampingRatio = 0.85f,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        ),
+                                        fadeOutSpec = tween(140)
+                                    )
                                 )
                             }
                         }
@@ -523,81 +586,123 @@ private fun HomeTopBar(
     onSearchBarBoundsChange: (Rect) -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    if (isSearchActive) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 2.dp)
-                .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
-        ) {
-            TopBarSearchField(
-                query = searchQuery,
-                placeholder = "Search documents…",
-                onQueryChange = onSearchQueryChange,
-                onClose = onCloseSearch,
-                inputTestTag = "search_input",
-                closeTestTag = "topbar_search_close_button"
-            )
-        }
-    } else {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            DocViewerAppIcon(
-                size = 34.dp,
+    AnimatedContent(
+        targetState = isSearchActive,
+        transitionSpec = {
+            if (targetState) {
+                (expandHorizontally(
+                    expandFrom = Alignment.End,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(tween(200))).togetherWith(
+                    fadeOut(tween(140)) + scaleOut(targetScale = 0.96f, animationSpec = tween(140))
+                )
+            } else {
+                (fadeIn(tween(200)) + scaleIn(initialScale = 0.96f, animationSpec = tween(200))).togetherWith(
+                    shrinkHorizontally(
+                        shrinkTowards = Alignment.End,
+                        animationSpec = tween(180, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(150))
+                )
+            }
+        },
+        label = "homeTopBarSearchSwitch"
+    ) { searchOpen ->
+        if (searchOpen) {
+            Box(
                 modifier = Modifier
-                    .padding(end = 10.dp)
-                    .testTag("topbar_app_icon")
-            )
-            Spacer(modifier = Modifier.weight(1f))
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
+            ) {
+                TopBarSearchField(
+                    query = searchQuery,
+                    placeholder = "Search documents…",
+                    onQueryChange = onSearchQueryChange,
+                    onClose = onCloseSearch,
+                    inputTestTag = "search_input",
+                    closeTestTag = "topbar_search_close_button"
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DocViewerAppIcon(
+                    size = 34.dp,
+                    modifier = Modifier
+                        .padding(end = 10.dp)
+                        .testTag("topbar_app_icon")
+                )
+                Spacer(modifier = Modifier.weight(1f))
 
-            // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
-            IconButton(
-                onClick = onCycleThemeMode,
-                modifier = Modifier.testTag("topbar_theme_toggle")
-            ) {
-                Icon(
-                    imageVector = when (themeMode) {
-                        ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
-                        ThemeMode.DARK -> AppIcons.DarkMode
-                        ThemeMode.LIGHT -> AppIcons.LightMode
-                    },
-                    contentDescription = stringResource(R.string.action_toggle_theme),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-            IconButton(
-                onClick = onOpenSort,
-                modifier = Modifier.testTag("topbar_sort_button")
-            ) {
-                Icon(
-                    imageVector = AppIcons.Sort,
-                    contentDescription = stringResource(R.string.action_sort),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-            IconButton(
-                onClick = onOpenSearch,
-                modifier = Modifier.testTag("topbar_search_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Search,
-                    contentDescription = stringResource(R.string.action_search),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
-            }
-            IconButton(
-                onClick = onOpenSettings,
-                modifier = Modifier.testTag("topbar_settings_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Settings,
-                    contentDescription = stringResource(R.string.action_settings),
-                    tint = MaterialTheme.colorScheme.onBackground
-                )
+                // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
+                IconButton(
+                    onClick = onCycleThemeMode,
+                    modifier = Modifier.testTag("topbar_theme_toggle")
+                ) {
+                    AnimatedContent(
+                        targetState = themeMode,
+                        transitionSpec = {
+                            (scaleIn(
+                                initialScale = 0.65f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.65f,
+                                    stiffness = Spring.StiffnessMedium
+                                )
+                            ) + fadeIn(tween(180))).togetherWith(
+                                scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
+                                    fadeOut(tween(120))
+                            )
+                        },
+                        label = "themeIconSwitch"
+                    ) { mode ->
+                        Icon(
+                            imageVector = when (mode) {
+                                ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
+                                ThemeMode.DARK -> AppIcons.DarkMode
+                                ThemeMode.LIGHT -> AppIcons.LightMode
+                            },
+                            contentDescription = stringResource(R.string.action_toggle_theme),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                }
+                IconButton(
+                    onClick = onOpenSort,
+                    modifier = Modifier.testTag("topbar_sort_button")
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Sort,
+                        contentDescription = stringResource(R.string.action_sort),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(
+                    onClick = onOpenSearch,
+                    modifier = Modifier.testTag("topbar_search_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = stringResource(R.string.action_search),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("topbar_settings_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = stringResource(R.string.action_settings),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
             }
         }
     }
@@ -706,10 +811,25 @@ private fun BottomToolbarAction(
     modifier: Modifier = Modifier,
     tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.92f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
+        label = "bottomToolbarActionScale"
+    )
     Column(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = androidx.compose.material3.ripple(),
+                onClick = onClick
+            )
             .padding(horizontal = 16.dp, vertical = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)

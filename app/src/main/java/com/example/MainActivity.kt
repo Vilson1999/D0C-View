@@ -12,6 +12,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -201,7 +209,37 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
-                startDestination = ROUTE_HOME
+                startDestination = ROUTE_HOME,
+                enterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { (it * 0.25f).toInt() },
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(240)) + scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(280, easing = FastOutSlowInEasing)
+                    )
+                },
+                exitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { -(it * 0.14f).toInt() },
+                        animationSpec = tween(260, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(220), targetAlpha = 0.7f)
+                },
+                popEnterTransition = {
+                    slideInHorizontally(
+                        initialOffsetX = { -(it * 0.14f).toInt() },
+                        animationSpec = tween(260, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(220), initialAlpha = 0.7f)
+                },
+                popExitTransition = {
+                    slideOutHorizontally(
+                        targetOffsetX = { (it * 0.25f).toInt() },
+                        animationSpec = tween(260, easing = FastOutSlowInEasing)
+                    ) + fadeOut(tween(220)) + scaleOut(
+                        targetScale = 0.96f,
+                        animationSpec = tween(260, easing = FastOutSlowInEasing)
+                    )
+                }
             ) {
                 composable(ROUTE_HOME) {
                     HomeScreen(

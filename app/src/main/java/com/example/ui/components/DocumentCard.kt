@@ -1,9 +1,21 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,6 +34,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +71,14 @@ fun DocumentCard(
     modifier: Modifier = Modifier
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.985f else 1f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
+        label = "cardPressScale"
+    )
 
     val cardColor by animateColorAsState(
         targetValue = if (isSelected) {
@@ -64,6 +86,7 @@ fun DocumentCard(
         } else {
             MaterialTheme.colorScheme.surface
         },
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "cardBg"
     )
     val borderColor by animateColorAsState(
@@ -72,6 +95,7 @@ fun DocumentCard(
         } else {
             MaterialTheme.colorScheme.outlineVariant
         },
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "cardBorder"
     )
 
@@ -80,8 +104,14 @@ fun DocumentCard(
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
+            }
             .clip(RoundedCornerShape(16.dp))
             .combinedClickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
                 onClick = onClick,
                 onLongClick = onLongClick
             )
@@ -107,20 +137,32 @@ fun DocumentCard(
                     modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        if (isSelectionMode) {
-                            Icon(
-                                imageVector = if (isSelected) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked,
-                                contentDescription = if (isSelected) "Selected" else "Not selected",
-                                tint = if (isSelected) document.type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(24.dp)
-                            )
-                        } else {
-                            Icon(
-                                imageVector = docTypeIcon(document.type),
-                                contentDescription = document.type.label,
-                                tint = document.type.pillColor,
-                                modifier = Modifier.size(22.dp)
-                            )
+                        val badgeKey = (if (isSelectionMode) 2 else 0) + (if (isSelected) 1 else 0)
+                        AnimatedContent(
+                            targetState = badgeKey,
+                            transitionSpec = {
+                                (scaleIn(initialScale = 0.72f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeIn(tween(150)))
+                                    .togetherWith(scaleOut(targetScale = 0.72f) + fadeOut(tween(110)))
+                            },
+                            label = "cardBadgeSwitch"
+                        ) { state ->
+                            val selectionActive = state >= 2
+                            val itemSelected = state % 2 == 1
+                            if (selectionActive) {
+                                Icon(
+                                    imageVector = if (itemSelected) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked,
+                                    contentDescription = if (itemSelected) "Selected" else "Not selected",
+                                    tint = if (itemSelected) document.type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = docTypeIcon(document.type),
+                                    contentDescription = document.type.label,
+                                    tint = document.type.pillColor,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
                         }
                     }
                 }

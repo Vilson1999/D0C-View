@@ -2,6 +2,11 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -49,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -499,12 +505,28 @@ private fun SettingsFolder(
     testTag: String,
     content: @Composable () -> Unit
 ) {
+    val borderColor by animateColorAsState(
+        targetValue = if (expanded) folderColor.copy(alpha = 0.55f) else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "folderBorder"
+    )
+    val iconContainerColor by animateColorAsState(
+        targetValue = folderColor.copy(alpha = if (expanded) 0.2f else 0.13f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "folderIconBg"
+    )
+    val chevronRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
+        label = "folderChevron"
+    )
+
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(
             width = 1.dp,
-            color = if (expanded) folderColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+            color = borderColor
         ),
         modifier = Modifier
             .fillMaxWidth()
@@ -522,7 +544,7 @@ private fun SettingsFolder(
             ) {
                 Surface(
                     shape = RoundedCornerShape(12.dp),
-                    color = folderColor.copy(alpha = 0.14f),
+                    color = iconContainerColor,
                     modifier = Modifier.size(42.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
@@ -567,16 +589,23 @@ private fun SettingsFolder(
                     )
                 }
                 Icon(
-                    imageVector = if (expanded) AppIcons.ExpandLess else AppIcons.ExpandMore,
+                    imageVector = AppIcons.ExpandMore,
                     contentDescription = if (expanded) "Collapse folder" else "Expand folder",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.graphicsLayer {
+                        rotationZ = chevronRotation
+                    }
                 )
             }
 
             AnimatedVisibility(
                 visible = expanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = expandVertically(
+                    animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
+                ) + fadeIn(tween(200)),
+                exit = shrinkVertically(
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                ) + fadeOut(tween(140))
             ) {
                 Column(
                     modifier = Modifier
@@ -600,6 +629,22 @@ private fun DocTypeVisibilityRow(
 ) {
     val extPreview = type.extensions.take(3).joinToString(", ") { ".$it" }
     val countLabel = if (foundCount == 1) "1 file" else "$foundCount files"
+    val badgeBg by animateColorAsState(
+        targetValue = type.pillColor.copy(alpha = if (checked) 0.16f else 0.08f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "docTypeRowBg"
+    )
+    val iconTint by animateColorAsState(
+        targetValue = if (checked) type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "docTypeRowTint"
+    )
+    val iconScale by animateFloatAsState(
+        targetValue = if (checked) 1f else 0.9f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
+        label = "docTypeRowScale"
+    )
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -611,14 +656,19 @@ private fun DocTypeVisibilityRow(
     ) {
         Surface(
             shape = RoundedCornerShape(10.dp),
-            color = type.pillColor.copy(alpha = if (checked) 0.16f else 0.08f),
-            modifier = Modifier.size(36.dp)
+            color = badgeBg,
+            modifier = Modifier
+                .size(36.dp)
+                .graphicsLayer {
+                    scaleX = iconScale
+                    scaleY = iconScale
+                }
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
-                    tint = if (checked) type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = iconTint,
                     modifier = Modifier.size(18.dp)
                 )
             }

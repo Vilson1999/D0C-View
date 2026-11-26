@@ -1,6 +1,18 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,10 +45,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.material3.ripple
 import com.example.model.DocumentItem
 import com.example.model.SortOption
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -299,19 +314,41 @@ fun SortOptionsSheet(
             )
             SortOption.entries.forEach { option ->
                 val selected = option == currentOption
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (selected) {
+                val rowBg by animateColorAsState(
+                    targetValue = if (selected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
                         MaterialTheme.colorScheme.surface
                     },
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    label = "sortOptionBg"
+                )
+                val interactionSource = remember { MutableInteractionSource() }
+                val pressed by interactionSource.collectIsPressedAsState()
+                val scale by animateFloatAsState(
+                    targetValue = if (pressed) 0.97f else 1f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMedium),
+                    label = "sortOptionScale"
+                )
+
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = rowBg,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable {
-                            onSelect(option)
-                            onDismiss()
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
                         }
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(
+                            interactionSource = interactionSource,
+                            indication = ripple(),
+                            onClick = {
+                                onSelect(option)
+                                onDismiss()
+                            }
+                        )
                         .testTag("sort_${option.name.lowercase()}")
                 ) {
                     Row(
@@ -326,7 +363,11 @@ fun SortOptionsSheet(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
                         )
-                        if (selected) {
+                        AnimatedVisibility(
+                            visible = selected,
+                            enter = scaleIn(initialScale = 0.6f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeIn(tween(150)),
+                            exit = scaleOut(targetScale = 0.6f) + fadeOut(tween(100))
+                        ) {
                             Icon(
                                 imageVector = Icons.Rounded.Check,
                                 contentDescription = "Selected",

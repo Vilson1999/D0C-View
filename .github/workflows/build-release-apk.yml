@@ -5,16 +5,18 @@ on:
     branches:
       - main
       - master
+      - animation
     tags:
       - "v*"
   pull_request:
     branches:
       - main
       - master
+      - animation
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Optional release tag (e.g. v1.1.0). Leave empty to auto-tag."
+        description: "Optional release tag (e.g. v1.2.0). Leave empty to auto-tag."
         required: false
         default: ""
 
@@ -48,15 +50,35 @@ jobs:
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
+          DEBUG_KEYSTORE_FILE="${{ github.workspace }}/debug.keystore"
+          DEBUG_B64_FILE="${{ github.workspace }}/debug.keystore.base64"
+
+          if [ ! -f "$DEBUG_KEYSTORE_FILE" ]; then
+            if [ -f "$DEBUG_B64_FILE" ]; then
+              base64 -d "$DEBUG_B64_FILE" > "$DEBUG_KEYSTORE_FILE"
+            else
+              keytool -genkeypair -v \
+                -keystore "$DEBUG_KEYSTORE_FILE" \
+                -storetype PKCS12 \
+                -alias androiddebugkey \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass android \
+                -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+            fi
+          fi
+
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$SECRET_STORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$SECRET_KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "Using repository release keystore secrets."
-          else
+          elif [ -f "$DEBUG_B64_FILE" ]; then
             FALLBACK_PASS="docview-release-key"
-            base64 -d "${{ github.workspace }}/debug.keystore.base64" > "$KEYSTORE_FILE"
+            base64 -d "$DEBUG_B64_FILE" > "$KEYSTORE_FILE"
             keytool -changealias \
               -keystore "$KEYSTORE_FILE" \
               -storepass android \
@@ -69,7 +91,23 @@ jobs:
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
-            echo "Prepared deterministic release keystore."
+            echo "Prepared release keystore from debug.keystore.base64."
+          else
+            FALLBACK_PASS="docview-release-key"
+            keytool -genkeypair -v \
+              -keystore "$KEYSTORE_FILE" \
+              -storetype PKCS12 \
+              -alias upload \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -storepass "$FALLBACK_PASS" \
+              -keypass "$FALLBACK_PASS" \
+              -dname "CN=Vilson Sonkar, O=D0C View, C=IN"
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
+            echo "Generated fallback PKCS12 release keystore."
           fi
 
       - name: Run Unit Tests

@@ -1,17 +1,24 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -31,14 +38,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -70,10 +79,10 @@ fun CategoryPillsRow(
         visible = visible && visibleTypes.isNotEmpty(),
         enter = expandVertically(
             animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-        ) + fadeIn(),
+        ) + fadeIn(tween(200)),
         exit = shrinkVertically(
             animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-        ) + fadeOut(),
+        ) + fadeOut(tween(150)),
         modifier = modifier
     ) {
         val horizontalArrangement = if (visibleTypes.size <= 3) {
@@ -114,36 +123,62 @@ private fun CategoryPill(
     isDarkTheme: Boolean,
     onClick: () -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+
     val scale by animateFloatAsState(
-        targetValue = if (selected) 1.03f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+        targetValue = when {
+            pressed -> 0.93f
+            selected -> 1.04f
+            else -> 1f
+        },
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium),
         label = "pillScale"
+    )
+    val elevation by animateDpAsState(
+        targetValue = if (selected) 3.dp else 0.dp,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "pillElevation"
     )
     val tintBg = if (isDarkTheme) type.tintDark else type.tintLight
     val containerColor by animateColorAsState(
         targetValue = if (selected) type.pillColor else tintBg,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pillBg"
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) Color.White else if (isDarkTheme) Color.White.copy(alpha = 0.92f) else type.pillColor,
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pillFg"
+    )
+    val borderColor by animateColorAsState(
+        targetValue = if (selected) type.pillColor else type.pillColor.copy(alpha = 0.35f),
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "pillBorder"
     )
 
     // Outer 48dp touch target box around compact sleek pill
     Box(
         modifier = Modifier
             .height(48.dp)
-            .scale(scale)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
             .clip(CircleShape)
-            .clickable(onClick = onClick)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = ripple(),
+                onClick = onClick
+            )
             .testTag("pill_${type.name.lowercase()}"),
         contentAlignment = Alignment.Center
     ) {
         Surface(
             shape = CircleShape,
             color = containerColor,
-            border = if (selected) null else BorderStroke(1.dp, type.pillColor.copy(alpha = 0.35f)),
-            shadowElevation = if (selected) 3.dp else 0.dp
+            border = BorderStroke(1.dp, borderColor),
+            shadowElevation = elevation
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
@@ -170,15 +205,24 @@ private fun CategoryPill(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
                     ) {
-                        Text(
-                            text = count.toString(),
-                            color = contentColor,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold
-                            ),
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                        )
+                        AnimatedContent(
+                            targetState = count,
+                            transitionSpec = {
+                                (scaleIn(initialScale = 0.8f) + fadeIn(tween(140)))
+                                    .togetherWith(scaleOut(targetScale = 0.8f) + fadeOut(tween(100)))
+                            },
+                            label = "pillCount"
+                        ) { targetCount ->
+                            Text(
+                                text = targetCount.toString(),
+                                color = contentColor,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
             }

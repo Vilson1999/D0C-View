@@ -3,11 +3,23 @@ package com.example.ui.screens
 import android.app.Activity
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -39,6 +51,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -63,6 +76,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -111,7 +125,9 @@ import com.example.ui.theme.XmlTagDark
 import com.example.ui.theme.XmlTagLight
 import com.example.ui.theme.XmlValueDark
 import com.example.ui.theme.XmlValueLight
+import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun DocumentViewerScreen(
@@ -200,143 +216,168 @@ fun DocumentViewerScreen(
                 .testTag("viewer_reader_surface"),
             contentAlignment = Alignment.Center
         ) {
-            when (val doc = parsedDoc) {
-                null -> {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        CircularProgressIndicator()
-                        Text(
-                            text = "Opening ${currentDoc.name}…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+            AnimatedContent(
+                targetState = parsedDoc,
+                contentKey = { doc ->
+                    when (doc) {
+                        null -> "loading"
+                        is ParsedDocument.Error -> "error_${doc.message}"
+                        is ParsedDocument.Pdf -> "pdf_${currentDoc.id}"
+                        is ParsedDocument.Word -> "word_${currentDoc.id}"
+                        is ParsedDocument.Slides -> "slides_${currentDoc.id}"
+                        is ParsedDocument.CodeXml -> "xml_${currentDoc.id}"
+                        is ParsedDocument.PlainText -> "text_${currentDoc.id}"
                     }
-                }
-                is ParsedDocument.Error -> {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.ErrorOutline,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(44.dp)
-                        )
-                        Text(
-                            text = doc.message,
-                            style = MaterialTheme.typography.bodyLarge,
-                            textAlign = TextAlign.Center
-                        )
+                },
+                transitionSpec = {
+                    (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                        scaleIn(initialScale = 0.985f, animationSpec = tween(240)))
+                        .togetherWith(fadeOut(tween(150)))
+                },
+                label = "documentContentReveal"
+            ) { doc ->
+                when (doc) {
+                    null -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                CircularProgressIndicator()
+                                Text(
+                                    text = "Opening ${currentDoc.name}…",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
-                }
-                is ParsedDocument.Pdf -> PdfViewerContent(
-                    session = doc.session,
-                    mode = pageViewMode,
-                    showPagePill = isReaderUiVisible,
-                    topClearance = topBarReserve,
-                    bottomClearance = navBarReserve,
-                    onToggleUi = toggleReaderUi
-                )
-                is ParsedDocument.Word -> PagedOrContinuousViewer(
-                    items = doc.pages,
-                    mode = pageViewMode,
-                    unitLabel = "Page",
-                    showPagePill = isReaderUiVisible,
-                    topClearance = topBarReserve,
-                    bottomClearance = navBarReserve,
-                    enableContainerTap = true,
-                    onToggleUi = toggleReaderUi,
-                    keySelector = { it.pageNumber },
-                    singleItemContent = { page ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = topBarReserve + 12.dp,
-                                    bottom = navBarReserve + 52.dp
-                                ),
-                            contentAlignment = Alignment.TopCenter
-                        ) {
+                    is ParsedDocument.Error -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(
+                                modifier = Modifier.padding(24.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Icon(
+                                    imageVector = AppIcons.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(44.dp)
+                                )
+                                Text(
+                                    text = doc.message,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    }
+                    is ParsedDocument.Pdf -> PdfViewerContent(
+                        session = doc.session,
+                        mode = pageViewMode,
+                        showPagePill = isReaderUiVisible,
+                        topClearance = topBarReserve,
+                        bottomClearance = navBarReserve,
+                        onToggleUi = toggleReaderUi
+                    )
+                    is ParsedDocument.Word -> PagedOrContinuousViewer(
+                        items = doc.pages,
+                        mode = pageViewMode,
+                        unitLabel = "Page",
+                        showPagePill = isReaderUiVisible,
+                        topClearance = topBarReserve,
+                        bottomClearance = navBarReserve,
+                        enableContainerTap = true,
+                        onToggleUi = toggleReaderUi,
+                        keySelector = { it.pageNumber },
+                        singleItemContent = { page ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        top = topBarReserve + 12.dp,
+                                        bottom = navBarReserve + 52.dp
+                                    ),
+                                contentAlignment = Alignment.TopCenter
+                            ) {
+                                WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
+                            }
+                        },
+                        continuousItemContent = { _, page ->
                             WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
                         }
-                    },
-                    continuousItemContent = { _, page ->
-                        WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
-                    }
-                )
-                is ParsedDocument.Slides -> PagedOrContinuousViewer(
-                    items = doc.slides,
-                    mode = pageViewMode,
-                    unitLabel = "Slide",
-                    showPagePill = isReaderUiVisible,
-                    topClearance = topBarReserve,
-                    bottomClearance = navBarReserve,
-                    enableContainerTap = true,
-                    onToggleUi = toggleReaderUi,
-                    keySelector = { it.slideNumber },
-                    singleItemContent = { slide ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .verticalScroll(rememberScrollState())
-                                .padding(
-                                    start = 16.dp,
-                                    end = 16.dp,
-                                    top = topBarReserve + 12.dp,
-                                    bottom = navBarReserve + 52.dp
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
+                    )
+                    is ParsedDocument.Slides -> PagedOrContinuousViewer(
+                        items = doc.slides,
+                        mode = pageViewMode,
+                        unitLabel = "Slide",
+                        showPagePill = isReaderUiVisible,
+                        topClearance = topBarReserve,
+                        bottomClearance = navBarReserve,
+                        enableContainerTap = true,
+                        onToggleUi = toggleReaderUi,
+                        keySelector = { it.slideNumber },
+                        singleItemContent = { slide ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(rememberScrollState())
+                                    .padding(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        top = topBarReserve + 12.dp,
+                                        bottom = navBarReserve + 52.dp
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                SlideCard(
+                                    slide = slide,
+                                    totalSlides = doc.slides.size,
+                                    accentColor = currentDoc.type.pillColor
+                                )
+                            }
+                        },
+                        continuousItemContent = { _, slide ->
                             SlideCard(
                                 slide = slide,
                                 totalSlides = doc.slides.size,
                                 accentColor = currentDoc.type.pillColor
                             )
                         }
-                    },
-                    continuousItemContent = { _, slide ->
-                        SlideCard(
-                            slide = slide,
-                            totalSlides = doc.slides.size,
-                            accentColor = currentDoc.type.pillColor
-                        )
-                    }
-                )
-                is ParsedDocument.CodeXml -> TextAndXmlViewerContent(
-                    fullText = doc.formattedXml,
-                    pages = doc.pages,
-                    mode = pageViewMode,
-                    isXml = true,
-                    syntaxHighlight = settings.xmlSyntaxHighlight,
-                    showLineNumbers = settings.showLineNumbers,
-                    fontSizeSp = settings.readerFontSizeSp,
-                    isDarkTheme = isDarkTheme,
-                    showPagePill = isReaderUiVisible,
-                    topClearance = topBarReserve,
-                    bottomClearance = navBarReserve,
-                    onToggleUi = toggleReaderUi
-                )
-                is ParsedDocument.PlainText -> TextAndXmlViewerContent(
-                    fullText = doc.fullText,
-                    pages = doc.pages,
-                    mode = pageViewMode,
-                    isXml = false,
-                    syntaxHighlight = false,
-                    showLineNumbers = settings.showLineNumbers,
-                    fontSizeSp = settings.readerFontSizeSp,
-                    isDarkTheme = isDarkTheme,
-                    showPagePill = isReaderUiVisible,
-                    topClearance = topBarReserve,
-                    bottomClearance = navBarReserve,
-                    onToggleUi = toggleReaderUi
-                )
+                    )
+                    is ParsedDocument.CodeXml -> TextAndXmlViewerContent(
+                        fullText = doc.formattedXml,
+                        pages = doc.pages,
+                        mode = pageViewMode,
+                        isXml = true,
+                        syntaxHighlight = settings.xmlSyntaxHighlight,
+                        showLineNumbers = settings.showLineNumbers,
+                        fontSizeSp = settings.readerFontSizeSp,
+                        isDarkTheme = isDarkTheme,
+                        showPagePill = isReaderUiVisible,
+                        topClearance = topBarReserve,
+                        bottomClearance = navBarReserve,
+                        onToggleUi = toggleReaderUi
+                    )
+                    is ParsedDocument.PlainText -> TextAndXmlViewerContent(
+                        fullText = doc.fullText,
+                        pages = doc.pages,
+                        mode = pageViewMode,
+                        isXml = false,
+                        syntaxHighlight = false,
+                        showLineNumbers = settings.showLineNumbers,
+                        fontSizeSp = settings.readerFontSizeSp,
+                        isDarkTheme = isDarkTheme,
+                        showPagePill = isReaderUiVisible,
+                        topClearance = topBarReserve,
+                        bottomClearance = navBarReserve,
+                        onToggleUi = toggleReaderUi
+                    )
+                }
             }
 
             AnimatedVisibility(
@@ -390,18 +431,43 @@ fun DocumentViewerScreen(
                             },
                             modifier = Modifier.testTag("viewer_page_mode_button")
                         ) {
-                            Icon(
-                                imageVector = if (pageViewMode == PageViewMode.SINGLE_PAGE) {
-                                    AppIcons.ViewCarousel
-                                } else {
-                                    AppIcons.ViewStream
+                            AnimatedContent(
+                                targetState = pageViewMode,
+                                transitionSpec = {
+                                    (scaleIn(
+                                        initialScale = 0.7f,
+                                        animationSpec = spring(
+                                            dampingRatio = 0.7f,
+                                            stiffness = Spring.StiffnessMedium
+                                        )
+                                    ) + fadeIn(tween(180))).togetherWith(
+                                        scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
+                                            fadeOut(tween(120))
+                                    )
                                 },
-                                contentDescription = stringResource(R.string.action_page_view_mode),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
+                                label = "pageModeIconSwitch"
+                            ) { currentMode ->
+                                Icon(
+                                    imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
+                                        AppIcons.ViewCarousel
+                                    } else {
+                                        AppIcons.ViewStream
+                                    },
+                                    contentDescription = stringResource(R.string.action_page_view_mode),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         }
 
                         Box {
+                            val menuIconRotation by animateFloatAsState(
+                                targetValue = if (menuExpanded) 90f else 0f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.75f,
+                                    stiffness = Spring.StiffnessMedium
+                                ),
+                                label = "viewerMenuButtonRotation"
+                            )
                             IconButton(
                                 onClick = {
                                     menuExpanded = true
@@ -412,7 +478,8 @@ fun DocumentViewerScreen(
                                 Icon(
                                     imageVector = Icons.Rounded.MoreVert,
                                     contentDescription = stringResource(R.string.action_more_options),
-                                    tint = MaterialTheme.colorScheme.onSurface
+                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
                                 )
                             }
 
@@ -504,63 +571,96 @@ private fun <T> PagedOrContinuousViewer(
         Modifier.fillMaxSize()
     }
 
-    if (mode == PageViewMode.SINGLE_PAGE) {
-        val total = items.size.coerceAtLeast(1)
-        val pagerState = rememberPagerState(pageCount = { total })
-        Box(modifier = containerModifier) {
-            HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { idx ->
-                if (idx in items.indices) {
-                    singleItemContent(items[idx])
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = {
+            (fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
+                .togetherWith(fadeOut(tween(150)))
+        },
+        label = "viewerModeSwitch"
+    ) { targetMode ->
+        if (targetMode == PageViewMode.SINGLE_PAGE) {
+            val total = items.size.coerceAtLeast(1)
+            val pagerState = rememberPagerState(pageCount = { total })
+            Box(modifier = containerModifier) {
+                HorizontalPager(
+                    state = pagerState,
+                    flingBehavior = PagerDefaults.flingBehavior(
+                        state = pagerState,
+                        snapAnimationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ),
+                    modifier = Modifier.fillMaxSize()
+                ) { idx ->
+                    if (idx in items.indices) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    val offset = ((pagerState.currentPage - idx) +
+                                        pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                                    val pageScale = 1f - (0.045f * offset)
+                                    scaleX = pageScale
+                                    scaleY = pageScale
+                                    alpha = 1f - (0.30f * offset)
+                                }
+                        ) {
+                            singleItemContent(items[idx])
+                        }
+                    }
+                }
+                AnimatedVisibility(
+                    visible = showPagePill,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 14.dp)
+                        .testTag("viewer_page_pill")
+                ) {
+                    PageIndicatorPill(
+                        text = "$unitLabel ${pagerState.currentPage + 1} / $total"
+                    )
                 }
             }
-            AnimatedVisibility(
-                visible = showPagePill,
-                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 14.dp)
-                    .testTag("viewer_page_pill")
-            ) {
-                PageIndicatorPill(
-                    text = "$unitLabel ${pagerState.currentPage + 1} / $total"
-                )
-            }
-        }
-    } else {
-        val listState = rememberLazyListState()
-        val current by remember { derivedStateOf { listState.firstVisibleItemIndex + 1 } }
-        Box(modifier = containerModifier) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 14.dp,
-                    end = 14.dp,
-                    top = topClearance + 10.dp,
-                    bottom = bottomClearance + 52.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                itemsIndexed(items, key = { _, item -> keySelector(item) }) { idx, item ->
-                    continuousItemContent(idx, item)
+        } else {
+            val listState = rememberLazyListState()
+            val current by remember { derivedStateOf { listState.firstVisibleItemIndex + 1 } }
+            Box(modifier = containerModifier) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 14.dp,
+                        end = 14.dp,
+                        top = topClearance + 10.dp,
+                        bottom = bottomClearance + 52.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    itemsIndexed(items, key = { _, item -> keySelector(item) }) { idx, item ->
+                        continuousItemContent(idx, item)
+                    }
                 }
-            }
-            AnimatedVisibility(
-                visible = showPagePill,
-                enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 14.dp)
-                    .testTag("viewer_page_pill")
-            ) {
-                PageIndicatorPill(
-                    text = "$unitLabel $current / ${items.size}"
-                )
+                AnimatedVisibility(
+                    visible = showPagePill,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 14.dp)
+                        .testTag("viewer_page_pill")
+                ) {
+                    PageIndicatorPill(
+                        text = "$unitLabel $current / ${items.size}"
+                    )
+                }
             }
         }
     }
@@ -626,12 +726,16 @@ private fun ZoomablePdfPage(
     onSingleTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var scale by remember(session, pageIndex) { mutableFloatStateOf(1f) }
-    var offset by remember(session, pageIndex) { mutableStateOf(Offset.Zero) }
+    val scope = rememberCoroutineScope()
+    val scaleAnim = remember(session, pageIndex) { Animatable(1f) }
+    val offsetAnim = remember(session, pageIndex) { Animatable(Offset.Zero, Offset.VectorConverter) }
     val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        val newScale = (scale * zoomChange).coerceIn(1f, 4f)
-        scale = newScale
-        offset = if (newScale > 1f) offset + panChange else Offset.Zero
+        val newScale = (scaleAnim.value * zoomChange).coerceIn(1f, 4f)
+        val newOffset = if (newScale > 1.02f) offsetAnim.value + panChange else Offset.Zero
+        scope.launch {
+            scaleAnim.snapTo(newScale)
+            offsetAnim.snapTo(newOffset)
+        }
     }
 
     Box(
@@ -640,16 +744,30 @@ private fun ZoomablePdfPage(
                 detectTapGestures(
                     onTap = { onSingleTap() },
                     onDoubleTap = {
-                        if (scale > 1.05f) {
-                            scale = 1f
-                            offset = Offset.Zero
-                        } else {
-                            scale = 2f
+                        scope.launch {
+                            val zoomSpring = spring<Float>(
+                                dampingRatio = 0.82f,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                            if (scaleAnim.value > 1.05f) {
+                                launch { scaleAnim.animateTo(1f, zoomSpring) }
+                                launch {
+                                    offsetAnim.animateTo(
+                                        Offset.Zero,
+                                        spring(
+                                            dampingRatio = 0.82f,
+                                            stiffness = Spring.StiffnessMediumLow
+                                        )
+                                    )
+                                }
+                            } else {
+                                scaleAnim.animateTo(2f, zoomSpring)
+                            }
                         }
                     }
                 )
             }
-            .transformable(state = transformState, canPan = { scale > 1f }),
+            .transformable(state = transformState, canPan = { scaleAnim.value > 1.02f }),
         contentAlignment = Alignment.Center
     ) {
         PdfPageBitmapCard(
@@ -657,10 +775,10 @@ private fun ZoomablePdfPage(
             pageIndex = pageIndex,
             targetWidthPx = targetWidthPx,
             modifier = Modifier.graphicsLayer(
-                scaleX = scale,
-                scaleY = scale,
-                translationX = offset.x,
-                translationY = offset.y
+                scaleX = scaleAnim.value,
+                scaleY = scaleAnim.value,
+                translationX = offsetAnim.value.x,
+                translationY = offsetAnim.value.y
             )
         )
     }
@@ -850,101 +968,111 @@ private fun TextAndXmlViewerContent(
     bottomClearance: androidx.compose.ui.unit.Dp,
     onToggleUi: () -> Unit
 ) {
-    if (mode == PageViewMode.SINGLE_PAGE) {
-        val indexedPages = remember(pages) { pages.mapIndexed { idx, lines -> idx to lines } }
-        PagedOrContinuousViewer(
-            items = indexedPages,
-            mode = PageViewMode.SINGLE_PAGE,
-            unitLabel = "Page",
-            showPagePill = showPagePill,
-            topClearance = topClearance,
-            bottomClearance = bottomClearance,
-            enableContainerTap = true,
-            onToggleUi = onToggleUi,
-            keySelector = { it.first },
-            singleItemContent = { (pageIdx, pageLines) ->
-                val lineOffset = pageIdx * 42
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            start = 14.dp,
-                            end = 14.dp,
-                            top = topClearance + 10.dp,
-                            bottom = bottomClearance + 52.dp
-                        )
-                ) {
-                    LazyColumn(
-                        contentPadding = PaddingValues(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        itemsIndexed(pageLines) { idx, line ->
-                            CodeOrTextLine(
-                                lineNumber = lineOffset + idx + 1,
-                                line = line,
-                                isXml = isXml && syntaxHighlight,
-                                showLineNumber = showLineNumbers,
-                                fontSizeSp = fontSizeSp,
-                                isDarkTheme = isDarkTheme
+    AnimatedContent(
+        targetState = mode,
+        transitionSpec = {
+            (fadeIn(tween(220, easing = FastOutSlowInEasing)) +
+                scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
+                .togetherWith(fadeOut(tween(150)))
+        },
+        label = "textXmlModeSwitch"
+    ) { targetMode ->
+        if (targetMode == PageViewMode.SINGLE_PAGE) {
+            val indexedPages = remember(pages) { pages.mapIndexed { idx, lines -> idx to lines } }
+            PagedOrContinuousViewer(
+                items = indexedPages,
+                mode = PageViewMode.SINGLE_PAGE,
+                unitLabel = "Page",
+                showPagePill = showPagePill,
+                topClearance = topClearance,
+                bottomClearance = bottomClearance,
+                enableContainerTap = true,
+                onToggleUi = onToggleUi,
+                keySelector = { it.first },
+                singleItemContent = { (pageIdx, pageLines) ->
+                    val lineOffset = pageIdx * 42
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(
+                                start = 14.dp,
+                                end = 14.dp,
+                                top = topClearance + 10.dp,
+                                bottom = bottomClearance + 52.dp
                             )
+                    ) {
+                        LazyColumn(
+                            contentPadding = PaddingValues(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            itemsIndexed(pageLines) { idx, line ->
+                                CodeOrTextLine(
+                                    lineNumber = lineOffset + idx + 1,
+                                    line = line,
+                                    isXml = isXml && syntaxHighlight,
+                                    showLineNumber = showLineNumbers,
+                                    fontSizeSp = fontSizeSp,
+                                    isDarkTheme = isDarkTheme
+                                )
+                            }
                         }
                     }
-                }
-            },
-            continuousItemContent = { _, _ -> }
-        )
-    } else {
-        val allLines = remember(fullText) { fullText.lines() }
-        val listState = rememberLazyListState()
-        val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex / 42) + 1 } }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(onToggleUi) {
-                    detectTapGestures(onTap = { onToggleUi() })
-                }
-        ) {
-            LazyColumn(
-                state = listState,
+                },
+                continuousItemContent = { _, _ -> }
+            )
+        } else {
+            val allLines = remember(fullText) { fullText.lines() }
+            val listState = rememberLazyListState()
+            val currentPage by remember { derivedStateOf { (listState.firstVisibleItemIndex / 42) + 1 } }
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface),
-                contentPadding = PaddingValues(
-                    start = 14.dp,
-                    end = 14.dp,
-                    top = topClearance + 12.dp,
-                    bottom = bottomClearance + 52.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
+                    .pointerInput(onToggleUi) {
+                        detectTapGestures(onTap = { onToggleUi() })
+                    }
             ) {
-                itemsIndexed(allLines) { idx, line ->
-                    CodeOrTextLine(
-                        lineNumber = idx + 1,
-                        line = line,
-                        isXml = isXml && syntaxHighlight,
-                        showLineNumber = showLineNumbers,
-                        fontSizeSp = fontSizeSp,
-                        isDarkTheme = isDarkTheme
-                    )
-                }
-            }
-            if (pages.size > 1) {
-                AnimatedVisibility(
-                    visible = showPagePill,
-                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                LazyColumn(
+                    state = listState,
                     modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(bottom = 14.dp)
-                        .testTag("viewer_page_pill")
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface),
+                    contentPadding = PaddingValues(
+                        start = 14.dp,
+                        end = 14.dp,
+                        top = topClearance + 12.dp,
+                        bottom = bottomClearance + 52.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    PageIndicatorPill(
-                        text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}"
-                    )
+                    itemsIndexed(allLines) { idx, line ->
+                        CodeOrTextLine(
+                            lineNumber = idx + 1,
+                            line = line,
+                            isXml = isXml && syntaxHighlight,
+                            showLineNumber = showLineNumbers,
+                            fontSizeSp = fontSizeSp,
+                            isDarkTheme = isDarkTheme
+                        )
+                    }
+                }
+                if (pages.size > 1) {
+                    AnimatedVisibility(
+                        visible = showPagePill,
+                        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .navigationBarsPadding()
+                            .padding(bottom = 14.dp)
+                            .testTag("viewer_page_pill")
+                    ) {
+                        PageIndicatorPill(
+                            text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}"
+                        )
+                    }
                 }
             }
         }
@@ -1079,11 +1207,21 @@ private fun PageIndicatorPill(text: String, modifier: Modifier = Modifier) {
         shadowElevation = 4.dp,
         modifier = modifier
     ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.inverseOnSurface,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-        )
+        AnimatedContent(
+            targetState = text,
+            transitionSpec = {
+                (fadeIn(tween(140)) + slideInVertically(tween(140)) { it / 3 })
+                    .togetherWith(fadeOut(tween(100)) + slideOutVertically(tween(100)) { -it / 3 })
+                    .using(SizeTransform(clip = false))
+            },
+            label = "pageIndicatorText"
+        ) { currentText ->
+            Text(
+                text = currentText,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.inverseOnSurface,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
     }
 }
