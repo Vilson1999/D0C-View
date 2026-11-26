@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.DocViewApplication
 import com.example.data.DocumentCacheManager
+import com.example.data.DocumentParser
 import com.example.data.DocumentScanner
 import com.example.data.SettingsRepository
 import com.example.model.AppSettings
@@ -19,6 +20,7 @@ import com.example.model.SortOption
 import com.example.model.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -34,6 +36,7 @@ import java.io.File
 
 data class HomeUiState(
     val isScanning: Boolean = false,
+    val isPullRefreshing: Boolean = false,
     val hasFullStorageAccess: Boolean = false,
     val selectedCategory: DocType = DocType.PDF,
     val visibleDocTypes: List<DocType> = DocType.entries,
@@ -120,12 +123,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val settingsRepo = SettingsRepository(application)
     private val scanner = DocumentScanner(application)
     private val cacheManager = DocumentCacheManager(application)
+    private val parser = DocumentParser(application)
     private var scanJob: Job? = null
+    private var prewarmJob: Job? = null
 
     private val _rawDocuments = MutableStateFlow<List<DocumentItem>>(emptyList())
     val foundDocuments: StateFlow<List<DocumentItem>> = _rawDocuments.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
+    private val _isPullRefreshing = MutableStateFlow(false)
     private val _hasFullAccess = MutableStateFlow(scanner.hasFullStorageAccess())
     private val _selectedCategory = MutableStateFlow(DocType.PDF)
     private val _searchQuery = MutableStateFlow("")
@@ -149,6 +155,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val homeUiState: StateFlow<HomeUiState> = combine(
         _rawDocuments,
         _isScanning,
+        _isPullRefreshing,
         _hasFullAccess,
         _selectedCategory,
         _searchQuery,
@@ -160,14 +167,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         @Suppress("UNCHECKED_CAST")
         val rawDocs = values[0] as List<DocumentItem>
         val scanning = values[1] as Boolean
-        val fullAccess = values[2] as Boolean
-        val category = values[3] as DocType
-        val query = values[4] as String
-        val searchActive = values[5] as Boolean
+        val pullRefreshing = values[2] as Boolean
+        val fullAccess = values[3] as Boolean
+        val category = values[4] as DocType
+        val query = values[5] as String
+        val searchActive = values[6] as Boolean
         @Suppress("UNCHECKED_CAST")
-        val selectedIds = values[6] as Set<String>
-        val cacheBytes = values[7] as Long
-        val settings = values[8] as AppSettings
+        val selectedIds = values[7] as Set<String>
+        val cacheBytes = values[8] as Long
+        val settings = values[9] as AppSettings
 
         val visibleTypes = DocumentQueryProcessor.resolveHomePillTypes(
             documents = rawDocs,
@@ -194,6 +202,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         HomeUiState(
             isScanning = scanning,
+            isPullRefreshing = pullRefreshing,
             hasFullStorageAccess = fullAccess,
             selectedCategory = effectiveCategory,
             visibleDocTypes = visibleTypes,
@@ -211,6 +220,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val backgroundCloseListener: () -> Unit = {
         scanJob?.cancel()
+        prewarmJob?.cancel()
     }
 
     init {
@@ -224,6 +234,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             if (cachedDocs.isNotEmpty() && _rawDocuments.value.isEmpty()) {
                 _rawDocuments.value = cachedDocs
+                launchSmartPrewarm(cachedDocs, initialSettings)
             }
             refreshStorageAccessAndScan()
             refreshCacheSize()
@@ -231,15 +242,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        prewarmJob?.cancel()
         DocViewApplication.unregisterBackgroundCloseListener(backgroundCloseListener)
         super.onCleared()
     }
 
-    fun refreshStorageAccessAndScan(userInitiated: Boolean = false) {
+    fun pullToRefreshDocuments() {
+        refreshStorageAccessAndScan(userInitiated = true, isPullToRefresh = true)
+    }
+
+    fun recordDocumentOpened(doc: DocumentItem) {
+        viewModelScope.launch(Dispatchers.IO) {
+            cacheManager.recordRecentDocument(doc)
+        }
+    }
+
+    fun refreshStorageAccessAndScan(
+        userInitiated: Boolean = false,
+        isPullToRefresh: Boolean = false
+    ) {
         val currentAccess = scanner.hasFullStorageAccess()
         lastKnownStorageAccess = currentAccess
         _hasFullAccess.value = currentAccess
-        scanDocuments(forceRestart = true, userInitiated = userInitiated)
+        scanDocuments(
+            forceRestart = true,
+            userInitiated = userInitiated,
+            isPullToRefresh = isPullToRefresh
+        )
     }
 
     fun onForegroundResume() {
@@ -251,12 +280,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun scanDocuments(forceRestart: Boolean = false, userInitiated: Boolean = false) {
+    fun scanDocuments(
+        forceRestart: Boolean = false,
+        userInitiated: Boolean = false,
+        isPullToRefresh: Boolean = false
+    ) {
         if (scanJob?.isActive == true) {
             if (!forceRestart) return
             scanJob?.cancel()
         }
+        _isPullRefreshing.value = isPullToRefresh
         scanJob = viewModelScope.launch {
+            val selfJob = currentCoroutineContext()[Job]
             _isScanning.value = true
             DocViewApplication.beginBackgroundWork(getApplication())
             try {
@@ -279,7 +314,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         } else {
                             val merged = LinkedHashMap(baselineMap)
                             update.documents.forEach { merged[it.id] = it }
-                            _rawDocuments.value = merged.values.toList()
+                            val mergedList = merged.values.toList()
+                            if (mergedList != _rawDocuments.value) {
+                                _rawDocuments.value = mergedList
+                            }
                         }
                     } else {
                         _rawDocuments.value = update.documents
@@ -290,6 +328,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             validDocs = update.documents,
                             aggressive = currentSettings.autoCleanRenderCache
                         )
+                        launchSmartPrewarm(update.documents, currentSettings)
                         if (userInitiated) {
                             val visibleCount = update.documents.count { it.type in currentSettings.visibleDocTypes }
                             _messages.tryEmit(
@@ -300,8 +339,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             } finally {
-                _isScanning.value = false
+                if (scanJob == null || scanJob === selfJob) {
+                    _isScanning.value = false
+                    _isPullRefreshing.value = false
+                }
                 DocViewApplication.endBackgroundWork(getApplication())
+            }
+        }
+    }
+
+    private fun launchSmartPrewarm(docs: List<DocumentItem>, settings: AppSettings) {
+        if (docs.isEmpty()) return
+        prewarmJob?.cancel()
+        prewarmJob = viewModelScope.launch(Dispatchers.IO) {
+            val recentIds = cacheManager.loadRecentDocIds(limit = 6)
+            val byId = docs.associateBy { it.id }
+            val prioritized = LinkedHashSet<DocumentItem>()
+            for (recentId in recentIds) {
+                byId[recentId]?.takeIf { it.type in settings.visibleDocTypes }?.let { prioritized.add(it) }
+            }
+            val sortedNewest = DocumentQueryProcessor.sortDocuments(
+                docs.filter { it.type in settings.visibleDocTypes },
+                settings.sortOption
+            )
+            for (candidate in sortedNewest) {
+                if (prioritized.size >= 5) break
+                prioritized.add(candidate)
+            }
+            if (prioritized.isNotEmpty()) {
+                parser.prewarmDocuments(prioritized.toList(), settings, maxPrewarmDocs = 5)
+                _cacheSizeBytes.value = cacheManager.getTotalCacheSizeBytes()
             }
         }
     }

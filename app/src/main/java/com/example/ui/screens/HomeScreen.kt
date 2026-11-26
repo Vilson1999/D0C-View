@@ -137,6 +137,7 @@ fun HomeScreen(
     onRequestStorageAccess: () -> Unit,
     onImportFile: () -> Unit,
     onRescan: () -> Unit,
+    onPullRefresh: () -> Unit = onRescan,
     onShowAllDocTypes: () -> Unit
 ) {
     val context = LocalContext.current
@@ -418,13 +419,13 @@ fun HomeScreen(
                     val pullToRefreshState = rememberPullToRefreshState()
 
                 PullToRefreshBox(
-                    isRefreshing = uiState.isScanning,
-                    onRefresh = onRescan,
+                    isRefreshing = uiState.isPullRefreshing,
+                    onRefresh = onPullRefresh,
                     state = pullToRefreshState,
                     indicator = {
                         PullToRefreshDefaults.Indicator(
                             state = pullToRefreshState,
-                            isRefreshing = uiState.isScanning,
+                            isRefreshing = uiState.isPullRefreshing,
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             color = pageType.pillColor,
                             modifier = Modifier.align(Alignment.TopCenter)

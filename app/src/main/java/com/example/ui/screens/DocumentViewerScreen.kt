@@ -939,10 +939,14 @@ private fun PdfPageBitmapCard(
     invertInDark: Boolean,
     modifier: Modifier = Modifier
 ) {
-    var bitmap by remember(session, pageIndex) { mutableStateOf<Bitmap?>(null) }
+    var bitmap by remember(session, pageIndex, targetWidthPx) {
+        mutableStateOf(session.peekCachedPage(pageIndex, targetWidthPx))
+    }
 
     LaunchedEffect(session, pageIndex, targetWidthPx) {
-        bitmap = session.renderPage(pageIndex, targetWidthPx)
+        if (bitmap == null) {
+            bitmap = session.renderPage(pageIndex, targetWidthPx)
+        }
         session.prefetchAdjacent(pageIndex, targetWidthPx)
     }
 

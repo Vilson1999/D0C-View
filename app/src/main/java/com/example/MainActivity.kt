@@ -122,6 +122,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
     // Navigate directly if an external VIEW intent opened a file
     LaunchedEffect(externalDoc) {
         val doc = externalDoc ?: return@LaunchedEffect
+        viewModel.recordDocumentOpened(doc)
         val encodedId = Uri.encode(doc.id)
         viewModel.consumeExternalDocNavigation(doc)
         navController.navigate("viewer/$encodedId") {
@@ -256,6 +257,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                             navController.navigate(ROUTE_SETTINGS) { launchSingleTop = true }
                         },
                         onOpenDocument = { doc ->
+                            viewModel.recordDocumentOpened(doc)
                             val encodedId = Uri.encode(doc.id)
                             navController.navigate("viewer/$encodedId") {
                                 launchSingleTop = true
@@ -270,6 +272,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onRequestStorageAccess = requestStorageAccess,
                         onImportFile = openImportFile,
                         onRescan = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
+                        onPullRefresh = viewModel::pullToRefreshDocuments,
                         onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) }
                     )
                 }

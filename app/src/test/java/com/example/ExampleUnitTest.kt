@@ -1,13 +1,28 @@
 package com.example
 
+import com.example.data.ChartSeries
 import com.example.data.DocAlignment
 import com.example.data.DocumentCacheManager
+import com.example.data.ExcelCell
+import com.example.data.ExcelRow
+import com.example.data.ExcelSheet
+import com.example.data.ExcelWorkbook
+import com.example.data.OfficeChart
 import com.example.data.OfficeChartType
+import com.example.data.OfficeContentSummary
 import com.example.data.OfficeLayoutResolver
 import com.example.data.OfficeXmlFormatParser
 import com.example.data.OoxmlDocumentParser
 import com.example.data.OoxmlPresentationParser
 import com.example.data.OoxmlWorkbookParser
+import com.example.data.ParsedDocument
+import com.example.data.SlidePage
+import com.example.data.WordBlock
+import com.example.data.WordImage
+import com.example.data.WordPage
+import com.example.data.WordRun
+import com.example.data.WordTableCell
+import com.example.data.WordTableRow
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
@@ -18,6 +33,7 @@ import com.example.model.PageViewMode
 import com.example.model.SortOption
 import com.example.service.BackgroundLifecyclePolicy
 import com.example.viewmodel.DocumentQueryProcessor
+import com.example.viewmodel.HomeUiState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -111,8 +127,12 @@ class ExampleUnitTest {
             val pdfDir = File(cacheRoot, DocumentCacheManager.PDF_PAGES_DIR).apply { mkdirs() }
             val parsedDir = File(cacheRoot, DocumentCacheManager.PARSED_DOCS_DIR).apply { mkdirs() }
             val convertedDir = File(cacheRoot, DocumentCacheManager.CONVERTED_PDFS_DIR).apply { mkdirs() }
+            val summariesDir = File(cacheRoot, DocumentCacheManager.SUMMARIES_DIR).apply { mkdirs() }
             val indexFile = File(cacheRoot, DocumentCacheManager.INDEX_FILE_NAME).apply {
                 writeText("idx")
+            }
+            val recentsFile = File(cacheRoot, DocumentCacheManager.RECENTS_FILE_NAME).apply {
+                writeText("/storage/Documents/active.pdf\n")
             }
 
             val activeDoc = fakeDoc("active.pdf", DocType.PDF, 1024L, 10_000L)
@@ -129,6 +149,16 @@ class ExampleUnitTest {
             // Valid newer file (should survive)
             val activeRecentFile = File(pdfDir, "${activeKey}_p1_w900.webp").apply {
                 writeBytes(ByteArray(40))
+                setLastModified(now - 1000L)
+            }
+            // Valid summary file (recent, should survive)
+            val activeSummaryFile = File(summariesDir, "${secondKey}_doc_AUTO_AUTO.sum").apply {
+                writeBytes(ByteArray(10))
+                setLastModified(now - 2000L)
+            }
+            // Orphaned summary file (must be deleted)
+            val orphanSummaryFile = File(summariesDir, "${orphanKey}_doc_AUTO_AUTO.sum").apply {
+                writeBytes(ByteArray(10))
                 setLastModified(now - 1000L)
             }
             // Valid converted PDF (older than activeRecentFile, evicted when over LRU budget)
@@ -162,12 +192,15 @@ class ExampleUnitTest {
             DocumentCacheManager.pruneCacheDirectory(
                 cacheRoot = cacheRoot,
                 validDocKeys = setOf(activeKey, secondKey),
-                maxCacheBytes = 80L,
+                maxCacheBytes = 130L,
                 maxAgeMs = maxAgeMs,
                 nowMs = now
             )
 
             assertTrue("Index file must be preserved", indexFile.exists())
+            assertTrue("Recents file must be preserved", recentsFile.exists())
+            assertTrue("Valid summary cache must be preserved", activeSummaryFile.exists())
+            assertFalse("Orphaned summary cache must be deleted", orphanSummaryFile.exists())
             assertFalse("Orphaned cache must be deleted", orphanFile.exists())
             assertFalse("Orphaned converted PDF must be deleted", orphanConvertedPdf.exists())
             assertFalse("Expired cache must be deleted", expiredFile.exists())
@@ -954,5 +987,139 @@ class ExampleUnitTest {
         assertTrue(slide.blocks.any { it.image?.bytes?.contentEquals(fakePng) == true })
         assertTrue(slide.blocks.any { it.chart?.title == "Slide KPIs" && it.chart.type == OfficeChartType.PIE })
         assertTrue(slide.blocks.any { it.tableRows.isNotEmpty() && it.tableRows.first().cells.size == 2 })
+    }
+
+    @Test
+    fun documentCacheManager_savesAndLoadsFullFidelitySmartCacheAndRecents() {
+        val tempDir = Files.createTempDirectory("docview_smart_cache_test").toFile()
+        try {
+            val summary = OfficeContentSummary(
+                detectedPageSize = "Letter",
+                detectedMargin = "Narrow",
+                effectivePageSize = "A4",
+                effectiveMargin = "Normal",
+                isLandscape = false,
+                widthPt = 595f,
+                heightPt = 842f,
+                textCount = 4,
+                imageCount = 1,
+                chartCount = 1,
+                tableCount = 1,
+                unitCount = 2,
+                unitLabel = "Pages"
+            )
+            val sumFile = File(tempDir, "sample.sum")
+            DocumentCacheManager.saveSummaryToFile(sumFile, summary)
+            assertEquals(summary, DocumentCacheManager.loadSummaryFromFile(sumFile))
+
+            val imgBytes = byteArrayOf(1, 2, 3, 4)
+            val wordDoc = ParsedDocument.Word(
+                pages = listOf(
+                    WordPage(
+                        pageNumber = 1,
+                        blocks = listOf(
+                            WordBlock(
+                                text = "Heading",
+                                isHeading = true,
+                                headingLevel = 1,
+                                isBold = true,
+                                runs = listOf(WordRun("Heading", isBold = true, colorRgb = 0x112233)),
+                                alignment = DocAlignment.CENTER,
+                                fontSizePt = 18f
+                            ),
+                            WordBlock(image = WordImage(imgBytes, widthPt = 120f, heightPt = 80f)),
+                            WordBlock(
+                                chart = OfficeChart(
+                                    title = "Rev",
+                                    type = OfficeChartType.BAR,
+                                    categories = listOf("Q1"),
+                                    series = listOf(ChartSeries("Sales", listOf(12.5), colorRgb = 0x22AA44))
+                                )
+                            ),
+                            WordBlock(
+                                tableRows = listOf(
+                                    WordTableRow(
+                                        cells = listOf(WordTableCell(listOf(WordBlock(text = "Cell")), backgroundRgb = 0xEEEEEE, colSpan = 2)),
+                                        isHeader = true
+                                    )
+                                )
+                            )
+                        )
+                    )
+                ),
+                layout = OfficeLayoutResolver.DEFAULT_WORD_A4,
+                summary = summary
+            )
+            val wordFile = File(tempDir, "word.dat")
+            assertTrue(DocumentCacheManager.saveParsedToFile(wordFile, wordDoc))
+            assertEquals(wordDoc, DocumentCacheManager.loadParsedFromFile(wordFile))
+
+            val slidesDoc = ParsedDocument.Slides(
+                slides = listOf(
+                    SlidePage(
+                        slideNumber = 1,
+                        title = "Deck",
+                        bodyLines = listOf("Point A"),
+                        notes = "Speaker cue",
+                        blocks = listOf(WordBlock(text = "Deck", isBold = true)),
+                        backgroundRgb = 0x0F172A
+                    )
+                ),
+                layout = OfficeLayoutResolver.DEFAULT_SLIDE_16_9,
+                summary = summary
+            )
+            val slidesFile = File(tempDir, "slides.dat")
+            assertTrue(DocumentCacheManager.saveParsedToFile(slidesFile, slidesDoc))
+            assertEquals(slidesDoc, DocumentCacheManager.loadParsedFromFile(slidesFile))
+
+            val sheetDoc = ParsedDocument.Spreadsheet(
+                workbook = ExcelWorkbook(
+                    sheets = listOf(
+                        ExcelSheet(
+                            name = "Budget",
+                            columnWidthsChars = mapOf(0 to 18f),
+                            maxColumns = 2,
+                            rows = listOf(
+                                ExcelRow(
+                                    rowNumber = 1,
+                                    cells = listOf(ExcelCell(0, "Item", isBold = true, backgroundRgb = 0x16A34A)),
+                                    isHeaderLikely = true
+                                )
+                            ),
+                            embeddedBlocks = listOf(WordBlock(image = WordImage(imgBytes))),
+                            layout = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE
+                        )
+                    ),
+                    layout = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE
+                ),
+                layout = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE,
+                summary = summary
+            )
+            val sheetFile = File(tempDir, "sheet.dat")
+            assertTrue(DocumentCacheManager.saveParsedToFile(sheetFile, sheetDoc))
+            assertEquals(sheetDoc, DocumentCacheManager.loadParsedFromFile(sheetFile))
+
+            val recentsFile = File(tempDir, DocumentCacheManager.RECENTS_FILE_NAME)
+            DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/a.pdf", maxEntries = 3)
+            DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/b.docx", maxEntries = 3)
+            DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/c.xlsx", maxEntries = 3)
+            DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/a.pdf", maxEntries = 3)
+            assertEquals(
+                listOf("/docs/a.pdf", "/docs/c.xlsx", "/docs/b.docx"),
+                DocumentCacheManager.loadRecentIdsFromFile(recentsFile, limit = 5)
+            )
+        } finally {
+            tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun homeUiState_keepsPullRefreshIndicatorFalseDuringBackgroundScan() {
+        val backgroundScanState = HomeUiState(isScanning = true)
+        assertTrue(backgroundScanState.isScanning)
+        assertFalse(backgroundScanState.isPullRefreshing)
+
+        val pullRefreshState = HomeUiState(isScanning = true, isPullRefreshing = true)
+        assertTrue(pullRefreshState.isPullRefreshing)
     }
 }

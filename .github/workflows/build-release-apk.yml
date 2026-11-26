@@ -76,23 +76,14 @@ jobs:
             echo "STORE_PASSWORD=$SECRET_STORE_PASSWORD" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$SECRET_KEY_PASSWORD" >> "$GITHUB_ENV"
             echo "Using repository release keystore secrets."
-          elif [ -f "$DEBUG_B64_FILE" ]; then
-            FALLBACK_PASS="docview-release-key"
-            base64 -d "$DEBUG_B64_FILE" > "$KEYSTORE_FILE"
-            keytool -changealias \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass android \
-              -alias androiddebugkey \
-              -destalias upload
-            keytool -storepasswd \
-              -keystore "$KEYSTORE_FILE" \
-              -storepass android \
-              -new "$FALLBACK_PASS"
+          elif [ -f "$DEBUG_B64_FILE" ] && base64 -d "$DEBUG_B64_FILE" > "$KEYSTORE_FILE" && \
+            keytool -changealias -keystore "$KEYSTORE_FILE" -storepass android -alias androiddebugkey -destalias upload; then
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
-            echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
-            echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=android" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
             echo "Prepared release keystore from debug.keystore.base64."
           else
+            rm -f "$KEYSTORE_FILE"
             FALLBACK_PASS="docview-release-key"
             keytool -genkeypair -v \
               -keystore "$KEYSTORE_FILE" \
