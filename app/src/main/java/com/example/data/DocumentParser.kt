@@ -36,27 +36,6 @@ sealed interface ParsedDocument {
     data class Error(val message: String) : ParsedDocument
 }
 
-data class WordBlock(
-    val text: String,
-    val isHeading: Boolean = false,
-    val headingLevel: Int = 0,
-    val isBold: Boolean = false,
-    val isItalic: Boolean = false,
-    val isBullet: Boolean = false
-)
-
-data class WordPage(
-    val pageNumber: Int,
-    val blocks: List<WordBlock>
-)
-
-data class SlidePage(
-    val slideNumber: Int,
-    val title: String,
-    val bodyLines: List<String>,
-    val notes: String = ""
-)
-
 class PdfDocumentSession(
     private val docKey: String,
     private val pfd: ParcelFileDescriptor,
@@ -246,7 +225,7 @@ class DocumentParser(private val context: Context) {
 
     private fun parseWordAsPdf(doc: DocumentItem, settings: AppSettings): ParsedDocument {
         val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
-        val variantTag = "doc_fs${fontSizeKey}"
+        val variantTag = "doc_v2_fs${fontSizeKey}"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -261,12 +240,12 @@ class DocumentParser(private val context: Context) {
             listOf(WordBlock("(Empty document)"))
         } else {
             val blocks = when {
-                isZipArchive(bytes) || doc.extension == "docx" -> parseDocxBytes(bytes)
+                isZipArchive(bytes) || doc.extension == "docx" -> OoxmlDocumentParser.parseDocxBytes(bytes)
                 doc.extension == "rtf" || isRtfHeader(bytes) -> parseRtfBytes(bytes)
                 else -> parseLegacyDocBytes(bytes)
             }
             blocks.ifEmpty {
-                listOf(WordBlock("No readable text content found in ${doc.name}."))
+                listOf(WordBlock("No readable content found in ${doc.name}."))
             }
         }
 
@@ -302,116 +281,6 @@ class DocumentParser(private val context: Context) {
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("Times New Roman") && !it.startsWith("Calibri") && !it.startsWith("Arial") }
             .mapIndexed { idx, line -> WordBlock(text = line, isHeading = idx == 0 && line.length < 80) }
-    }
-
-    private fun parseDocxBytes(bytes: ByteArray): List<WordBlock> {
-        var documentXml: ByteArray? = null
-        forEachZipEntry(bytes) { name, read ->
-            if (name.equals("word/document.xml", ignoreCase = true)) {
-                documentXml = read()
-                false
-            } else true
-        }
-        val xmlBytes = documentXml ?: return emptyList()
-        val blocks = mutableListOf<WordBlock>()
-
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(ByteArrayInputStream(xmlBytes), "UTF-8")
-
-        var inParagraph = false
-        var inRunProps = false
-        var inParaProps = false
-        val paraText = StringBuilder()
-        var isBold = false
-        var isItalic = false
-        var isBullet = false
-        var headingLevel = 0
-        var anyBoldInPara = false
-        var anyItalicInPara = false
-
-        var event = parser.eventType
-        while (event != XmlPullParser.END_DOCUMENT) {
-            val tagName = parser.name ?: ""
-            when (event) {
-                XmlPullParser.START_TAG -> {
-                    when (tagName) {
-                        "w:p" -> {
-                            inParagraph = true
-                            paraText.clear()
-                            isBold = false
-                            isItalic = false
-                            isBullet = false
-                            headingLevel = 0
-                            anyBoldInPara = false
-                            anyItalicInPara = false
-                        }
-                        "w:pPr" -> if (inParagraph) inParaProps = true
-                        "w:rPr" -> if (inParagraph) inRunProps = true
-                        "w:pStyle" -> if (inParaProps) {
-                            val styleVal = parser.getAttributeValue(null, "w:val") ?: ""
-                            when {
-                                styleVal.contains("Heading1", true) || styleVal.equals("Title", true) -> headingLevel = 1
-                                styleVal.contains("Heading2", true) || styleVal.equals("Subtitle", true) -> headingLevel = 2
-                                styleVal.contains("Heading", true) -> headingLevel = 3
-                                styleVal.contains("List", true) -> isBullet = true
-                            }
-                        }
-                        "w:numPr" -> if (inParaProps) isBullet = true
-                        "w:b" -> if (inRunProps) {
-                            val v = parser.getAttributeValue(null, "w:val")
-                            if (v != "0" && v != "false") isBold = true
-                        }
-                        "w:i" -> if (inRunProps) {
-                            val v = parser.getAttributeValue(null, "w:val")
-                            if (v != "0" && v != "false") isItalic = true
-                        }
-                        "w:t", "w:delText" -> if (inParagraph) {
-                            val txt = parser.nextText()
-                            if (txt.isNotEmpty()) {
-                                paraText.append(txt)
-                                if (isBold) anyBoldInPara = true
-                                if (isItalic) anyItalicInPara = true
-                            }
-                        }
-                        "w:tab" -> if (inParagraph) paraText.append("    ")
-                        "w:br" -> if (inParagraph) paraText.append("\n")
-                    }
-                }
-                XmlPullParser.END_TAG -> {
-                    when (tagName) {
-                        "w:pPr" -> inParaProps = false
-                        "w:rPr" -> {
-                            inRunProps = false
-                        }
-                        "w:r" -> {
-                            isBold = false
-                            isItalic = false
-                        }
-                        "w:p" -> {
-                            if (inParagraph) {
-                                val text = paraText.toString().trimEnd()
-                                if (text.isNotBlank()) {
-                                    blocks.add(
-                                        WordBlock(
-                                            text = text,
-                                            isHeading = headingLevel > 0,
-                                            headingLevel = headingLevel,
-                                            isBold = anyBoldInPara,
-                                            isItalic = anyItalicInPara,
-                                            isBullet = isBullet
-                                        )
-                                    )
-                                }
-                            }
-                            inParagraph = false
-                        }
-                    }
-                }
-            }
-            event = parser.next()
-        }
-        return blocks
     }
 
     private fun parseLegacyDocBytes(bytes: ByteArray): List<WordBlock> {
@@ -627,7 +496,7 @@ class DocumentParser(private val context: Context) {
         val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
         val hlFlag = if (settings.xmlSyntaxHighlight) 1 else 0
         val lnFlag = if (settings.showLineNumbers) 1 else 0
-        val variantTag = "xml_fs${fontSizeKey}_hl${hlFlag}_ln${lnFlag}"
+        val variantTag = "xml_v2_fs${fontSizeKey}_hl${hlFlag}_ln${lnFlag}"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -637,15 +506,26 @@ class DocumentParser(private val context: Context) {
 
         val raw = readTextSmart(doc)
             ?: return ParsedDocument.Error("Cannot read XML file.")
-        val formatted = prettyFormatXmlIfNeeded(raw)
 
-        val ok = OfficeAndXmlToPdfConverter.convertXmlToPdf(
-            formattedXml = formatted,
-            syntaxHighlight = settings.xmlSyntaxHighlight,
-            showLineNumbers = settings.showLineNumbers,
-            baseFontSizeSp = settings.readerFontSizeSp,
-            outputFile = cachedPdf
-        )
+        val officeBlocks = OfficeXmlFormatParser.tryParseOfficeOrMediaXml(raw)
+        val ok = if (!officeBlocks.isNullOrEmpty()) {
+            OfficeAndXmlToPdfConverter.convertWordToPdf(
+                blocks = officeBlocks,
+                baseFontSizeSp = settings.readerFontSizeSp,
+                outputFile = cachedPdf
+            )
+        } else {
+            val formatted = prettyFormatXmlIfNeeded(raw)
+            val embeddedMedia = OfficeXmlFormatParser.extractEmbeddedMediaBlocks(raw)
+            OfficeAndXmlToPdfConverter.convertXmlToPdf(
+                formattedXml = formatted,
+                syntaxHighlight = settings.xmlSyntaxHighlight,
+                showLineNumbers = settings.showLineNumbers,
+                baseFontSizeSp = settings.readerFontSizeSp,
+                outputFile = cachedPdf,
+                embeddedMedia = embeddedMedia
+            )
+        }
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey)
         } else {

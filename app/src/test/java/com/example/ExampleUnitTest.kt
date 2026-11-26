@@ -1,6 +1,10 @@
 package com.example
 
+import com.example.data.DocAlignment
 import com.example.data.DocumentCacheManager
+import com.example.data.OfficeChartType
+import com.example.data.OfficeXmlFormatParser
+import com.example.data.OoxmlDocumentParser
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
@@ -10,11 +14,16 @@ import com.example.service.BackgroundLifecyclePolicy
 import com.example.viewmodel.DocumentQueryProcessor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Files
+import java.util.Base64
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 
 class ExampleUnitTest {
 
@@ -316,5 +325,178 @@ class ExampleUnitTest {
         assertFalse(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 1, elapsedInBackgroundMs = 60_000L))
         assertFalse(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 0, elapsedInBackgroundMs = 59_999L))
         assertTrue(BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount = 0, elapsedInBackgroundMs = 60_000L))
+    }
+
+    @Test
+    fun ooxmlParser_extractsAlignmentImagesChartsPageBreaksAndTables() {
+        val fakePng = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x10,
+            0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0xF3.toByte(), 0xFF.toByte(), 0x61
+        )
+        val stylesXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:style w:type="paragraph" w:styleId="CoverTitle">
+                <w:name w:val="Title"/>
+                <w:pPr><w:jc w:val="center"/></w:pPr>
+                <w:rPr><w:b/><w:sz w:val="36"/></w:rPr>
+              </w:style>
+            </w:styles>
+        """.trimIndent()
+        val relsXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/logo.png"/>
+              <Relationship Id="rIdChart1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart" Target="charts/chart1.xml"/>
+            </Relationships>
+        """.trimIndent()
+        val chartXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+              <c:chart>
+                <c:title><c:tx><c:rich><a:p><a:r><a:t>Urban Growth</a:t></a:r></a:p></c:rich></c:tx></c:title>
+                <c:plotArea>
+                  <c:barChart>
+                    <c:barDir c:val="col"/>
+                    <c:ser>
+                      <c:tx><c:strRef><c:strCache><c:pt idx="0"><c:v>Population</c:v></c:pt></c:strCache></c:strRef></c:tx>
+                      <c:cat><c:strRef><c:strCache><c:pt idx="0"><c:v>2025</c:v></c:pt><c:pt idx="1"><c:v>2026</c:v></c:pt></c:strCache></c:strRef></c:cat>
+                      <c:val><c:numRef><c:numCache><c:pt idx="0"><c:v>42</c:v></c:pt><c:pt idx="1"><c:v>68</c:v></c:pt></c:numCache></c:numRef></c:val>
+                    </c:ser>
+                  </c:barChart>
+                </c:plotArea>
+              </c:chart>
+            </c:chartSpace>
+        """.trimIndent()
+        val docXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                        xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+                        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                        xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart">
+              <w:body>
+                <w:p>
+                  <w:pPr><w:pStyle w:val="CoverTitle"/></w:pPr>
+                  <w:r><w:t>SMART TOWN PLANNING</w:t></w:r>
+                </w:p>
+                <w:p>
+                  <w:pPr><w:jc w:val="center"/></w:pPr>
+                  <w:r><w:drawing><wp:inline><wp:extent cx="1270000" cy="1270000"/><a:graphic><a:graphicData><a:blip r:embed="rIdImg1"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>
+                </w:p>
+                <w:p><w:r><w:br w:type="page"/></w:r></w:p>
+                <w:p>
+                  <w:r><w:drawing><wp:inline><a:graphic><a:graphicData><c:chart r:id="rIdChart1"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>
+                </w:p>
+                <w:tbl>
+                  <w:tblPr>
+                    <w:tblBorders>
+                      <w:top w:val="none"/><w:bottom w:val="none"/><w:left w:val="none"/><w:right w:val="none"/>
+                    </w:tblBorders>
+                  </w:tblPr>
+                  <w:tr>
+                    <w:tc><w:p><w:r><w:t>Supervisor</w:t></w:r></w:p></w:tc>
+                    <w:tc><w:p><w:r><w:t>Head of Dept</w:t></w:r></w:p></w:tc>
+                  </w:tr>
+                </w:tbl>
+              </w:body>
+            </w:document>
+        """.trimIndent()
+
+        val zipBytes = ByteArrayOutputStream().use { baos ->
+            ZipOutputStream(baos).use { zos ->
+                fun put(name: String, content: ByteArray) {
+                    zos.putNextEntry(ZipEntry(name))
+                    zos.write(content)
+                    zos.closeEntry()
+                }
+                put("word/styles.xml", stylesXml.toByteArray())
+                put("word/_rels/document.xml.rels", relsXml.toByteArray())
+                put("word/media/logo.png", fakePng)
+                put("word/charts/chart1.xml", chartXml.toByteArray())
+                put("word/document.xml", docXml.toByteArray())
+            }
+            baos.toByteArray()
+        }
+
+        val blocks = OoxmlDocumentParser.parseDocxBytes(zipBytes)
+        val titleBlock = blocks.firstOrNull { it.text == "SMART TOWN PLANNING" }
+        assertNotNull(titleBlock)
+        assertEquals(DocAlignment.CENTER, titleBlock!!.alignment)
+        assertEquals(18f, titleBlock.fontSizePt)
+        assertTrue(titleBlock.isBold)
+
+        val imageBlock = blocks.firstOrNull { it.image != null }
+        assertNotNull(imageBlock)
+        val img = imageBlock!!.image!!
+        assertTrue(img.bytes.contentEquals(fakePng))
+        assertEquals(100f, img.widthPt!!, 0.5f)
+
+        assertTrue(blocks.any { it.isPageBreak })
+
+        val chartBlock = blocks.firstOrNull { it.chart != null }
+        assertNotNull(chartBlock)
+        val parsedChart = chartBlock!!.chart!!
+        assertEquals("Urban Growth", parsedChart.title)
+        assertEquals(OfficeChartType.COLUMN, parsedChart.type)
+        assertEquals(listOf("2025", "2026"), parsedChart.categories)
+        assertEquals(listOf(42.0, 68.0), parsedChart.series.first().values)
+
+        val tableBlock = blocks.firstOrNull { it.tableRows.isNotEmpty() }
+        assertNotNull(tableBlock)
+        assertFalse(tableBlock!!.tableHasBorders)
+        assertEquals(2, tableBlock.tableRows.first().cells.size)
+    }
+
+    @Test
+    fun officeXmlParser_parsesFlatOpcWordAndEmbeddedXmlImages() {
+        val fakePng = byteArrayOf(
+            0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+            0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+            0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x08,
+            0x08, 0x02, 0x00, 0x00, 0x00, 0x4B, 0x6D, 0x29
+        )
+        val b64 = Base64.getEncoder().encodeToString(fakePng)
+
+        val flatOpcXml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <?mso-application progid="Word.Document"?>
+            <pkg:package xmlns:pkg="http://schemas.microsoft.com/office/2006/xmlPackage">
+              <pkg:part pkg:name="/word/_rels/document.xml.rels" pkg:contentType="application/vnd.openxmlformats-package.relationships+xml">
+                <pkg:xmlData>
+                  <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+                    <Relationship Id="rId1" Target="media/fig1.png"/>
+                  </Relationships>
+                </pkg:xmlData>
+              </pkg:part>
+              <pkg:part pkg:name="/word/media/fig1.png" pkg:contentType="image/png">
+                <pkg:binaryData>$b64</pkg:binaryData>
+              </pkg:part>
+              <pkg:part pkg:name="/word/document.xml" pkg:contentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml">
+                <pkg:xmlData>
+                  <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+                              xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+                              xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+                    <w:body>
+                      <w:p><w:r><w:t>XML Report Heading</w:t></w:r></w:p>
+                      <w:p><w:r><w:drawing><a:blip r:embed="rId1"/></w:drawing></w:r></w:p>
+                    </w:body>
+                  </w:document>
+                </pkg:xmlData>
+              </pkg:part>
+            </pkg:package>
+        """.trimIndent()
+
+        val blocks = OfficeXmlFormatParser.tryParseOfficeOrMediaXml(flatOpcXml)
+        assertNotNull(blocks)
+        assertTrue(blocks!!.any { it.text == "XML Report Heading" })
+        assertTrue(blocks.any { it.image?.bytes?.contentEquals(fakePng) == true })
+
+        val genericXmlWithImage = "<report><preview src=\"data:image/png;base64,$b64\"/></report>"
+        val media = OfficeXmlFormatParser.extractEmbeddedMediaBlocks(genericXmlWithImage)
+        assertEquals(1, media.size)
+        assertTrue(media.first().image!!.bytes.contentEquals(fakePng))
     }
 }

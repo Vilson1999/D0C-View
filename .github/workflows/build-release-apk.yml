@@ -85,11 +85,12 @@ jobs:
       - name: Build Compressed Release APKs (ARMv7 & ARMv8)
         run: gradle :app:assembleRelease --no-daemon
 
-      - name: Collect Separate ARMv7 & ARMv8 Release APKs
+      - name: Collect Separate ARMv7, ARMv8 & Universal Release APKs
         run: |
           mkdir -p release-apks
           cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk release-apks/D0C-View-armeabi-v7a-release.apk
           cp app/build/outputs/apk/release/app-arm64-v8a-release.apk release-apks/D0C-View-arm64-v8a-release.apk
+          cp app/build/outputs/apk/release/app-universal-release.apk release-apks/D0C-View-universal-release.apk
           ls -lh release-apks/
 
       - name: Upload Separate APKs as Workflow Artifacts
@@ -113,7 +114,7 @@ jobs:
           elif [ -n "$INPUT_TAG" ]; then
             TAG="$INPUT_TAG"
           else
-            TAG="v1.1.${RUN_NUMBER}"
+            TAG="v1.2.${RUN_NUMBER}"
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View $TAG" >> "$GITHUB_OUTPUT"
@@ -133,3 +134,4 @@ jobs:
           files: |
             release-apks/D0C-View-armeabi-v7a-release.apk
             release-apks/D0C-View-arm64-v8a-release.apk
+            release-apks/D0C-View-universal-release.apk
