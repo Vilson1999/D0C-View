@@ -110,6 +110,13 @@ jobs:
             echo "Generated fallback PKCS12 release keystore."
           fi
 
+      - name: Clean Up Obsolete Files
+        run: |
+          if [ -f app/src/main/java/com/example/ui/screens/ScannedDocumentsScreen.kt ] && ! grep -q "ScannedDocumentsScreen" app/src/main/java/com/example/MainActivity.kt; then
+            echo "Removing obsolete unused ScannedDocumentsScreen.kt left over on remote branch"
+            rm -f app/src/main/java/com/example/ui/screens/ScannedDocumentsScreen.kt
+          fi
+
       - name: Run Unit Tests
         run: gradle :app:testDebugUnitTest --tests com.example.ExampleUnitTest --no-daemon
 
