@@ -49,6 +49,14 @@
 
 D0C View is designed to work offline. The Android manifest removes internet and network-state permissions. Storage access is requested so the app can scan folders you authorize; grant only the access your device and Android version require.
 
+## Screenshots
+
+<p align="center">
+  <img src="public/assets/aistudio/Screenshot_20261126-150344_f9b5f47d.png" alt="D0C View PDF document list" width="280">
+  <img src="public/assets/aistudio/Screenshot_20261126-150255_1dba4c72.png" alt="D0C View Word document list" width="280">
+  <img src="public/assets/aistudio/Screenshot_20261126-150233_ee3de946.png" alt="D0C View settings" width="280">
+</p>
+
 ## Platform and technology
 
 | Detail | Value |
