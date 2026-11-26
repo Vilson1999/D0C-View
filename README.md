@@ -1,13 +1,12 @@
-<table>
-  <tr>
-    <td><span style="font-size: 3rem;">🗂️</span></td>
-    <td><h1>D0C View</h1></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="app/src/main/res/drawable/ic_launcher_art.jpg" alt="D0C View app icon" width="160">
+</p>
 
-**Developer:** Vilson Sonkar · **App language:** Kotlin
+<h1 align="center">D0C View</h1>
 
-> An offline document viewer for finding and reading documents stored on your Android device. No internet connection or data collection.
+<p align="center"><strong>Developer:</strong> Vilson Sonkar · <strong>App language:</strong> Kotlin</p>
+
+<p align="center"><em>An offline document viewer for finding and reading documents stored on your Android device. No internet connection or data collection.</em></p>
 
 
 
@@ -48,7 +47,7 @@
 
 ### Privacy
 
-D0C View is designed to work offline. The Android manifest removes internet and network-state permissions. Storage access is requested so the app can scan folders you authorize; grant only the access you are comfortable with.
+D0C View is designed to work offline. The Android manifest removes internet and network-state permissions. Storage access is requested so the app can scan folders you authorize; grant only the access your device and Android version require.
 
 ## Platform and technology
 
