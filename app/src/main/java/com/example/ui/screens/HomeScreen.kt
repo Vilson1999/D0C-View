@@ -1003,7 +1003,7 @@ private fun AllDocTypesHiddenState(
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "PDF, DOC, XML, PPT, and TEXT are currently turned off in Settings.",
+                text = "PDF, DOC, EXCEL, PPT, and TEXT are currently turned off in Settings.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

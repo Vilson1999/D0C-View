@@ -16,6 +16,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -55,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,6 +67,9 @@ import com.example.BuildConfig
 import com.example.R
 import com.example.model.AppSettings
 import com.example.model.DocType
+import com.example.model.OfficeMarginOption
+import com.example.model.OfficePageSizeOption
+import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.ThemeMode
 import com.example.model.formatFileSize
@@ -71,10 +77,10 @@ import com.example.ui.components.AppIcons
 import com.example.ui.components.DocViewerAppIcon
 import com.example.ui.components.docTypeIcon
 import com.example.ui.theme.DocPillColor
+import com.example.ui.theme.ExcelPillColor
 import com.example.ui.theme.PdfPillColor
 import com.example.ui.theme.PptPillColor
 import com.example.ui.theme.TextPillColor
-import com.example.ui.theme.XmlPillColor
 import kotlin.math.roundToInt
 
 @Composable
@@ -88,12 +94,35 @@ fun SettingsScreen(
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
-    onSetDefaultPageViewMode: (PageViewMode) -> Unit,
-    onSetXmlSyntaxHighlight: (Boolean) -> Unit,
-    onSetShowLineNumbers: (Boolean) -> Unit,
-    onSetReaderFontSizeSp: (Float) -> Unit,
     onSetAutoHideReaderUi: (Boolean) -> Unit,
     onSetAutoCleanRenderCache: (Boolean) -> Unit,
+    // PDF folder
+    onSetPdfPageViewMode: (PageViewMode) -> Unit,
+    onSetPdfInvertInDarkMode: (Boolean) -> Unit,
+    onSetPdfDoubleTapZoom: (Float) -> Unit,
+    // DOCX folder
+    onSetDocxRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetDocxPageSize: (OfficePageSizeOption) -> Unit,
+    onSetDocxMargin: (OfficeMarginOption) -> Unit,
+    onSetDocxFontSizeSp: (Float) -> Unit,
+    // XLSX folder
+    onSetXlsxRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetXlsxPageSize: (OfficePageSizeOption) -> Unit,
+    onSetXlsxMargin: (OfficeMarginOption) -> Unit,
+    onSetShowExcelGridlines: (Boolean) -> Unit,
+    onSetXlsxFontSizeSp: (Float) -> Unit,
+    // PPT folder
+    onSetPptRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetPptPageSize: (OfficePageSizeOption) -> Unit,
+    onSetPptMargin: (OfficeMarginOption) -> Unit,
+    onSetShowPptSpeakerNotes: (Boolean) -> Unit,
+    // TEXT folder
+    onSetTextPageViewMode: (PageViewMode) -> Unit,
+    onSetShowLineNumbers: (Boolean) -> Unit,
+    onSetTextWordWrap: (Boolean) -> Unit,
+    onSetTextMonospace: (Boolean) -> Unit,
+    onSetTextFontSizeSp: (Float) -> Unit,
+    // Storage & Cache actions
     onRequestStorageAccess: () -> Unit,
     onPickCustomFolder: () -> Unit,
     onRemoveCustomFolder: (String) -> Unit,
@@ -103,10 +132,14 @@ fun SettingsScreen(
 ) {
     BackHandler { onBack() }
 
+    var pdfExpanded by remember { mutableStateOf(false) }
+    var docxExpanded by remember { mutableStateOf(false) }
+    var xlsxExpanded by remember { mutableStateOf(false) }
+    var pptExpanded by remember { mutableStateOf(false) }
+    var textExpanded by remember { mutableStateOf(false) }
     var visibilityExpanded by remember { mutableStateOf(true) }
     var appearanceExpanded by remember { mutableStateOf(false) }
     var storageExpanded by remember { mutableStateOf(false) }
-    var readerExpanded by remember { mutableStateOf(false) }
     var compressionExpanded by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -155,11 +188,266 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            item(key = "folder_pdf") {
+                SettingsFolder(
+                    title = "PDF",
+                    subtitle = "${settings.pdfPageViewMode.label.removeSuffix(" View")} • Zoom ${settings.pdfDoubleTapZoom.roundToInt()}x" +
+                        if (settings.pdfInvertInDarkMode) " • Dark Invert" else "",
+                    itemCount = 3,
+                    folderColor = PdfPillColor,
+                    icon = docTypeIcon(DocType.PDF),
+                    expanded = pdfExpanded,
+                    onToggle = { pdfExpanded = !pdfExpanded },
+                    testTag = "folder_pdf"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "PDF Page Layout",
+                            options = PageViewMode.entries,
+                            selected = settings.pdfPageViewMode,
+                            labelFor = { it.label.removeSuffix(" View") },
+                            onSelect = onSetPdfPageViewMode,
+                            tagPrefix = "pdf_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Double-Tap Zoom Level",
+                            options = listOf(2f, 3f),
+                            selected = if (settings.pdfDoubleTapZoom >= 2.5f) 3f else 2f,
+                            labelFor = { "${it.roundToInt()}x Zoom" },
+                            onSelect = onSetPdfDoubleTapZoom,
+                            tagPrefix = "pdf_zoom"
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Night Filter in Dark Mode",
+                            subtitle = "Invert bright white PDF pages for comfortable night reading",
+                            checked = settings.pdfInvertInDarkMode,
+                            onCheckedChange = onSetPdfInvertInDarkMode,
+                            modifier = Modifier.testTag("toggle_pdf_dark_invert")
+                        )
+                    }
+                }
+            }
+
+            item(key = "folder_docx") {
+                SettingsFolder(
+                    title = "DOCX",
+                    subtitle = "${settings.docxRenderFormat.shortLabel} • ${settings.docxPageSize.shortLabel} • ${settings.docxMargin.shortLabel} • ${settings.docxFontSizeSp.roundToInt()}sp",
+                    itemCount = 4,
+                    folderColor = DocPillColor,
+                    icon = docTypeIcon(DocType.DOC),
+                    expanded = docxExpanded,
+                    onToggle = { docxExpanded = !docxExpanded },
+                    testTag = "folder_docx"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "Show DOCX As",
+                            options = OfficeRenderFormat.entries,
+                            selected = settings.docxRenderFormat,
+                            labelFor = { it.label },
+                            onSelect = onSetDocxRenderFormat,
+                            tagPrefix = "docx_format"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Page Size",
+                            options = OfficePageSizeOption.entries,
+                            selected = settings.docxPageSize,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetDocxPageSize,
+                            tagPrefix = "docx_size"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Page Margins",
+                            options = OfficeMarginOption.entries,
+                            selected = settings.docxMargin,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetDocxMargin,
+                            tagPrefix = "docx_margin"
+                        )
+                        HorizontalDivider()
+                        FontSizeSliderRow(
+                            title = "DOCX Text Size",
+                            valueSp = settings.docxFontSizeSp,
+                            valueRange = 11f..24f,
+                            onValueChange = onSetDocxFontSizeSp
+                        )
+                    }
+                }
+            }
+
+            item(key = "folder_xlsx") {
+                SettingsFolder(
+                    title = "XLSX",
+                    subtitle = "${settings.xlsxRenderFormat.shortLabel} • ${settings.xlsxPageSize.shortLabel} • ${settings.xlsxMargin.shortLabel}" +
+                        if (settings.showExcelGridlines) " • Grid" else "",
+                    itemCount = 5,
+                    folderColor = ExcelPillColor,
+                    icon = docTypeIcon(DocType.EXCEL),
+                    expanded = xlsxExpanded,
+                    onToggle = { xlsxExpanded = !xlsxExpanded },
+                    testTag = "folder_xlsx"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "Show XLSX As",
+                            options = OfficeRenderFormat.entries,
+                            selected = settings.xlsxRenderFormat,
+                            labelFor = { it.label },
+                            onSelect = onSetXlsxRenderFormat,
+                            tagPrefix = "xlsx_format"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Sheet Page Size",
+                            options = OfficePageSizeOption.entries,
+                            selected = settings.xlsxPageSize,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetXlsxPageSize,
+                            tagPrefix = "xlsx_size"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Sheet Margins",
+                            options = OfficeMarginOption.entries,
+                            selected = settings.xlsxMargin,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetXlsxMargin,
+                            tagPrefix = "xlsx_margin"
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Gridlines & Headers",
+                            subtitle = "Show column letters (A, B, C), row numbers, and cell borders",
+                            checked = settings.showExcelGridlines,
+                            onCheckedChange = onSetShowExcelGridlines,
+                            modifier = Modifier.testTag("toggle_xlsx_gridlines")
+                        )
+                        HorizontalDivider()
+                        FontSizeSliderRow(
+                            title = "XLSX Cell Text Size",
+                            valueSp = settings.xlsxFontSizeSp,
+                            valueRange = 11f..22f,
+                            onValueChange = onSetXlsxFontSizeSp
+                        )
+                    }
+                }
+            }
+
+            item(key = "folder_ppt") {
+                SettingsFolder(
+                    title = "PPT",
+                    subtitle = "${settings.pptRenderFormat.shortLabel} • ${settings.pptPageSize.shortLabel} • ${settings.pptMargin.shortLabel}",
+                    itemCount = 4,
+                    folderColor = PptPillColor,
+                    icon = docTypeIcon(DocType.PPT),
+                    expanded = pptExpanded,
+                    onToggle = { pptExpanded = !pptExpanded },
+                    testTag = "folder_ppt"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "Show PPT As",
+                            options = OfficeRenderFormat.entries,
+                            selected = settings.pptRenderFormat,
+                            labelFor = { it.label },
+                            onSelect = onSetPptRenderFormat,
+                            tagPrefix = "ppt_format"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Slide Page Size",
+                            options = OfficePageSizeOption.entries,
+                            selected = settings.pptPageSize,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetPptPageSize,
+                            tagPrefix = "ppt_size"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Slide Margins",
+                            options = OfficeMarginOption.entries,
+                            selected = settings.pptMargin,
+                            labelFor = { it.shortLabel },
+                            onSelect = onSetPptMargin,
+                            tagPrefix = "ppt_margin"
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Show Speaker Notes",
+                            subtitle = "Include slide presenter notes in PDF and Original slide view",
+                            checked = settings.showPptSpeakerNotes,
+                            onCheckedChange = onSetShowPptSpeakerNotes,
+                            modifier = Modifier.testTag("toggle_ppt_notes")
+                        )
+                    }
+                }
+            }
+
+            item(key = "folder_text") {
+                SettingsFolder(
+                    title = "TEXT",
+                    subtitle = "${settings.textPageViewMode.label.removeSuffix(" View")} • ${settings.textFontSizeSp.roundToInt()}sp" +
+                        if (settings.showLineNumbers) " • Line #" else "",
+                    itemCount = 5,
+                    folderColor = TextPillColor,
+                    icon = docTypeIcon(DocType.TEXT),
+                    expanded = textExpanded,
+                    onToggle = { textExpanded = !textExpanded },
+                    testTag = "folder_text"
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "TEXT Page Layout",
+                            options = PageViewMode.entries,
+                            selected = settings.textPageViewMode,
+                            labelFor = { it.label.removeSuffix(" View") },
+                            onSelect = onSetTextPageViewMode,
+                            tagPrefix = "text_view_mode"
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Show Line Numbers",
+                            subtitle = "Display line numbers in TEXT viewer",
+                            checked = settings.showLineNumbers,
+                            onCheckedChange = onSetShowLineNumbers,
+                            modifier = Modifier.testTag("toggle_text_line_numbers")
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Word Wrap",
+                            subtitle = "Wrap long lines automatically instead of horizontal scrolling",
+                            checked = settings.textWordWrap,
+                            onCheckedChange = onSetTextWordWrap,
+                            modifier = Modifier.testTag("toggle_text_word_wrap")
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Monospace Font",
+                            subtitle = "Use fixed-width JetBrains Mono typeface for code and logs",
+                            checked = settings.textMonospace,
+                            onCheckedChange = onSetTextMonospace,
+                            modifier = Modifier.testTag("toggle_text_monospace")
+                        )
+                        HorizontalDivider()
+                        FontSizeSliderRow(
+                            title = "TEXT Font Size",
+                            valueSp = settings.textFontSizeSp,
+                            valueRange = 11f..24f,
+                            onValueChange = onSetTextFontSizeSp
+                        )
+                    }
+                }
+            }
+
             item(key = "folder_doc_visibility") {
                 val visibleCount = settings.visibleDocTypes.size
                 SettingsFolder(
                     title = "Home Screen Documents",
-                    subtitle = "Show or hide PDF, DOC, XML, PPT, TEXT ($visibleCount/${DocType.entries.size} shown)",
+                    subtitle = "Show or hide PDF, DOC, EXCEL, PPT, TEXT ($visibleCount/${DocType.entries.size} shown)",
                     itemCount = DocType.entries.size,
                     folderColor = PdfPillColor,
                     expanded = visibilityExpanded,
@@ -184,21 +472,30 @@ fun SettingsScreen(
 
             item(key = "folder_appearance") {
                 SettingsFolder(
-                    title = "Appearance & Display",
-                    subtitle = "Theme mode (System, Light, Dark)",
-                    itemCount = 1,
+                    title = "Appearance & Reader UI",
+                    subtitle = "Theme mode & auto-hide controls",
+                    itemCount = 2,
                     folderColor = DocPillColor,
                     expanded = appearanceExpanded,
                     onToggle = { appearanceExpanded = !appearanceExpanded },
                     testTag = "folder_appearance"
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OptionChipsRow(
+                        OptionChipsFlowRow(
                             title = "Theme",
                             options = ThemeMode.entries,
                             selected = settings.themeMode,
                             labelFor = { it.label.removeSuffix(" Mode") },
-                            onSelect = onSetThemeMode
+                            onSelect = onSetThemeMode,
+                            tagPrefix = "theme_mode"
+                        )
+                        HorizontalDivider()
+                        SettingsSwitchRow(
+                            title = "Auto-hide reader UI",
+                            subtitle = "Hide top bar & page pill after 3s; tap screen to show or hide",
+                            checked = settings.autoHideReaderUi,
+                            onCheckedChange = onSetAutoHideReaderUi,
+                            modifier = Modifier.testTag("toggle_auto_hide_reader_ui")
                         )
                     }
                 }
@@ -312,69 +609,6 @@ fun SettingsScreen(
                 }
             }
 
-            item(key = "folder_reader") {
-                SettingsFolder(
-                    title = "Reader & Formats",
-                    subtitle = "Page view mode, auto-hide UI, font size, XML syntax",
-                    itemCount = 5,
-                    folderColor = XmlPillColor,
-                    expanded = readerExpanded,
-                    onToggle = { readerExpanded = !readerExpanded },
-                    testTag = "folder_reader"
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OptionChipsRow(
-                            title = "Default Page View Mode",
-                            options = PageViewMode.entries,
-                            selected = settings.defaultPageViewMode,
-                            labelFor = { it.label.removeSuffix(" View") },
-                            onSelect = onSetDefaultPageViewMode
-                        )
-                        HorizontalDivider()
-                        SettingsSwitchRow(
-                            title = "Auto-hide reader UI",
-                            subtitle = "Hide top bar & page pill after 3s; tap screen to show or hide",
-                            checked = settings.autoHideReaderUi,
-                            onCheckedChange = onSetAutoHideReaderUi,
-                            modifier = Modifier.testTag("toggle_auto_hide_reader_ui")
-                        )
-                        HorizontalDivider()
-                        Column {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(text = "Reader Text Size", style = MaterialTheme.typography.titleSmall)
-                                Text(
-                                    text = "${settings.readerFontSizeSp.roundToInt()} sp",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Slider(
-                                value = settings.readerFontSizeSp,
-                                onValueChange = onSetReaderFontSizeSp,
-                                valueRange = 11f..24f
-                            )
-                        }
-                        HorizontalDivider()
-                        SettingsSwitchRow(
-                            title = "XML Syntax Highlighting",
-                            subtitle = "Color-code tags, attributes, and values",
-                            checked = settings.xmlSyntaxHighlight,
-                            onCheckedChange = onSetXmlSyntaxHighlight
-                        )
-                        HorizontalDivider()
-                        SettingsSwitchRow(
-                            title = "Show Line Numbers",
-                            subtitle = "Display line numbers in XML and TEXT viewer",
-                            checked = settings.showLineNumbers,
-                            onCheckedChange = onSetShowLineNumbers
-                        )
-                    }
-                }
-            }
-
             item(key = "folder_compression") {
                 SettingsFolder(
                     title = "Cache & Optimization",
@@ -469,25 +703,55 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun <T> OptionChipsRow(
+private fun FontSizeSliderRow(
+    title: String,
+    valueSp: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleSmall)
+            Text(
+                text = "${valueSp.roundToInt()} sp",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Slider(
+            value = valueSp,
+            onValueChange = onValueChange,
+            valueRange = valueRange
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> OptionChipsFlowRow(
     title: String,
     options: List<T>,
     selected: T,
     labelFor: (T) -> String,
-    onSelect: (T) -> Unit
+    onSelect: (T) -> Unit,
+    tagPrefix: String
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(text = title, style = MaterialTheme.typography.titleSmall)
-        Row(
+        FlowRow(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
-            options.forEach { option ->
+            options.forEachIndexed { idx, option ->
                 FilterChip(
                     selected = selected == option,
                     onClick = { onSelect(option) },
                     label = { Text(labelFor(option)) },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.testTag("${tagPrefix}_$idx")
                 )
             }
         }
@@ -503,6 +767,7 @@ private fun SettingsFolder(
     expanded: Boolean,
     onToggle: () -> Unit,
     testTag: String,
+    icon: ImageVector = AppIcons.Folder,
     content: @Composable () -> Unit
 ) {
     val borderColor by animateColorAsState(
@@ -549,7 +814,7 @@ private fun SettingsFolder(
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
-                            imageVector = AppIcons.Folder,
+                            imageVector = icon,
                             contentDescription = null,
                             tint = folderColor,
                             modifier = Modifier.size(22.dp)

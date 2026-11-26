@@ -5,33 +5,51 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
-import android.util.Xml
 import com.example.DocViewApplication
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import com.example.model.OfficeMarginOption
+import com.example.model.OfficePageSizeOption
+import com.example.model.OfficeRenderFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.xmlpull.v1.XmlPullParser
-import java.io.BufferedInputStream
-import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.Charset
-import java.util.zip.ZipInputStream
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface ParsedDocument {
-    data class Pdf(val session: PdfDocumentSession) : ParsedDocument
-    data class Word(val pages: List<WordPage>) : ParsedDocument
-    data class Slides(val slides: List<SlidePage>) : ParsedDocument
-    data class CodeXml(val formattedXml: String, val pages: List<List<String>>) : ParsedDocument
+    data class Pdf(
+        val session: PdfDocumentSession,
+        val summary: OfficeContentSummary? = null
+    ) : ParsedDocument
+
+    data class Word(
+        val pages: List<WordPage>,
+        val layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_WORD_A4,
+        val summary: OfficeContentSummary? = null
+    ) : ParsedDocument
+
+    data class Slides(
+        val slides: List<SlidePage>,
+        val layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_SLIDE_16_9,
+        val summary: OfficeContentSummary? = null
+    ) : ParsedDocument
+
+    data class Spreadsheet(
+        val workbook: ExcelWorkbook,
+        val layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE,
+        val summary: OfficeContentSummary? = null
+    ) : ParsedDocument
+
     data class PlainText(val fullText: String, val pages: List<List<String>>) : ParsedDocument
     data class Error(val message: String) : ParsedDocument
 }
@@ -101,10 +119,39 @@ class DocumentParser(private val context: Context) {
 
     private val cacheManager = DocumentCacheManager(context.applicationContext)
 
+    companion object {
+        private val summaryMemoryCache = ConcurrentHashMap<String, OfficeContentSummary>()
+    }
+
     suspend fun parse(
         doc: DocumentItem,
-        settings: AppSettings = AppSettings()
+        settings: AppSettings = AppSettings(),
+        renderFormatOverride: OfficeRenderFormat? = null,
+        pageSizeOverride: OfficePageSizeOption? = null,
+        marginOverride: OfficeMarginOption? = null
     ): ParsedDocument = withContext(Dispatchers.IO) {
+        val defaultFormat = when (doc.type) {
+            DocType.DOC -> settings.docxRenderFormat
+            DocType.EXCEL -> settings.xlsxRenderFormat
+            DocType.PPT -> settings.pptRenderFormat
+            else -> settings.officeRenderFormat
+        }
+        val defaultPageSize = when (doc.type) {
+            DocType.DOC -> settings.docxPageSize
+            DocType.EXCEL -> settings.xlsxPageSize
+            DocType.PPT -> settings.pptPageSize
+            else -> settings.officePageSize
+        }
+        val defaultMargin = when (doc.type) {
+            DocType.DOC -> settings.docxMargin
+            DocType.EXCEL -> settings.xlsxMargin
+            DocType.PPT -> settings.pptMargin
+            else -> settings.officeMargin
+        }
+        val renderFormat = renderFormatOverride ?: defaultFormat
+        val pageSizeOption = pageSizeOverride ?: defaultPageSize
+        val marginOption = marginOverride ?: defaultMargin
+
         if (doc.type == DocType.TEXT) {
             cacheManager.getMemoryParsed(doc)?.let { return@withContext it }
             cacheManager.loadDiskParsed(doc)?.let { return@withContext it }
@@ -114,9 +161,9 @@ class DocumentParser(private val context: Context) {
             runCatching {
                 val parsed = when (doc.type) {
                     DocType.PDF -> parsePdf(doc)
-                    DocType.DOC -> parseWordAsPdf(doc, settings)
-                    DocType.PPT -> parseSlidesAsPdf(doc)
-                    DocType.XML -> parseXmlAsPdf(doc, settings)
+                    DocType.DOC -> parseWordDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
+                    DocType.PPT -> parseSlidesDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
+                    DocType.EXCEL -> parseExcelDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
                     DocType.TEXT -> parsePlainText(doc)
                 }
                 if (parsed is ParsedDocument.PlainText) {
@@ -154,19 +201,27 @@ class DocumentParser(private val context: Context) {
     private fun parsePdf(doc: DocumentItem): ParsedDocument {
         val pfd = openParcelFileDescriptor(doc)
             ?: return ParsedDocument.Error("Cannot access PDF file offline.")
-        return openPdfFromPfd(pfd, DocumentCacheManager.docKey(doc))
+        return openPdfFromPfd(pfd, DocumentCacheManager.docKey(doc), summary = null)
     }
 
-    private fun openConvertedPdf(pdfFile: File, sessionKey: String): ParsedDocument {
+    private fun openConvertedPdf(
+        pdfFile: File,
+        sessionKey: String,
+        summary: OfficeContentSummary?
+    ): ParsedDocument {
         val pfd = runCatching {
             ParcelFileDescriptor.open(pdfFile, ParcelFileDescriptor.MODE_READ_ONLY)
         }.getOrElse { err ->
             return ParsedDocument.Error("Cannot open rendered PDF: ${err.localizedMessage ?: "I/O error"}")
         }
-        return openPdfFromPfd(pfd, sessionKey)
+        return openPdfFromPfd(pfd, sessionKey, summary)
     }
 
-    private fun openPdfFromPfd(pfd: ParcelFileDescriptor, sessionKey: String): ParsedDocument {
+    private fun openPdfFromPfd(
+        pfd: ParcelFileDescriptor,
+        sessionKey: String,
+        summary: OfficeContentSummary?
+    ): ParsedDocument {
         return runCatching {
             val renderer = PdfRenderer(pfd)
             if (renderer.pageCount == 0) {
@@ -175,12 +230,13 @@ class DocumentParser(private val context: Context) {
                 ParsedDocument.Error("This PDF document has no pages.")
             } else {
                 ParsedDocument.Pdf(
-                    PdfDocumentSession(
+                    session = PdfDocumentSession(
                         docKey = sessionKey,
                         pfd = pfd,
                         renderer = renderer,
                         cacheManager = cacheManager
-                    )
+                    ),
+                    summary = summary?.copy(unitCount = renderer.pageCount)
                 )
             }
         }.getOrElse { err ->
@@ -192,17 +248,6 @@ class DocumentParser(private val context: Context) {
     private fun isZipArchive(bytes: ByteArray): Boolean = bytes.size >= 4 &&
         bytes[0] == 0x50.toByte() && bytes[1] == 0x4B.toByte() &&
         bytes[2] == 0x03.toByte() && bytes[3] == 0x04.toByte()
-
-    private fun forEachZipEntry(bytes: ByteArray, onEntry: (name: String, readBytes: () -> ByteArray) -> Boolean) {
-        ZipInputStream(BufferedInputStream(ByteArrayInputStream(bytes))).use { zis ->
-            var entry = zis.nextEntry
-            while (entry != null) {
-                val shouldContinue = onEntry(entry.name) { zis.readBytes() }
-                if (!shouldContinue) break
-                entry = zis.nextEntry
-            }
-        }
-    }
 
     private fun readBytesBounded(doc: DocumentItem, maxBytes: Int = 24 * 1024 * 1024): ByteArray? {
         val stream = openInputStream(doc) ?: return null
@@ -223,42 +268,168 @@ class DocumentParser(private val context: Context) {
         }
     }
 
-    private fun parseWordAsPdf(doc: DocumentItem, settings: AppSettings): ParsedDocument {
-        val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
-        val variantTag = "doc_v2_fs${fontSizeKey}"
+    private fun summaryCacheKey(doc: DocumentItem, sizeOpt: OfficePageSizeOption, marginOpt: OfficeMarginOption): String =
+        "${DocumentCacheManager.docKey(doc)}_${sizeOpt.name}_${marginOpt.name}"
+
+    private fun parseWordDocument(
+        doc: DocumentItem,
+        settings: AppSettings,
+        renderFormat: OfficeRenderFormat,
+        pageSizeOption: OfficePageSizeOption,
+        marginOption: OfficeMarginOption
+    ): ParsedDocument {
+        val fontSizeKey = settings.docxFontSizeSp.toInt().coerceIn(11, 24)
+        val variantTag = "doc_v3_fs${fontSizeKey}_sz${pageSizeOption.name}_mg${marginOption.name}"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
-            cachedPdf.setLastModified(System.currentTimeMillis())
-            return openConvertedPdf(cachedPdf, sessionKey)
+        val sumKey = summaryCacheKey(doc, pageSizeOption, marginOption)
+
+        if (renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
+            val cachedSummary = summaryMemoryCache[sumKey]
+            if (cachedSummary != null) {
+                cachedPdf.setLastModified(System.currentTimeMillis())
+                return openConvertedPdf(cachedPdf, sessionKey, cachedSummary)
+            }
         }
 
         val bytes = readBytesBounded(doc)
             ?: return ParsedDocument.Error("Cannot read document file.")
 
-        val finalBlocks = if (bytes.isEmpty()) {
-            listOf(WordBlock("(Empty document)"))
+        val docData = if (bytes.isEmpty()) {
+            WordDocumentData(listOf(WordBlock("(Empty document)")))
         } else {
-            val blocks = when {
-                isZipArchive(bytes) || doc.extension == "docx" -> OoxmlDocumentParser.parseDocxBytes(bytes)
-                doc.extension == "rtf" || isRtfHeader(bytes) -> parseRtfBytes(bytes)
-                else -> parseLegacyDocBytes(bytes)
+            val parsed = when {
+                isZipArchive(bytes) || doc.extension == "docx" -> OoxmlDocumentParser.parseDocxWithLayout(bytes)
+                doc.extension == "rtf" || isRtfHeader(bytes) -> parseRtfWithLayout(bytes)
+                else -> WordDocumentData(parseLegacyDocBytes(bytes), OfficeLayoutResolver.DEFAULT_WORD_A4)
             }
-            blocks.ifEmpty {
-                listOf(WordBlock("No readable content found in ${doc.name}."))
+            if (parsed.blocks.isEmpty()) {
+                parsed.copy(blocks = listOf(WordBlock("No readable content found in ${doc.name}.")))
+            } else {
+                parsed
             }
         }
 
+        val resolvedLayout = OfficeLayoutResolver.resolve(
+            detected = docData.layout,
+            sizeOverride = pageSizeOption,
+            marginOverride = marginOption,
+            isSpreadsheet = false
+        )
+        val pages = paginateWordBlocks(docData.blocks, resolvedLayout, settings.docxFontSizeSp)
+        val summary = buildWordSummary(docData.blocks, docData.layout, resolvedLayout, pages.size)
+        summaryMemoryCache[sumKey] = summary
+
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            return ParsedDocument.Word(pages = pages, layout = resolvedLayout, summary = summary)
+        }
+
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey, summary)
+        }
+
         val ok = OfficeAndXmlToPdfConverter.convertWordToPdf(
-            blocks = finalBlocks,
-            baseFontSizeSp = settings.readerFontSizeSp,
-            outputFile = cachedPdf
+            blocks = docData.blocks,
+            baseFontSizeSp = settings.docxFontSizeSp,
+            outputFile = cachedPdf,
+            layout = resolvedLayout
         )
         return if (ok) {
-            openConvertedPdf(cachedPdf, sessionKey)
+            openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
-            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
+            ParsedDocument.Word(pages = pages, layout = resolvedLayout, summary = summary)
         }
+    }
+
+    private fun buildWordSummary(
+        blocks: List<WordBlock>,
+        detectedLayout: OfficePageLayout,
+        effectiveLayout: OfficePageLayout,
+        pageCount: Int
+    ): OfficeContentSummary {
+        var texts = 0
+        var images = 0
+        var charts = 0
+        var tables = 0
+        for (b in blocks) {
+            when {
+                b.image != null -> images++
+                b.chart != null -> charts++
+                b.tableRows.isNotEmpty() -> {
+                    tables++
+                    b.tableRows.forEach { r ->
+                        r.cells.forEach { c ->
+                            c.paragraphs.forEach { p ->
+                                if (p.image != null) images++
+                                else if (p.text.isNotBlank()) texts++
+                            }
+                        }
+                    }
+                }
+                b.text.isNotBlank() -> texts++
+            }
+        }
+        return OfficeContentSummary(
+            detectedPageSize = detectedLayout.detectedPaperName,
+            detectedMargin = detectedLayout.detectedMarginName,
+            effectivePageSize = effectiveLayout.detectedPaperName,
+            effectiveMargin = effectiveLayout.detectedMarginName,
+            isLandscape = effectiveLayout.isLandscape,
+            widthPt = effectiveLayout.widthPt,
+            heightPt = effectiveLayout.heightPt,
+            textCount = texts,
+            imageCount = images,
+            chartCount = charts,
+            tableCount = tables,
+            unitCount = pageCount.coerceAtLeast(1),
+            unitLabel = "Pages"
+        )
+    }
+
+    private fun paginateWordBlocks(
+        blocks: List<WordBlock>,
+        layout: OfficePageLayout,
+        baseFontSizeSp: Float
+    ): List<WordPage> {
+        val availHeightPt = (layout.heightPt - layout.marginTopPt - layout.marginBottomPt).coerceAtLeast(240f)
+        val availWidthPt = (layout.widthPt - layout.marginLeftPt - layout.marginRightPt).coerceAtLeast(180f)
+        val pages = mutableListOf<WordPage>()
+        var current = mutableListOf<WordBlock>()
+        var usedHeight = 0f
+
+        for (block in blocks) {
+            if (block.isPageBreak) {
+                if (current.isNotEmpty()) {
+                    pages.add(WordPage(pages.size + 1, current.toList()))
+                    current = mutableListOf()
+                    usedHeight = 0f
+                }
+                continue
+            }
+            val estHeight = when {
+                block.image != null -> (block.image.heightPt ?: 180f).coerceIn(40f, availHeightPt * 0.7f) + 12f
+                block.chart != null -> 240f
+                block.tableRows.isNotEmpty() -> (block.tableRows.size * 26f).coerceIn(40f, availHeightPt * 0.85f)
+                else -> {
+                    val fontSize = (block.fontSizePt ?: baseFontSizeSp * 0.85f).coerceIn(9f, 28f)
+                    val charsPerLine = (availWidthPt / (fontSize * 0.52f)).toInt().coerceAtLeast(24)
+                    val lines = ((block.text.length / charsPerLine) + 1).coerceAtLeast(1)
+                    lines * fontSize * 1.4f + 8f
+                }
+            }
+            if (usedHeight + estHeight > availHeightPt && current.isNotEmpty()) {
+                pages.add(WordPage(pages.size + 1, current.toList()))
+                current = mutableListOf()
+                usedHeight = 0f
+            }
+            current.add(block)
+            usedHeight += estHeight
+        }
+        if (current.isNotEmpty() || pages.isEmpty()) {
+            pages.add(WordPage(pages.size + 1, current.ifEmpty { listOf(WordBlock("(Empty document)")) }))
+        }
+        return pages
     }
 
     private fun isRtfHeader(bytes: ByteArray): Boolean {
@@ -267,8 +438,27 @@ class DocumentParser(private val context: Context) {
         return head.trimStart().startsWith("{\\rtf")
     }
 
-    private fun parseRtfBytes(bytes: ByteArray): List<WordBlock> {
+    private fun parseRtfWithLayout(bytes: ByteArray): WordDocumentData {
         val raw = String(bytes, Charsets.ISO_8859_1)
+        val header = raw.take(4096)
+        val paperW = Regex("""\\paperw(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 595f
+        val paperH = Regex("""\\paperh(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 842f
+        val margL = Regex("""\\margl(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 54f
+        val margR = Regex("""\\margr(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 54f
+        val margT = Regex("""\\margt(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 54f
+        val margB = Regex("""\\margb(\d+)""").find(header)?.groupValues?.get(1)?.toFloatOrNull()?.div(20f) ?: 54f
+        val landscape = if (header.contains("\\landscape") || header.contains("\\lndscpsxn")) true else null
+
+        val layout = OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
+            rawWidthPt = paperW,
+            rawHeightPt = paperH,
+            leftPt = margL,
+            rightPt = margR,
+            topPt = margT,
+            bottomPt = margB,
+            forceLandscape = landscape
+        )
+
         val stripped = raw
             .replace(Regex("""\\par\b\s*"""), "\n")
             .replace(Regex("""\\line\b\s*"""), "\n")
@@ -277,14 +467,15 @@ class DocumentParser(private val context: Context) {
             .replace(Regex("""\\[a-zA-Z]+-?\d*\s?"""), "")
             .replace("{", "")
             .replace("}", "")
-        return stripped.lines()
+        val blocks = stripped.lines()
             .map { it.trim() }
             .filter { it.isNotEmpty() && !it.startsWith("Times New Roman") && !it.startsWith("Calibri") && !it.startsWith("Arial") }
             .mapIndexed { idx, line -> WordBlock(text = line, isHeading = idx == 0 && line.length < 80) }
+
+        return WordDocumentData(blocks = blocks, layout = layout)
     }
 
     private fun parseLegacyDocBytes(bytes: ByteArray): List<WordBlock> {
-        // Extract clean Unicode UTF-16LE and ASCII readable text segments from OLE2 .doc binary
         val blocks = mutableListOf<WordBlock>()
         val extracted = extractReadableRunsFromBinary(bytes)
         extracted.lines()
@@ -297,112 +488,130 @@ class DocumentParser(private val context: Context) {
         return blocks
     }
 
-    private fun parseSlidesAsPdf(doc: DocumentItem): ParsedDocument {
-        val variantTag = "ppt_v1"
+    private fun parseSlidesDocument(
+        doc: DocumentItem,
+        settings: AppSettings,
+        renderFormat: OfficeRenderFormat,
+        pageSizeOption: OfficePageSizeOption,
+        marginOption: OfficeMarginOption
+    ): ParsedDocument {
+        val notesFlag = if (settings.showPptSpeakerNotes) 1 else 0
+        val variantTag = "ppt_v2_n${notesFlag}_sz${pageSizeOption.name}_mg${marginOption.name}"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
-            cachedPdf.setLastModified(System.currentTimeMillis())
-            return openConvertedPdf(cachedPdf, sessionKey)
+        val sumKey = summaryCacheKey(doc, pageSizeOption, marginOption)
+
+        if (renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
+            val cachedSummary = summaryMemoryCache[sumKey]
+            if (cachedSummary != null) {
+                cachedPdf.setLastModified(System.currentTimeMillis())
+                return openConvertedPdf(cachedPdf, sessionKey, cachedSummary)
+            }
         }
 
         val bytes = readBytesBounded(doc)
             ?: return ParsedDocument.Error("Cannot read presentation file.")
 
-        val finalSlides = if (bytes.isEmpty()) {
-            listOf(SlidePage(1, doc.name, listOf("Empty presentation")))
+        val deck = if (bytes.isEmpty()) {
+            PresentationDeck(
+                slides = listOf(SlidePage(1, doc.name, listOf("Empty presentation"))),
+                layout = OfficeLayoutResolver.DEFAULT_SLIDE_16_9
+            )
         } else {
-            val slides = if (isZipArchive(bytes) || doc.extension == "pptx") {
-                parsePptxBytes(bytes)
+            val parsed = if (isZipArchive(bytes) || doc.extension in setOf("pptx", "pptm", "potx")) {
+                OoxmlPresentationParser.parsePptxBytes(bytes)
             } else {
-                parseLegacyPptBytes(bytes)
+                PresentationDeck(
+                    slides = parseLegacyPptBytes(bytes),
+                    layout = OfficeLayoutResolver.DEFAULT_SLIDE_16_9
+                )
             }
-            slides.ifEmpty {
-                listOf(SlidePage(1, doc.name, listOf("No readable slide content found.")))
+            if (parsed.slides.isEmpty()) {
+                parsed.copy(
+                    slides = listOf(SlidePage(1, doc.name, listOf("No readable slide content found.")))
+                )
+            } else {
+                parsed
             }
+        }
+
+        val effectiveSlides = if (settings.showPptSpeakerNotes) {
+            deck.slides
+        } else {
+            deck.slides.map { it.copy(notes = "") }
+        }
+
+        val resolvedLayout = OfficeLayoutResolver.resolve(
+            detected = deck.layout,
+            sizeOverride = pageSizeOption,
+            marginOverride = marginOption,
+            isSpreadsheet = false
+        )
+        val summary = buildSlidesSummary(effectiveSlides, deck.layout, resolvedLayout)
+        summaryMemoryCache[sumKey] = summary
+
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            return ParsedDocument.Slides(slides = effectiveSlides, layout = resolvedLayout, summary = summary)
+        }
+
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey, summary)
         }
 
         val ok = OfficeAndXmlToPdfConverter.convertSlidesToPdf(
-            slides = finalSlides,
-            outputFile = cachedPdf
+            slides = effectiveSlides,
+            outputFile = cachedPdf,
+            layout = resolvedLayout
         )
         return if (ok) {
-            openConvertedPdf(cachedPdf, sessionKey)
+            openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
-            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
+            ParsedDocument.Slides(slides = effectiveSlides, layout = resolvedLayout, summary = summary)
         }
     }
 
-    private fun parsePptxBytes(bytes: ByteArray): List<SlidePage> {
-        val slideXmlMap = sortedMapOf<Int, ByteArray>()
-        val notesXmlMap = sortedMapOf<Int, ByteArray>()
-        val slideRegex = Regex("""ppt/slides/slide(\d+)\.xml""", RegexOption.IGNORE_CASE)
-        val notesRegex = Regex("""ppt/notesSlides/notesSlide(\d+)\.xml""", RegexOption.IGNORE_CASE)
-
-        forEachZipEntry(bytes) { name, read ->
-            slideRegex.matchEntire(name)?.groupValues?.get(1)?.toIntOrNull()?.let { num ->
-                slideXmlMap[num] = read()
-            }
-            notesRegex.matchEntire(name)?.groupValues?.get(1)?.toIntOrNull()?.let { num ->
-                notesXmlMap[num] = read()
-            }
-            true
-        }
-
-        return slideXmlMap.entries.map { (slideNum, xmlBytes) ->
-            val paragraphs = extractDrawingMlParagraphs(xmlBytes)
-            val title = paragraphs.firstOrNull { it.isNotBlank() } ?: "Slide $slideNum"
-            val body = if (paragraphs.size > 1) paragraphs.drop(1) else emptyList()
-            val notes = notesXmlMap[slideNum]?.let { extractDrawingMlParagraphs(it).joinToString("\n") } ?: ""
-            SlidePage(
-                slideNumber = slideNum,
-                title = title,
-                bodyLines = body,
-                notes = notes
-            )
-        }
-    }
-
-    private fun extractDrawingMlParagraphs(xmlBytes: ByteArray): List<String> {
-        val result = mutableListOf<String>()
-        val parser = Xml.newPullParser()
-        parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
-        parser.setInput(ByteArrayInputStream(xmlBytes), "UTF-8")
-
-        var inParagraph = false
-        val currentLine = StringBuilder()
-        var event = parser.eventType
-        while (event != XmlPullParser.END_DOCUMENT) {
-            when (event) {
-                XmlPullParser.START_TAG -> {
-                    when (parser.name) {
-                        "a:p" -> {
-                            inParagraph = true
-                            currentLine.clear()
-                        }
-                        "a:t" -> if (inParagraph) {
-                            currentLine.append(parser.nextText())
-                        }
-                        "a:br" -> if (inParagraph) {
-                            currentLine.append("\n")
-                        }
+    private fun buildSlidesSummary(
+        slides: List<SlidePage>,
+        detectedLayout: OfficePageLayout,
+        effectiveLayout: OfficePageLayout
+    ): OfficeContentSummary {
+        var texts = 0
+        var images = 0
+        var charts = 0
+        var tables = 0
+        for (slide in slides) {
+            if (slide.blocks.isNotEmpty()) {
+                slide.blocks.forEach { b ->
+                    when {
+                        b.image != null -> images++
+                        b.chart != null -> charts++
+                        b.tableRows.isNotEmpty() -> tables++
+                        b.text.isNotBlank() -> texts++
                     }
                 }
-                XmlPullParser.END_TAG -> {
-                    if (parser.name == "a:p" && inParagraph) {
-                        val line = currentLine.toString().trim()
-                        if (line.isNotEmpty()) result.add(line)
-                        inParagraph = false
-                    }
-                }
+            } else {
+                texts += 1 + slide.bodyLines.size
             }
-            event = parser.next()
         }
-        return result
+        return OfficeContentSummary(
+            detectedPageSize = detectedLayout.detectedPaperName,
+            detectedMargin = detectedLayout.detectedMarginName,
+            effectivePageSize = effectiveLayout.detectedPaperName,
+            effectiveMargin = effectiveLayout.detectedMarginName,
+            isLandscape = effectiveLayout.isLandscape,
+            widthPt = effectiveLayout.widthPt,
+            heightPt = effectiveLayout.heightPt,
+            textCount = texts,
+            imageCount = images,
+            chartCount = charts,
+            tableCount = tables,
+            unitCount = slides.size.coerceAtLeast(1),
+            unitLabel = "Slides"
+        )
     }
 
     private fun parseLegacyPptBytes(bytes: ByteArray): List<SlidePage> {
-        // Parse PPT binary TextCharsAtom (0x0FA0) and TextBytesAtom (0x0FA8) records
         val chunks = mutableListOf<String>()
         val buffer = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
         var pos = 0
@@ -440,7 +649,6 @@ class DocumentParser(private val context: Context) {
             }
         }
 
-        // Group consecutive text chunks into slides (~4 blocks per slide when container splits aren't explicit)
         return chunks.chunked(4).mapIndexed { index, group ->
             val lines = group.flatMap { it.lines() }.map { it.trim() }.filter { it.isNotEmpty() }
             SlidePage(
@@ -453,7 +661,6 @@ class DocumentParser(private val context: Context) {
 
     private fun extractReadableRunsFromBinary(bytes: ByteArray): String {
         val sb = StringBuilder()
-        // First scan for UTF-16LE runs (common in Microsoft Office OLE2 binaries)
         var i = 0
         val current = StringBuilder()
         while (i + 1 < bytes.size) {
@@ -473,7 +680,6 @@ class DocumentParser(private val context: Context) {
         }
         if (current.length >= 6) sb.append(current.toString().trim()).append('\n')
 
-        // Fallback ASCII scan if UTF-16LE found very little
         if (sb.length < 32) {
             val ascii = StringBuilder()
             for (b in bytes) {
@@ -492,83 +698,162 @@ class DocumentParser(private val context: Context) {
         return sb.toString()
     }
 
-    private fun parseXmlAsPdf(doc: DocumentItem, settings: AppSettings): ParsedDocument {
-        val fontSizeKey = settings.readerFontSizeSp.toInt().coerceIn(11, 24)
-        val hlFlag = if (settings.xmlSyntaxHighlight) 1 else 0
-        val lnFlag = if (settings.showLineNumbers) 1 else 0
-        val variantTag = "xml_v2_fs${fontSizeKey}_hl${hlFlag}_ln${lnFlag}"
+    private fun parseExcelDocument(
+        doc: DocumentItem,
+        settings: AppSettings,
+        renderFormat: OfficeRenderFormat,
+        pageSizeOption: OfficePageSizeOption,
+        marginOption: OfficeMarginOption
+    ): ParsedDocument {
+        val fontSizeKey = settings.xlsxFontSizeSp.toInt().coerceIn(11, 22)
+        val gridFlag = if (settings.showExcelGridlines) 1 else 0
+        val variantTag = "xlsx_v2_fs${fontSizeKey}_gl${gridFlag}_sz${pageSizeOption.name}_mg${marginOption.name}"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
+        val sumKey = summaryCacheKey(doc, pageSizeOption, marginOption)
+
+        if (renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
+            val cachedSummary = summaryMemoryCache[sumKey]
+            if (cachedSummary != null) {
+                cachedPdf.setLastModified(System.currentTimeMillis())
+                return openConvertedPdf(cachedPdf, sessionKey, cachedSummary)
+            }
+        }
+
+        val bytes = readBytesBounded(doc)
+            ?: return ParsedDocument.Error("Cannot read spreadsheet file.")
+
+        val workbook = if (bytes.isEmpty()) {
+            ExcelWorkbook(listOf(ExcelSheet(name = "Sheet1")))
+        } else if (isZipArchive(bytes) || doc.extension in setOf("xlsx", "xlsm", "xltx")) {
+            OoxmlWorkbookParser.parseXlsxBytes(bytes)
+        } else {
+            parseLegacyXlsBytes(bytes, doc.name)
+        }
+
+        val normalizedWorkbook = if (workbook.sheets.isEmpty()) {
+            ExcelWorkbook(
+                listOf(
+                    ExcelSheet(
+                        name = "Sheet1",
+                        maxColumns = 1,
+                        rows = listOf(
+                            ExcelRow(
+                                rowNumber = 1,
+                                cells = listOf(ExcelCell(colIndex = 0, text = "No readable worksheet cells found in ${doc.name}."))
+                            )
+                        )
+                    )
+                )
+            )
+        } else {
+            workbook
+        }
+
+        val resolvedLayout = OfficeLayoutResolver.resolve(
+            detected = normalizedWorkbook.layout,
+            sizeOverride = pageSizeOption,
+            marginOverride = marginOption,
+            isSpreadsheet = true
+        )
+        val summary = buildExcelSummary(normalizedWorkbook, normalizedWorkbook.layout, resolvedLayout)
+        summaryMemoryCache[sumKey] = summary
+
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            return ParsedDocument.Spreadsheet(
+                workbook = normalizedWorkbook,
+                layout = resolvedLayout,
+                summary = summary
+            )
+        }
+
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
-            return openConvertedPdf(cachedPdf, sessionKey)
+            return openConvertedPdf(cachedPdf, sessionKey, summary)
         }
 
-        val raw = readTextSmart(doc)
-            ?: return ParsedDocument.Error("Cannot read XML file.")
-
-        val officeBlocks = OfficeXmlFormatParser.tryParseOfficeOrMediaXml(raw)
-        val ok = if (!officeBlocks.isNullOrEmpty()) {
-            OfficeAndXmlToPdfConverter.convertWordToPdf(
-                blocks = officeBlocks,
-                baseFontSizeSp = settings.readerFontSizeSp,
-                outputFile = cachedPdf
-            )
-        } else {
-            val formatted = prettyFormatXmlIfNeeded(raw)
-            val embeddedMedia = OfficeXmlFormatParser.extractEmbeddedMediaBlocks(raw)
-            OfficeAndXmlToPdfConverter.convertXmlToPdf(
-                formattedXml = formatted,
-                syntaxHighlight = settings.xmlSyntaxHighlight,
-                showLineNumbers = settings.showLineNumbers,
-                baseFontSizeSp = settings.readerFontSizeSp,
-                outputFile = cachedPdf,
-                embeddedMedia = embeddedMedia
-            )
-        }
+        val ok = OfficeAndXmlToPdfConverter.convertExcelToPdf(
+            workbook = normalizedWorkbook,
+            showGridlines = settings.showExcelGridlines,
+            baseFontSizeSp = settings.xlsxFontSizeSp,
+            outputFile = cachedPdf,
+            pageSizeOption = pageSizeOption,
+            marginOption = marginOption
+        )
         return if (ok) {
-            openConvertedPdf(cachedPdf, sessionKey)
+            openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
-            ParsedDocument.Error("Could not convert ${doc.name} to PDF.")
+            ParsedDocument.Spreadsheet(
+                workbook = normalizedWorkbook,
+                layout = resolvedLayout,
+                summary = summary
+            )
         }
     }
 
-    private fun prettyFormatXmlIfNeeded(raw: String): String {
-        val trimmed = raw.trim()
-        if (trimmed.isEmpty()) return ""
-        // Preserve already well-indented multi-line XML
-        if (trimmed.lines().size > 3) return trimmed
-
-        // Pretty-print single-line/minified XML cleanly
-        val sb = StringBuilder()
-        var indent = 0
-        var i = 0
-        while (i < trimmed.length) {
-            if (trimmed[i] == '<') {
-                val close = trimmed.indexOf('>', i)
-                if (close == -1) {
-                    sb.append(trimmed.substring(i))
-                    break
-                }
-                val tag = trimmed.substring(i, close + 1)
-                val isClosing = tag.startsWith("</")
-                val isSelfClosing = tag.endsWith("/>") || tag.startsWith("<?") || tag.startsWith("<!")
-                if (isClosing && indent > 0) indent--
-                if (sb.isNotEmpty() && !sb.endsWith("\n")) sb.append('\n')
-                sb.append("  ".repeat(indent)).append(tag)
-                if (!isClosing && !isSelfClosing) indent++
-                i = close + 1
-            } else {
-                val nextTag = trimmed.indexOf('<', i)
-                val text = if (nextTag == -1) trimmed.substring(i) else trimmed.substring(i, nextTag)
-                val cleaned = text.trim()
-                if (cleaned.isNotEmpty()) {
-                    sb.append(cleaned)
-                }
-                i = if (nextTag == -1) trimmed.length else nextTag
+    private fun buildExcelSummary(
+        workbook: ExcelWorkbook,
+        detectedLayout: OfficePageLayout,
+        effectiveLayout: OfficePageLayout
+    ): OfficeContentSummary {
+        var nonEmptyCells = 0
+        var images = 0
+        var charts = 0
+        for (sheet in workbook.sheets) {
+            sheet.rows.forEach { r ->
+                nonEmptyCells += r.cells.count { it.text.isNotBlank() }
+            }
+            sheet.embeddedBlocks.forEach { b ->
+                if (b.image != null) images++
+                if (b.chart != null) charts++
             }
         }
-        return sb.toString()
+        return OfficeContentSummary(
+            detectedPageSize = detectedLayout.detectedPaperName,
+            detectedMargin = detectedLayout.detectedMarginName,
+            effectivePageSize = effectiveLayout.detectedPaperName,
+            effectiveMargin = effectiveLayout.detectedMarginName,
+            isLandscape = effectiveLayout.isLandscape,
+            widthPt = effectiveLayout.widthPt,
+            heightPt = effectiveLayout.heightPt,
+            textCount = nonEmptyCells,
+            imageCount = images,
+            chartCount = charts,
+            tableCount = workbook.sheets.size,
+            unitCount = workbook.sheets.size.coerceAtLeast(1),
+            unitLabel = "Sheets"
+        )
+    }
+
+    private fun parseLegacyXlsBytes(bytes: ByteArray, fileName: String): ExcelWorkbook {
+        val extracted = extractReadableRunsFromBinary(bytes)
+        val lines = extracted.lines()
+            .map { it.trim() }
+            .filter { it.length >= 2 && it.any { ch -> ch.isLetterOrDigit() } }
+            .distinct()
+            .take(500)
+
+        val rows = if (lines.isEmpty()) {
+            listOf(
+                ExcelRow(
+                    rowNumber = 1,
+                    cells = listOf(ExcelCell(colIndex = 0, text = "No readable legacy .xls content found in $fileName."))
+                )
+            )
+        } else {
+            lines.mapIndexed { idx, line ->
+                val cols = line.split('\t').filter { it.isNotBlank() }.ifEmpty { listOf(line) }
+                ExcelRow(
+                    rowNumber = idx + 1,
+                    cells = cols.take(12).mapIndexed { cIdx, cellText ->
+                        ExcelCell(colIndex = cIdx, text = cellText.trim(), isBold = idx == 0)
+                    },
+                    isHeaderLikely = idx == 0
+                )
+            }
+        }
+        val maxCols = rows.maxOfOrNull { it.cells.maxOfOrNull { c -> c.colIndex + 1 } ?: 1 } ?: 1
+        return ExcelWorkbook(listOf(ExcelSheet(name = "Sheet1", maxColumns = maxCols, rows = rows)))
     }
 
     private fun parsePlainText(doc: DocumentItem): ParsedDocument {
@@ -582,10 +867,9 @@ class DocumentParser(private val context: Context) {
     private fun readTextSmart(doc: DocumentItem): String? {
         val stream = openInputStream(doc) ?: return null
         return stream.use { input ->
-            // Read up to 4 MB safely for responsive offline rendering
             val maxBytes = 4 * 1024 * 1024
             val buffer = ByteArray(8192)
-            val out = java.io.ByteArrayOutputStream()
+            val out = ByteArrayOutputStream()
             var total = 0
             var truncated = false
             while (true) {

@@ -11,6 +11,9 @@ import com.example.data.SettingsRepository
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import com.example.model.OfficeMarginOption
+import com.example.model.OfficePageSizeOption
+import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.SortOption
 import com.example.model.ThemeMode
@@ -354,8 +357,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setDefaultPageViewMode(mode) }
     }
 
-    fun setXmlSyntaxHighlight(enabled: Boolean) {
-        viewModelScope.launch { settingsRepo.setXmlSyntaxHighlight(enabled) }
+    fun setShowExcelGridlines(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setShowExcelGridlines(enabled) }
     }
 
     fun setShowLineNumbers(enabled: Boolean) {
@@ -372,6 +375,94 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAutoCleanRenderCache(enabled: Boolean) {
         viewModelScope.launch { settingsRepo.setAutoCleanRenderCache(enabled) }
+    }
+
+    fun setOfficeRenderFormat(format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setOfficeRenderFormat(format) }
+    }
+
+    fun setOfficePageSize(size: OfficePageSizeOption) {
+        viewModelScope.launch { settingsRepo.setOfficePageSize(size) }
+    }
+
+    fun setOfficeMargin(margin: OfficeMarginOption) {
+        viewModelScope.launch { settingsRepo.setOfficeMargin(margin) }
+    }
+
+    fun setPdfPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setPdfPageViewMode(mode) }
+    }
+
+    fun setPdfInvertInDarkMode(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setPdfInvertInDarkMode(enabled) }
+    }
+
+    fun setPdfDoubleTapZoom(zoom: Float) {
+        viewModelScope.launch { settingsRepo.setPdfDoubleTapZoom(zoom) }
+    }
+
+    fun setDocxRenderFormat(format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setDocxRenderFormat(format) }
+    }
+
+    fun setDocxPageSize(size: OfficePageSizeOption) {
+        viewModelScope.launch { settingsRepo.setDocxPageSize(size) }
+    }
+
+    fun setDocxMargin(margin: OfficeMarginOption) {
+        viewModelScope.launch { settingsRepo.setDocxMargin(margin) }
+    }
+
+    fun setDocxFontSizeSp(sizeSp: Float) {
+        viewModelScope.launch { settingsRepo.setDocxFontSizeSp(sizeSp) }
+    }
+
+    fun setXlsxRenderFormat(format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setXlsxRenderFormat(format) }
+    }
+
+    fun setXlsxPageSize(size: OfficePageSizeOption) {
+        viewModelScope.launch { settingsRepo.setXlsxPageSize(size) }
+    }
+
+    fun setXlsxMargin(margin: OfficeMarginOption) {
+        viewModelScope.launch { settingsRepo.setXlsxMargin(margin) }
+    }
+
+    fun setXlsxFontSizeSp(sizeSp: Float) {
+        viewModelScope.launch { settingsRepo.setXlsxFontSizeSp(sizeSp) }
+    }
+
+    fun setPptRenderFormat(format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setPptRenderFormat(format) }
+    }
+
+    fun setPptPageSize(size: OfficePageSizeOption) {
+        viewModelScope.launch { settingsRepo.setPptPageSize(size) }
+    }
+
+    fun setPptMargin(margin: OfficeMarginOption) {
+        viewModelScope.launch { settingsRepo.setPptMargin(margin) }
+    }
+
+    fun setShowPptSpeakerNotes(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setShowPptSpeakerNotes(enabled) }
+    }
+
+    fun setTextPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setTextPageViewMode(mode) }
+    }
+
+    fun setTextWordWrap(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setTextWordWrap(enabled) }
+    }
+
+    fun setTextMonospace(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setTextMonospace(enabled) }
+    }
+
+    fun setTextFontSizeSp(sizeSp: Float) {
+        viewModelScope.launch { settingsRepo.setTextFontSizeSp(sizeSp) }
     }
 
     fun setDocTypeVisible(type: DocType, visible: Boolean) {

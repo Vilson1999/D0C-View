@@ -93,7 +93,6 @@ object DocumentActionsHelper {
                     append("------------------------------\n\n")
                     when (val parsed = parser.parse(doc)) {
                         is ParsedDocument.PlainText -> append(parsed.fullText)
-                        is ParsedDocument.CodeXml -> append(parsed.formattedXml)
                         is ParsedDocument.Word -> parsed.pages.forEach { p ->
                             p.blocks.forEach { b ->
                                 if (b.isBullet) append("• ")
@@ -104,6 +103,13 @@ object DocumentActionsHelper {
                             append("Slide ${s.slideNumber}: ${s.title}\n")
                             s.bodyLines.forEach { append("  • $it\n") }
                             if (s.notes.isNotBlank()) append("  [Notes] ${s.notes}\n")
+                            append('\n')
+                        }
+                        is ParsedDocument.Spreadsheet -> parsed.workbook.sheets.forEach { sheet ->
+                            append("[Sheet: ${sheet.name}]\n")
+                            sheet.rows.forEach { row ->
+                                append(row.cells.joinToString(" | ") { it.text }).append('\n')
+                            }
                             append('\n')
                         }
                         is ParsedDocument.Pdf -> append("[PDF Document: ${doc.name} (${parsed.session.pageCount} pages)]").also {

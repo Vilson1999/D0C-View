@@ -26,6 +26,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -60,7 +61,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,7 +72,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +81,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -90,41 +91,33 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.data.DocumentParser
+import com.example.data.OfficeContentSummary
 import com.example.data.ParsedDocument
 import com.example.data.PdfDocumentSession
-import com.example.data.SlidePage
-import com.example.data.WordPage
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.ui.components.AppIcons
 import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.DocumentActionDropdownMenu
 import com.example.ui.components.DocumentInfoSheet
+import com.example.ui.components.OfficeInspectionBottomSheet
+import com.example.ui.components.OfficeOriginalExcelContent
+import com.example.ui.components.OfficeOriginalSlideCard
+import com.example.ui.components.OfficeOriginalWordPaperCard
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.XmlAttrDark
-import com.example.ui.theme.XmlAttrLight
-import com.example.ui.theme.XmlCommentDark
-import com.example.ui.theme.XmlCommentLight
-import com.example.ui.theme.XmlTagDark
-import com.example.ui.theme.XmlTagLight
-import com.example.ui.theme.XmlValueDark
-import com.example.ui.theme.XmlValueLight
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -144,28 +137,75 @@ fun DocumentViewerScreen(
 
     var currentDoc by remember(document.id) { mutableStateOf(document) }
     var parsedDoc by remember(document.id) { mutableStateOf<ParsedDocument?>(null) }
-    var pageViewMode by remember(settings.defaultPageViewMode) {
-        mutableStateOf(settings.defaultPageViewMode)
+
+    val initialViewMode = when (document.type) {
+        DocType.PDF -> settings.pdfPageViewMode
+        DocType.TEXT -> settings.textPageViewMode
+        else -> settings.defaultPageViewMode
+    }
+    var pageViewMode by remember(document.id, initialViewMode) {
+        mutableStateOf(initialViewMode)
+    }
+
+    val isOfficeDoc = currentDoc.type == DocType.DOC ||
+        currentDoc.type == DocType.EXCEL ||
+        currentDoc.type == DocType.PPT
+
+    val defaultFormatForDoc = when (currentDoc.type) {
+        DocType.DOC -> settings.docxRenderFormat
+        DocType.EXCEL -> settings.xlsxRenderFormat
+        DocType.PPT -> settings.pptRenderFormat
+        else -> settings.officeRenderFormat
+    }
+    val defaultSizeForDoc = when (currentDoc.type) {
+        DocType.DOC -> settings.docxPageSize
+        DocType.EXCEL -> settings.xlsxPageSize
+        DocType.PPT -> settings.pptPageSize
+        else -> settings.officePageSize
+    }
+    val defaultMarginForDoc = when (currentDoc.type) {
+        DocType.DOC -> settings.docxMargin
+        DocType.EXCEL -> settings.xlsxMargin
+        DocType.PPT -> settings.pptMargin
+        else -> settings.officeMargin
+    }
+
+    var activeRenderFormat by remember(document.id, defaultFormatForDoc) {
+        mutableStateOf(defaultFormatForDoc)
+    }
+    var activePageSize by remember(document.id, defaultSizeForDoc) {
+        mutableStateOf(defaultSizeForDoc)
+    }
+    var activeMargin by remember(document.id, defaultMarginForDoc) {
+        mutableStateOf(defaultMarginForDoc)
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
+    var showInspectSheet by remember { mutableStateOf(false) }
 
     var isReaderUiVisible by remember(document.id) { mutableStateOf(true) }
     var uiInteractionNonce by remember(document.id) { mutableIntStateOf(0) }
 
     val parseKey = when (currentDoc.type) {
-        DocType.DOC -> "${currentDoc.id}|${currentDoc.uriString}|${settings.readerFontSizeSp.toInt()}"
-        DocType.XML -> "${currentDoc.id}|${currentDoc.uriString}|${settings.readerFontSizeSp.toInt()}|${settings.xmlSyntaxHighlight}|${settings.showLineNumbers}"
+        DocType.DOC -> "${currentDoc.id}|${currentDoc.uriString}|${settings.docxFontSizeSp.toInt()}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
+        DocType.EXCEL -> "${currentDoc.id}|${currentDoc.uriString}|${settings.xlsxFontSizeSp.toInt()}|${settings.showExcelGridlines}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
+        DocType.PPT -> "${currentDoc.id}|${currentDoc.uriString}|${settings.showPptSpeakerNotes}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
         else -> "${currentDoc.id}|${currentDoc.uriString}"
     }
 
     LaunchedEffect(parseKey) {
         parsedDoc = null
         isReaderUiVisible = true
-        parsedDoc = parser.parse(currentDoc, settings)
+        parsedDoc = parser.parse(
+            doc = currentDoc,
+            settings = settings,
+            renderFormatOverride = activeRenderFormat,
+            pageSizeOverride = activePageSize,
+            marginOverride = activeMargin
+        )
     }
 
     LaunchedEffect(settings.autoHideReaderUi) {
@@ -174,7 +214,7 @@ fun DocumentViewerScreen(
         }
     }
 
-    val hasOpenOverlay = menuExpanded || showRenameDialog || showDeleteDialog || showInfoSheet
+    val hasOpenOverlay = menuExpanded || showRenameDialog || showDeleteDialog || showInfoSheet || showInspectSheet
     LaunchedEffect(
         isReaderUiVisible,
         settings.autoHideReaderUi,
@@ -194,6 +234,14 @@ fun DocumentViewerScreen(
             isReaderUiVisible = !isReaderUiVisible
             uiInteractionNonce++
         }
+    }
+
+    val activeSummary: OfficeContentSummary? = when (val d = parsedDoc) {
+        is ParsedDocument.Pdf -> d.summary
+        is ParsedDocument.Word -> d.summary
+        is ParsedDocument.Slides -> d.summary
+        is ParsedDocument.Spreadsheet -> d.summary
+        else -> null
     }
 
     DisposableEffect(parsedDoc) {
@@ -222,10 +270,10 @@ fun DocumentViewerScreen(
                     when (doc) {
                         null -> "loading"
                         is ParsedDocument.Error -> "error_${doc.message}"
-                        is ParsedDocument.Pdf -> "pdf_${currentDoc.id}"
-                        is ParsedDocument.Word -> "word_${currentDoc.id}"
-                        is ParsedDocument.Slides -> "slides_${currentDoc.id}"
-                        is ParsedDocument.CodeXml -> "xml_${currentDoc.id}"
+                        is ParsedDocument.Pdf -> "pdf_${currentDoc.id}_${activeRenderFormat.name}_${activePageSize.name}_${activeMargin.name}"
+                        is ParsedDocument.Word -> "word_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
+                        is ParsedDocument.Slides -> "slides_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
+                        is ParsedDocument.Spreadsheet -> "sheet_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
                         is ParsedDocument.PlainText -> "text_${currentDoc.id}"
                     }
                 },
@@ -276,6 +324,8 @@ fun DocumentViewerScreen(
                     is ParsedDocument.Pdf -> PdfViewerContent(
                         session = doc.session,
                         mode = pageViewMode,
+                        invertInDark = settings.pdfInvertInDarkMode && isDarkTheme,
+                        doubleTapZoom = settings.pdfDoubleTapZoom,
                         showPagePill = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
@@ -304,11 +354,19 @@ fun DocumentViewerScreen(
                                     ),
                                 contentAlignment = Alignment.TopCenter
                             ) {
-                                WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
+                                OfficeOriginalWordPaperCard(
+                                    page = page,
+                                    layout = doc.layout,
+                                    fontSizeSp = settings.docxFontSizeSp
+                                )
                             }
                         },
                         continuousItemContent = { _, page ->
-                            WordPaperCard(page = page, fontSizeSp = settings.readerFontSizeSp)
+                            OfficeOriginalWordPaperCard(
+                                page = page,
+                                layout = doc.layout,
+                                fontSizeSp = settings.docxFontSizeSp
+                            )
                         }
                     )
                     is ParsedDocument.Slides -> PagedOrContinuousViewer(
@@ -334,44 +392,43 @@ fun DocumentViewerScreen(
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
-                                SlideCard(
+                                OfficeOriginalSlideCard(
                                     slide = slide,
                                     totalSlides = doc.slides.size,
-                                    accentColor = currentDoc.type.pillColor
+                                    layout = doc.layout,
+                                    accentColor = currentDoc.type.pillColor,
+                                    showNotes = settings.showPptSpeakerNotes
                                 )
                             }
                         },
                         continuousItemContent = { _, slide ->
-                            SlideCard(
+                            OfficeOriginalSlideCard(
                                 slide = slide,
                                 totalSlides = doc.slides.size,
-                                accentColor = currentDoc.type.pillColor
+                                layout = doc.layout,
+                                accentColor = currentDoc.type.pillColor,
+                                showNotes = settings.showPptSpeakerNotes
                             )
                         }
                     )
-                    is ParsedDocument.CodeXml -> TextAndXmlViewerContent(
-                        fullText = doc.formattedXml,
-                        pages = doc.pages,
-                        mode = pageViewMode,
-                        isXml = true,
-                        syntaxHighlight = settings.xmlSyntaxHighlight,
-                        showLineNumbers = settings.showLineNumbers,
-                        fontSizeSp = settings.readerFontSizeSp,
-                        isDarkTheme = isDarkTheme,
-                        showPagePill = isReaderUiVisible,
+                    is ParsedDocument.Spreadsheet -> OfficeOriginalExcelContent(
+                        workbook = doc.workbook,
+                        layout = doc.layout,
+                        showGridlines = settings.showExcelGridlines,
+                        fontSizeSp = settings.xlsxFontSizeSp,
+                        showControls = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
                         onToggleUi = toggleReaderUi
                     )
-                    is ParsedDocument.PlainText -> TextAndXmlViewerContent(
+                    is ParsedDocument.PlainText -> PlainTextViewerContent(
                         fullText = doc.fullText,
                         pages = doc.pages,
                         mode = pageViewMode,
-                        isXml = false,
-                        syntaxHighlight = false,
                         showLineNumbers = settings.showLineNumbers,
-                        fontSizeSp = settings.readerFontSizeSp,
-                        isDarkTheme = isDarkTheme,
+                        wordWrap = settings.textWordWrap,
+                        useMonospace = settings.textMonospace,
+                        fontSizeSp = settings.textFontSizeSp,
                         showPagePill = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
@@ -418,7 +475,50 @@ fun DocumentViewerScreen(
                                 .testTag("viewer_doc_title")
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        if (isOfficeDoc) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = currentDoc.type.pillColor.copy(alpha = 0.14f),
+                                border = BorderStroke(1.dp, currentDoc.type.pillColor.copy(alpha = 0.45f)),
+                                onClick = {
+                                    activeRenderFormat = if (activeRenderFormat == OfficeRenderFormat.PDF) {
+                                        OfficeRenderFormat.ORIGINAL
+                                    } else {
+                                        OfficeRenderFormat.PDF
+                                    }
+                                    uiInteractionNonce++
+                                },
+                                modifier = Modifier.testTag("viewer_format_toggle")
+                            ) {
+                                Text(
+                                    text = if (activeRenderFormat == OfficeRenderFormat.PDF) "PDF" else "Orig",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                                    color = currentDoc.type.pillColor,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(5.dp))
+                            Surface(
+                                shape = RoundedCornerShape(50),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                onClick = {
+                                    showInspectSheet = true
+                                    uiInteractionNonce++
+                                },
+                                modifier = Modifier.testTag("viewer_layout_button")
+                            ) {
+                                Text(
+                                    text = activeSummary?.effectivePageSize ?: activePageSize.shortLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
+                        } else {
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
 
                         IconButton(
                             onClick = {
@@ -541,6 +641,32 @@ fun DocumentViewerScreen(
             docs = listOf(currentDoc),
             onDismiss = {
                 showInfoSheet = false
+                uiInteractionNonce++
+            }
+        )
+    }
+
+    if (showInspectSheet && isOfficeDoc) {
+        OfficeInspectionBottomSheet(
+            docName = currentDoc.name,
+            summary = activeSummary,
+            selectedFormat = activeRenderFormat,
+            selectedSize = activePageSize,
+            selectedMargin = activeMargin,
+            onSelectFormat = {
+                activeRenderFormat = it
+                uiInteractionNonce++
+            },
+            onSelectSize = {
+                activePageSize = it
+                uiInteractionNonce++
+            },
+            onSelectMargin = {
+                activeMargin = it
+                uiInteractionNonce++
+            },
+            onDismiss = {
+                showInspectSheet = false
                 uiInteractionNonce++
             }
         )
@@ -670,6 +796,8 @@ private fun <T> PagedOrContinuousViewer(
 private fun PdfViewerContent(
     session: PdfDocumentSession,
     mode: PageViewMode,
+    invertInDark: Boolean,
+    doubleTapZoom: Float,
     showPagePill: Boolean,
     topClearance: androidx.compose.ui.unit.Dp,
     bottomClearance: androidx.compose.ui.unit.Dp,
@@ -695,6 +823,8 @@ private fun PdfViewerContent(
                     session = session,
                     pageIndex = pageIndex,
                     targetWidthPx = targetWidthPx,
+                    invertInDark = invertInDark,
+                    doubleTapZoom = doubleTapZoom,
                     onSingleTap = onToggleUi,
                     modifier = Modifier
                         .fillMaxSize()
@@ -710,7 +840,8 @@ private fun PdfViewerContent(
                 PdfPageBitmapCard(
                     session = session,
                     pageIndex = pageIndex,
-                    targetWidthPx = targetWidthPx
+                    targetWidthPx = targetWidthPx,
+                    invertInDark = invertInDark
                 )
             }
         )
@@ -723,6 +854,8 @@ private fun ZoomablePdfPage(
     session: PdfDocumentSession,
     pageIndex: Int,
     targetWidthPx: Int,
+    invertInDark: Boolean,
+    doubleTapZoom: Float,
     onSingleTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -740,7 +873,7 @@ private fun ZoomablePdfPage(
 
     Box(
         modifier = modifier
-            .pointerInput(session, pageIndex, onSingleTap) {
+            .pointerInput(session, pageIndex, onSingleTap, doubleTapZoom) {
                 detectTapGestures(
                     onTap = { onSingleTap() },
                     onDoubleTap = {
@@ -761,7 +894,7 @@ private fun ZoomablePdfPage(
                                     )
                                 }
                             } else {
-                                scaleAnim.animateTo(2f, zoomSpring)
+                                scaleAnim.animateTo(doubleTapZoom.coerceIn(1.5f, 3.5f), zoomSpring)
                             }
                         }
                     }
@@ -774,6 +907,7 @@ private fun ZoomablePdfPage(
             session = session,
             pageIndex = pageIndex,
             targetWidthPx = targetWidthPx,
+            invertInDark = invertInDark,
             modifier = Modifier.graphicsLayer(
                 scaleX = scaleAnim.value,
                 scaleY = scaleAnim.value,
@@ -784,11 +918,25 @@ private fun ZoomablePdfPage(
     }
 }
 
+private val PdfInvertColorFilter: ColorFilter by lazy {
+    ColorFilter.colorMatrix(
+        ColorMatrix(
+            floatArrayOf(
+                -1f, 0f, 0f, 0f, 255f,
+                0f, -1f, 0f, 0f, 255f,
+                0f, 0f, -1f, 0f, 255f,
+                0f, 0f, 0f, 1f, 0f
+            )
+        )
+    )
+}
+
 @Composable
 private fun PdfPageBitmapCard(
     session: PdfDocumentSession,
     pageIndex: Int,
     targetWidthPx: Int,
+    invertInDark: Boolean,
     modifier: Modifier = Modifier
 ) {
     var bitmap by remember(session, pageIndex) { mutableStateOf<Bitmap?>(null) }
@@ -800,7 +948,7 @@ private fun PdfPageBitmapCard(
 
     Surface(
         shape = RoundedCornerShape(8.dp),
-        color = Color.White,
+        color = if (invertInDark) Color(0xFF0F172A) else Color.White,
         shadowElevation = 3.dp,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
@@ -813,6 +961,7 @@ private fun PdfPageBitmapCard(
                 bitmap = bmp.asImageBitmap(),
                 contentDescription = "PDF Page ${pageIndex + 1}",
                 contentScale = ContentScale.FillWidth,
+                colorFilter = if (invertInDark) PdfInvertColorFilter else null,
                 modifier = Modifier.fillMaxWidth()
             )
         } else {
@@ -829,145 +978,20 @@ private fun PdfPageBitmapCard(
 }
 
 @Composable
-private fun WordPaperCard(
-    page: WordPage,
-    fontSizeSp: Float
-) {
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        shadowElevation = 2.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .widthIn(max = 700.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            page.blocks.forEach { block ->
-                val computedSize = when {
-                    block.isHeading && block.headingLevel == 1 -> (fontSizeSp + 6f).sp
-                    block.isHeading && block.headingLevel == 2 -> (fontSizeSp + 3f).sp
-                    block.isHeading -> (fontSizeSp + 1.5f).sp
-                    else -> fontSizeSp.sp
-                }
-                Text(
-                    text = if (block.isBullet) "•  ${block.text}" else block.text,
-                    style = MaterialTheme.typography.bodyLarge.copy(
-                        fontSize = computedSize,
-                        lineHeight = (computedSize.value * 1.45f).sp,
-                        fontWeight = if (block.isHeading || block.isBold) FontWeight.Bold else FontWeight.Normal,
-                        fontStyle = if (block.isItalic) FontStyle.Italic else FontStyle.Normal
-                    ),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun SlideCard(
-    slide: SlidePage,
-    totalSlides: Int,
-    accentColor: Color
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .widthIn(max = 720.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-            shadowElevation = 3.dp,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(6.dp)
-                        .background(accentColor)
-                )
-                Column(
-                    modifier = Modifier.padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Text(
-                        text = "SLIDE ${slide.slideNumber} OF $totalSlides",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = accentColor,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = slide.title,
-                        style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    if (slide.bodyLines.isNotEmpty()) {
-                        HorizontalDivider()
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            slide.bodyLines.forEach { line ->
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    Text(text = "•", color = accentColor, fontWeight = FontWeight.Bold)
-                                    Text(
-                                        text = line,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        if (slide.notes.isNotBlank()) {
-            Surface(
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Text(
-                        text = "Speaker Notes",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = slide.notes,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TextAndXmlViewerContent(
+private fun PlainTextViewerContent(
     fullText: String,
     pages: List<List<String>>,
     mode: PageViewMode,
-    isXml: Boolean,
-    syntaxHighlight: Boolean,
     showLineNumbers: Boolean,
+    wordWrap: Boolean,
+    useMonospace: Boolean,
     fontSizeSp: Float,
-    isDarkTheme: Boolean,
     showPagePill: Boolean,
     topClearance: androidx.compose.ui.unit.Dp,
     bottomClearance: androidx.compose.ui.unit.Dp,
     onToggleUi: () -> Unit
 ) {
+    val wrapModifier = if (wordWrap) Modifier.fillMaxSize() else Modifier.fillMaxSize().horizontalScroll(rememberScrollState())
     AnimatedContent(
         targetState = mode,
         transitionSpec = {
@@ -975,7 +999,7 @@ private fun TextAndXmlViewerContent(
                 scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
                 .togetherWith(fadeOut(tween(150)))
         },
-        label = "textXmlModeSwitch"
+        label = "plainTextModeSwitch"
     ) { targetMode ->
         if (targetMode == PageViewMode.SINGLE_PAGE) {
             val indexedPages = remember(pages) { pages.mapIndexed { idx, lines -> idx to lines } }
@@ -1005,17 +1029,18 @@ private fun TextAndXmlViewerContent(
                             )
                     ) {
                         LazyColumn(
+                            modifier = wrapModifier,
                             contentPadding = PaddingValues(14.dp),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
                             itemsIndexed(pageLines) { idx, line ->
-                                CodeOrTextLine(
+                                PlainTextLine(
                                     lineNumber = lineOffset + idx + 1,
                                     line = line,
-                                    isXml = isXml && syntaxHighlight,
                                     showLineNumber = showLineNumbers,
-                                    fontSizeSp = fontSizeSp,
-                                    isDarkTheme = isDarkTheme
+                                    wordWrap = wordWrap,
+                                    useMonospace = useMonospace,
+                                    fontSizeSp = fontSizeSp
                                 )
                             }
                         }
@@ -1036,8 +1061,7 @@ private fun TextAndXmlViewerContent(
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxSize()
+                    modifier = wrapModifier
                         .background(MaterialTheme.colorScheme.surface),
                     contentPadding = PaddingValues(
                         start = 14.dp,
@@ -1048,13 +1072,13 @@ private fun TextAndXmlViewerContent(
                     verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     itemsIndexed(allLines) { idx, line ->
-                        CodeOrTextLine(
+                        PlainTextLine(
                             lineNumber = idx + 1,
                             line = line,
-                            isXml = isXml && syntaxHighlight,
                             showLineNumber = showLineNumbers,
-                            fontSizeSp = fontSizeSp,
-                            isDarkTheme = isDarkTheme
+                            wordWrap = wordWrap,
+                            useMonospace = useMonospace,
+                            fontSizeSp = fontSizeSp
                         )
                     }
                 }
@@ -1080,15 +1104,18 @@ private fun TextAndXmlViewerContent(
 }
 
 @Composable
-private fun CodeOrTextLine(
+private fun PlainTextLine(
     lineNumber: Int,
     line: String,
-    isXml: Boolean,
     showLineNumber: Boolean,
-    fontSizeSp: Float,
-    isDarkTheme: Boolean
+    wordWrap: Boolean,
+    useMonospace: Boolean,
+    fontSizeSp: Float
 ) {
-    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+    Row(
+        modifier = if (wordWrap) Modifier.fillMaxWidth() else Modifier,
+        verticalAlignment = Alignment.Top
+    ) {
         if (showLineNumber) {
             Text(
                 text = lineNumber.toString().padStart(4, ' '),
@@ -1100,102 +1127,17 @@ private fun CodeOrTextLine(
                 modifier = Modifier.padding(end = 10.dp, top = 2.dp)
             )
         }
-        if (isXml) {
-            Text(
-                text = highlightXmlLine(line, isDarkTheme),
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontFamily = JetBrainsMonoFontFamily,
-                    fontSize = fontSizeSp.sp,
-                    lineHeight = (fontSizeSp * 1.4f).sp
-                ),
-                modifier = Modifier.weight(1f)
-            )
-        } else {
-            Text(
-                text = line,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = fontSizeSp.sp,
-                    lineHeight = (fontSizeSp * 1.45f).sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-        }
-    }
-}
-
-private fun highlightXmlLine(line: String, isDarkTheme: Boolean): AnnotatedString {
-    val tagColor = if (isDarkTheme) XmlTagDark else XmlTagLight
-    val attrColor = if (isDarkTheme) XmlAttrDark else XmlAttrLight
-    val valColor = if (isDarkTheme) XmlValueDark else XmlValueLight
-    val commentColor = if (isDarkTheme) XmlCommentDark else XmlCommentLight
-
-    return buildAnnotatedString {
-        if (line.trimStart().startsWith("<!--")) {
-            withStyle(SpanStyle(color = commentColor, fontStyle = FontStyle.Italic)) { append(line) }
-            return@buildAnnotatedString
-        }
-        var i = 0
-        while (i < line.length) {
-            if (line[i] == '<') {
-                val closeIdx = line.indexOf('>', i)
-                if (closeIdx == -1) {
-                    withStyle(SpanStyle(color = tagColor)) { append(line.substring(i)) }
-                    break
-                }
-                appendXmlTag(line.substring(i, closeIdx + 1), tagColor, attrColor, valColor)
-                i = closeIdx + 1
-            } else {
-                val nextTag = line.indexOf('<', i)
-                val end = if (nextTag == -1) line.length else nextTag
-                append(line.substring(i, end))
-                i = end
-            }
-        }
-    }
-}
-
-private fun AnnotatedString.Builder.appendXmlTag(
-    tagText: String,
-    tagColor: Color,
-    attrColor: Color,
-    valColor: Color
-) {
-    val spaceIdx = tagText.indexOfFirst { it.isWhitespace() }
-    if (spaceIdx == -1) {
-        withStyle(SpanStyle(color = tagColor, fontWeight = FontWeight.Medium)) { append(tagText) }
-        return
-    }
-    withStyle(SpanStyle(color = tagColor, fontWeight = FontWeight.Medium)) {
-        append(tagText.substring(0, spaceIdx))
-    }
-    var i = spaceIdx
-    while (i < tagText.length) {
-        val ch = tagText[i]
-        when {
-            ch == '"' || ch == '\'' -> {
-                val endQuote = tagText.indexOf(ch, i + 1)
-                val end = if (endQuote == -1) tagText.length else endQuote + 1
-                withStyle(SpanStyle(color = valColor)) { append(tagText.substring(i, end)) }
-                i = end
-            }
-            ch == '>' || (ch == '/' && i + 1 < tagText.length && tagText[i + 1] == '>') -> {
-                withStyle(SpanStyle(color = tagColor, fontWeight = FontWeight.Medium)) {
-                    append(tagText.substring(i))
-                }
-                break
-            }
-            ch.isLetter() || ch == '_' || ch == ':' || ch == '-' -> {
-                var end = i + 1
-                while (end < tagText.length && (tagText[end].isLetterOrDigit() || tagText[end] in "_:-")) end++
-                withStyle(SpanStyle(color = attrColor)) { append(tagText.substring(i, end)) }
-                i = end
-            }
-            else -> {
-                append(ch)
-                i++
-            }
-        }
+        Text(
+            text = line,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontFamily = if (useMonospace) JetBrainsMonoFontFamily else FontFamily.SansSerif,
+                fontSize = fontSizeSp.sp,
+                lineHeight = (fontSizeSp * 1.45f).sp
+            ),
+            softWrap = wordWrap,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = if (wordWrap) Modifier.weight(1f) else Modifier
+        )
     }
 }
 

@@ -29,12 +29,19 @@ object BackgroundLifecyclePolicy {
         startedActivityCount: Int,
         elapsedInBackgroundMs: Long
     ): Boolean = startedActivityCount <= 0 && elapsedInBackgroundMs >= BACKGROUND_TIMEOUT_MS
+
+    fun shouldStopOnForegroundClose(
+        remainingActivityCount: Int,
+        isChangingConfigurations: Boolean,
+        isServiceRunning: Boolean
+    ): Boolean = remainingActivityCount <= 0 && !isChangingConfigurations && isServiceRunning
 }
 
 /**
  * Ultra-lightweight, non-sticky background Service started only while active document work
- * (scanning, PDF conversion, cache maintenance) is running, and automatically terminated
- * when work completes or at the 1-minute background cap.
+ * (scanning, PDF conversion, cache maintenance) needs to finish briefly in background.
+ * Stops immediately when work completes, when returning to foreground, when the foreground
+ * task/activity closes, or at the 1-minute background cap.
  */
 class LiteBackgroundService : Service() {
 
@@ -55,6 +62,14 @@ class LiteBackgroundService : Service() {
         return START_NOT_STICKY
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        mainHandler.removeCallbacks(hardStopRunnable)
+        isRunning = false
+        onTaskRemovedCallback?.invoke()
+        stopSelf()
+        super.onTaskRemoved(rootIntent)
+    }
+
     override fun onDestroy() {
         mainHandler.removeCallbacks(hardStopRunnable)
         isRunning = false
@@ -65,6 +80,9 @@ class LiteBackgroundService : Service() {
         @Volatile
         var isRunning: Boolean = false
             private set
+
+        @Volatile
+        var onTaskRemovedCallback: (() -> Unit)? = null
 
         fun startIfNeeded(context: Context, activeWorkCount: Int, canStart: Boolean) {
             if (!BackgroundLifecyclePolicy.shouldStartLiteService(activeWorkCount, isRunning, canStart)) {
@@ -82,7 +100,7 @@ class LiteBackgroundService : Service() {
         }
 
         private fun mainStop(appCtx: Context) {
-            if (!isRunning) return
+            isRunning = false
             runCatching {
                 appCtx.stopService(Intent(appCtx, LiteBackgroundService::class.java))
             }

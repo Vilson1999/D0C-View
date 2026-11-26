@@ -90,11 +90,6 @@ class DocumentCacheManager(private val context: Context) {
                         }
                         ParsedDocument.Slides(slides)
                     }
-                    KIND_XML -> {
-                        val formatted = input.readUTFCompat()
-                        val pages = readStringPages(input)
-                        ParsedDocument.CodeXml(formatted, pages)
-                    }
                     KIND_TEXT -> {
                         val fullText = input.readUTFCompat()
                         val pages = readStringPages(input)
@@ -113,7 +108,7 @@ class DocumentCacheManager(private val context: Context) {
     }
 
     fun saveDiskParsed(doc: DocumentItem, parsed: ParsedDocument) {
-        if (parsed is ParsedDocument.Pdf || parsed is ParsedDocument.Error) return
+        if (parsed is ParsedDocument.Pdf || parsed is ParsedDocument.Error || parsed is ParsedDocument.Spreadsheet) return
         val key = docKey(doc)
         memoryParsedCache.put(key, parsed)
         if (!parsedDocsDir.exists()) parsedDocsDir.mkdirs()
@@ -152,17 +147,13 @@ class DocumentCacheManager(private val context: Context) {
                             out.writeUTFCompat(slide.notes)
                         }
                     }
-                    is ParsedDocument.CodeXml -> {
-                        out.writeByte(KIND_XML)
-                        out.writeUTFCompat(parsed.formattedXml)
-                        writeStringPages(out, parsed.pages)
-                    }
                     is ParsedDocument.PlainText -> {
                         out.writeByte(KIND_TEXT)
                         out.writeUTFCompat(parsed.fullText)
                         writeStringPages(out, parsed.pages)
                     }
                     is ParsedDocument.Pdf,
+                    is ParsedDocument.Spreadsheet,
                     is ParsedDocument.Error -> Unit
                 }
             }
@@ -284,7 +275,6 @@ class DocumentCacheManager(private val context: Context) {
         private const val CACHE_SCHEMA_VERSION = 1
         private const val KIND_WORD = 1
         private const val KIND_SLIDES = 2
-        private const val KIND_XML = 3
         private const val KIND_TEXT = 4
         private const val MAX_SINGLE_PARSED_CACHE_BYTES = 4L * 1024L * 1024L
         private const val AUTO_PRUNE_MAX_BYTES = 14L * 1024L * 1024L

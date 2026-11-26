@@ -112,24 +112,36 @@ object AppIcons {
         }
     }
 
-    val Code: ImageVector by lazy {
-        materialIcon(name = "Code") {
+    val TableChart: ImageVector by lazy {
+        materialIcon(name = "TableChart") {
             materialPath {
-                moveTo(9.4f, 16.6f)
-                lineTo(4.8f, 12f)
-                lineToRelative(4.6f, -4.6f)
-                lineTo(8f, 6f)
-                lineToRelative(-6f, 6f)
-                lineToRelative(6f, 6f)
-                lineToRelative(1.4f, -1.4f)
+                moveTo(10f, 10.02f)
+                horizontalLineToRelative(5f)
+                verticalLineTo(21f)
+                horizontalLineToRelative(-5f)
+                verticalLineTo(10.02f)
                 close()
-                moveTo(14.6f, 16.6f)
-                lineToRelative(4.6f, -4.6f)
-                lineToRelative(-4.6f, -4.6f)
-                lineTo(16f, 6f)
-                lineToRelative(6f, 6f)
-                lineToRelative(-6f, 6f)
-                lineToRelative(-1.4f, -1.4f)
+                moveTo(17f, 21f)
+                horizontalLineToRelative(3f)
+                curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
+                verticalLineToRelative(-9f)
+                horizontalLineToRelative(-5f)
+                verticalLineTo(21f)
+                close()
+                moveTo(20f, 3f)
+                horizontalLineTo(5f)
+                curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
+                verticalLineToRelative(3f)
+                horizontalLineToRelative(19f)
+                verticalLineTo(5f)
+                curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+                close()
+                moveTo(3f, 19f)
+                curveToRelative(0f, 1.1f, 0.9f, 2f, 2f, 2f)
+                horizontalLineToRelative(3f)
+                verticalLineTo(10f)
+                horizontalLineTo(3f)
+                verticalLineTo(19f)
                 close()
             }
         }

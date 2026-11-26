@@ -233,7 +233,7 @@ private fun CategoryPill(
 fun docTypeIcon(type: DocType): ImageVector = when (type) {
     DocType.PDF -> AppIcons.PictureAsPdf
     DocType.DOC -> AppIcons.Description
-    DocType.XML -> AppIcons.Code
+    DocType.EXCEL -> AppIcons.TableChart
     DocType.PPT -> AppIcons.Slideshow
     DocType.TEXT -> AppIcons.Notes
 }

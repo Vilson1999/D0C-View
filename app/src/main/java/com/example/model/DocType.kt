@@ -13,9 +13,9 @@ import com.example.ui.theme.PptPillTintLight
 import com.example.ui.theme.TextPillColor
 import com.example.ui.theme.TextPillTintDark
 import com.example.ui.theme.TextPillTintLight
-import com.example.ui.theme.XmlPillColor
-import com.example.ui.theme.XmlPillTintDark
-import com.example.ui.theme.XmlPillTintLight
+import com.example.ui.theme.ExcelPillColor
+import com.example.ui.theme.ExcelPillTintDark
+import com.example.ui.theme.ExcelPillTintLight
 
 enum class DocType(
     val label: String,
@@ -45,13 +45,18 @@ enum class DocType(
         tintLight = DocPillTintLight,
         tintDark = DocPillTintDark
     ),
-    XML(
-        label = "XML",
-        extensions = setOf("xml"),
-        mimeTypes = setOf("text/xml", "application/xml"),
-        pillColor = XmlPillColor,
-        tintLight = XmlPillTintLight,
-        tintDark = XmlPillTintDark
+    EXCEL(
+        label = "EXCEL",
+        extensions = setOf("xlsx", "xlsm", "xls", "xltx"),
+        mimeTypes = setOf(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel",
+            "application/vnd.ms-excel.sheet.macroenabled.12",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.template"
+        ),
+        pillColor = ExcelPillColor,
+        tintLight = ExcelPillTintLight,
+        tintDark = ExcelPillTintDark
     ),
     PPT(
         label = "PPT",

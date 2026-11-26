@@ -45,7 +45,32 @@ object OoxmlDocumentParser {
         val hasBottomBorder: Boolean = false
     )
 
-    fun parseDocxBytes(bytes: ByteArray): List<WordBlock> {
+    private data class MutablePageLayout(
+        var widthPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.widthPt,
+        var heightPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.heightPt,
+        var isLandscape: Boolean? = null,
+        var marginLeftPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.marginLeftPt,
+        var marginRightPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.marginRightPt,
+        var marginTopPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.marginTopPt,
+        var marginBottomPt: Float = OfficeLayoutResolver.DEFAULT_WORD_A4.marginBottomPt,
+        var hasSize: Boolean = false,
+        var hasMargins: Boolean = false
+    ) {
+        fun toLayout(): OfficePageLayout = OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
+            rawWidthPt = widthPt,
+            rawHeightPt = heightPt,
+            leftPt = marginLeftPt,
+            rightPt = marginRightPt,
+            topPt = marginTopPt,
+            bottomPt = marginBottomPt,
+            forceLandscape = isLandscape
+        )
+    }
+
+    fun parseDocxBytes(bytes: ByteArray): List<WordBlock> =
+        parseDocxWithLayout(bytes).blocks
+
+    fun parseDocxWithLayout(bytes: ByteArray): WordDocumentData {
         val parts = LinkedHashMap<String, ByteArray>()
         var totalRead = 0L
         val maxTotal = 28L * 1024L * 1024L
@@ -66,16 +91,21 @@ object OoxmlDocumentParser {
             }
         }
 
-        return parseWordPackageMap(parts)
+        return parseWordPackageMapWithLayout(parts)
     }
 
     fun parseWordPackageMap(
         parts: Map<String, ByteArray>,
         inlineBinData: Map<String, ByteArray> = emptyMap()
-    ): List<WordBlock> {
+    ): List<WordBlock> = parseWordPackageMapWithLayout(parts, inlineBinData).blocks
+
+    fun parseWordPackageMapWithLayout(
+        parts: Map<String, ByteArray>,
+        inlineBinData: Map<String, ByteArray> = emptyMap()
+    ): WordDocumentData {
         val docBytes = parts["word/document.xml"]
             ?: parts.entries.firstOrNull { it.key.endsWith("/document.xml") }?.value
-            ?: return emptyList()
+            ?: return WordDocumentData(emptyList())
 
         val rels = parseRelationships(
             parts["word/_rels/document.xml.rels"]
@@ -87,11 +117,13 @@ object OoxmlDocumentParser {
         )
 
         val blocks = mutableListOf<WordBlock>()
+        val layoutAcc = MutablePageLayout()
         val parser = OfficeXmlFormatParser.newPullParser()
         parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         parser.setInput(ByteArrayInputStream(docBytes), "UTF-8")
 
         var skipDepth = -1
+        var inBodySectPr = false
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             val tag = parser.name ?: ""
@@ -103,16 +135,54 @@ object OoxmlDocumentParser {
                 continue
             }
 
-            if (event == XmlPullParser.START_TAG) {
-                when (tag) {
-                    "mc:Fallback" -> skipDepth = parser.depth
-                    "w:tbl" -> parseTableElement(parser, parts, rels, styles, inlineBinData)?.let { blocks.add(it) }
-                    "w:p" -> parseParagraphElement(parser, parts, rels, styles, inlineBinData, blocks)
+            when (event) {
+                XmlPullParser.START_TAG -> {
+                    when (tag) {
+                        "mc:Fallback" -> skipDepth = parser.depth
+                        "w:sectPr" -> inBodySectPr = true
+                        "w:pgSz" -> if (inBodySectPr) applyPgSz(parser, layoutAcc)
+                        "w:pgMar" -> if (inBodySectPr) applyPgMar(parser, layoutAcc)
+                        "w:tbl" -> parseTableElement(parser, parts, rels, styles, inlineBinData)?.let { blocks.add(it) }
+                        "w:p" -> parseParagraphElement(parser, parts, rels, styles, inlineBinData, blocks, layoutAcc)
+                    }
+                }
+                XmlPullParser.END_TAG -> {
+                    if (tag == "w:sectPr") inBodySectPr = false
                 }
             }
             event = parser.next()
         }
-        return blocks
+        return WordDocumentData(blocks = blocks, layout = layoutAcc.toLayout())
+    }
+
+    private fun applyPgSz(parser: XmlPullParser, layout: MutablePageLayout) {
+        val wTwips = parser.getAttributeValue(null, "w:w")?.toFloatOrNull()
+        val hTwips = parser.getAttributeValue(null, "w:h")?.toFloatOrNull()
+        val orient = parser.getAttributeValue(null, "w:orient")
+        if (wTwips != null && wTwips > 0f && hTwips != null && hTwips > 0f) {
+            layout.widthPt = wTwips / 20f
+            layout.heightPt = hTwips / 20f
+            layout.isLandscape = when {
+                orient.equals("landscape", ignoreCase = true) -> true
+                orient.equals("portrait", ignoreCase = true) -> false
+                else -> layout.widthPt > layout.heightPt
+            }
+            layout.hasSize = true
+        }
+    }
+
+    private fun applyPgMar(parser: XmlPullParser, layout: MutablePageLayout) {
+        val leftTwips = parser.getAttributeValue(null, "w:left")?.toFloatOrNull()
+        val rightTwips = parser.getAttributeValue(null, "w:right")?.toFloatOrNull()
+        val topTwips = parser.getAttributeValue(null, "w:top")?.toFloatOrNull()
+        val bottomTwips = parser.getAttributeValue(null, "w:bottom")?.toFloatOrNull()
+        if (leftTwips != null || rightTwips != null || topTwips != null || bottomTwips != null) {
+            leftTwips?.let { if (it >= 0f) layout.marginLeftPt = it / 20f }
+            rightTwips?.let { if (it >= 0f) layout.marginRightPt = it / 20f }
+            topTwips?.let { if (it >= 0f) layout.marginTopPt = it / 20f }
+            bottomTwips?.let { if (it >= 0f) layout.marginBottomPt = it / 20f }
+            layout.hasMargins = true
+        }
     }
 
     private fun parseRelationships(relsBytes: ByteArray?): Map<String, String> {
@@ -304,7 +374,8 @@ object OoxmlDocumentParser {
         rels: Map<String, String>,
         styles: Map<String, ResolvedStyle>,
         inlineBinData: Map<String, ByteArray>,
-        outBlocks: MutableList<WordBlock>
+        outBlocks: MutableList<WordBlock>,
+        layoutAcc: MutablePageLayout? = null
     ) {
         val paraDepth = parser.depth
         var styleRef: ResolvedStyle? = null
@@ -313,9 +384,13 @@ object OoxmlDocumentParser {
         var explicitAlignment: DocAlignment? = null
         var spaceBeforePt: Float? = null
         var spaceAfterPt: Float? = null
+        var leftIndentPt = 0f
+        var firstLineIndentPt = 0f
+        var lineSpacingMult: Float? = null
         var hasBottomBorder = false
         var pageBreakBefore = false
         var sectionBreakAfter = false
+        var inSectPr = false
 
         var inPPr = false
         var inPBdr = false
@@ -371,6 +446,9 @@ object OoxmlDocumentParser {
                         fontSizePt = effSize ?: normalizedRuns.firstNotNullOfOrNull { it.fontSizePt },
                         spaceBeforePt = effBefore,
                         spaceAfterPt = effAfter,
+                        leftIndentPt = leftIndentPt,
+                        firstLineIndentPt = firstLineIndentPt,
+                        lineSpacingMult = lineSpacingMult,
                         hasBottomBorder = addBottomBorder && (hasBottomBorder || baseStyle.hasBottomBorder)
                     )
                 )
@@ -441,13 +519,35 @@ object OoxmlDocumentParser {
                         "w:spacing" -> if (inPPr) {
                             parser.getAttributeValue(null, "w:before")?.toFloatOrNull()?.let { spaceBeforePt = it / 20f }
                             parser.getAttributeValue(null, "w:after")?.toFloatOrNull()?.let { spaceAfterPt = it / 20f }
+                            val lineVal = parser.getAttributeValue(null, "w:line")?.toFloatOrNull()
+                            val lineRule = parser.getAttributeValue(null, "w:lineRule") ?: "auto"
+                            if (lineVal != null && lineVal > 0f && lineRule.equals("auto", ignoreCase = true)) {
+                                lineSpacingMult = (lineVal / 240f).coerceIn(1.0f, 2.2f)
+                            }
+                        }
+                        "w:ind" -> if (inPPr) {
+                            parser.getAttributeValue(null, "w:left")?.toFloatOrNull()?.let {
+                                leftIndentPt = (it / 20f).coerceIn(0f, 180f)
+                            }
+                            parser.getAttributeValue(null, "w:firstLine")?.toFloatOrNull()?.let {
+                                firstLineIndentPt = (it / 20f).coerceIn(0f, 120f)
+                            }
                         }
                         "w:numPr" -> if (inPPr) isBullet = true
                         "w:pageBreakBefore" -> if (inPPr) {
                             val v = parser.getAttributeValue(null, "w:val")
                             if (v != "0" && v != "false") pageBreakBefore = true
                         }
-                        "w:sectPr" -> if (inPPr) sectionBreakAfter = true
+                        "w:sectPr" -> if (inPPr) {
+                            sectionBreakAfter = true
+                            inSectPr = true
+                        }
+                        "w:pgSz" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasSize) {
+                            applyPgSz(parser, layoutAcc)
+                        }
+                        "w:pgMar" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasMargins) {
+                            applyPgMar(parser, layoutAcc)
+                        }
                         "w:hyperlink" -> inHyperlink = true
                         "w:r" -> {
                             inRun = true
@@ -472,9 +572,11 @@ object OoxmlDocumentParser {
                             }
                         }
                         "w:color" -> if (inRPr) {
-                            OfficeXmlFormatParser.parseHexRgb(parser.getAttributeValue(null, "w:val"))?.let {
-                                runColorRgb = it
-                            }
+                            val directRgb = OfficeXmlFormatParser.parseHexRgb(parser.getAttributeValue(null, "w:val"))
+                            val themeRgb = if (directRgb == null) {
+                                resolveWordThemeColor(parser.getAttributeValue(null, "w:themeColor"))
+                            } else null
+                            (directRgb ?: themeRgb)?.let { runColorRgb = it }
                         }
                         "w:t", "w:delText" -> {
                             val txt = parser.nextText()
@@ -584,6 +686,7 @@ object OoxmlDocumentParser {
                 XmlPullParser.END_TAG -> {
                     when (tag) {
                         "w:pBdr" -> inPBdr = false
+                        "w:sectPr" -> inSectPr = false
                         "w:pPr" -> inPPr = false
                         "w:hyperlink" -> inHyperlink = false
                         "w:rPr" -> inRPr = false
@@ -753,6 +856,19 @@ object OoxmlDocumentParser {
     private fun parseOnOffAttr(parser: XmlPullParser): Boolean {
         val v = parser.getAttributeValue(null, "w:val")
         return v != "0" && !v.equals("false", ignoreCase = true)
+    }
+
+    private fun resolveWordThemeColor(themeColor: String?): Int? = when (themeColor?.lowercase()) {
+        "accent1" -> 0x4472C4
+        "accent2" -> 0xED7D31
+        "accent3" -> 0x70AD47
+        "accent4" -> 0xFFC000
+        "accent5" -> 0x5B9BD5
+        "accent6" -> 0x264478
+        "hyperlink" -> 0x1D4ED8
+        "dark1", "text1" -> 0x0F172A
+        "dark2", "text2" -> 0x334155
+        else -> null
     }
 
     private fun parseCssPt(style: String, prop: String): Float? {

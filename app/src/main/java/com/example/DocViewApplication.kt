@@ -47,6 +47,9 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
     override fun onCreate() {
         super.onCreate()
         instance = this
+        LiteBackgroundService.onTaskRemovedCallback = {
+            performTaskRemovedCleanup()
+        }
         registerActivityLifecycleCallbacks(this)
     }
 
@@ -63,13 +66,8 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         if (wasInBackground) {
             cancelScheduledClose()
             backgroundEnteredAtMs = 0L
-            if (activeWorkCount.get() > 0) {
-                LiteBackgroundService.startIfNeeded(
-                    context = this,
-                    activeWorkCount = activeWorkCount.get(),
-                    canStart = true
-                )
-            }
+            // App is in foreground now; background service is not needed in foreground.
+            LiteBackgroundService.stop(this)
         }
     }
 
@@ -95,8 +93,25 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
     override fun onActivityDestroyed(activity: Activity) {
-        synchronized(liveActivities) {
+        val remainingCount = synchronized(liveActivities) {
             liveActivities.removeAll { it.get() == null || it.get() === activity }
+            liveActivities.size
+        }
+        if (!activity.isChangingConfigurations && remainingCount <= 0) {
+            // Foreground UI closed completely: shut down background service & pending work too.
+            cancelScheduledClose()
+            LiteBackgroundService.stop(this)
+            closeListeners.forEach { listener ->
+                runCatching { listener() }
+            }
+        }
+    }
+
+    private fun performTaskRemovedCleanup() {
+        cancelScheduledClose()
+        activeWorkCount.set(0)
+        closeListeners.forEach { listener ->
+            runCatching { listener() }
         }
     }
 
@@ -133,10 +148,9 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         private val closeListeners = CopyOnWriteArraySet<() -> Unit>()
 
         fun beginBackgroundWork(context: Context) {
-            val count = activeWorkCount.incrementAndGet()
-            val app = instance
-            val canStart = app == null || app.startedActivityCount > 0
-            LiteBackgroundService.startIfNeeded(context, count, canStart)
+            activeWorkCount.incrementAndGet()
+            // Do not spin up a background Service while the app is actively in the foreground;
+            // it only starts on-demand if the app transitions to background while work is running.
         }
 
         fun endBackgroundWork(context: Context) {

@@ -17,46 +17,46 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
+import com.example.model.OfficeMarginOption
+import com.example.model.OfficePageSizeOption
 import java.io.File
 import java.io.FileOutputStream
+import kotlin.math.roundToInt
 
 /**
- * Offline renderer that converts parsed DOC/DOCX/RTF, PPT/PPTX, and XML documents
- * into real paginated PDF files using Android's built-in PdfDocument API.
+ * Offline renderer that converts parsed DOC/DOCX/RTF, PPT/PPTX, and EXCEL (.xlsx/.xls) documents
+ * into real paginated PDF files using Android's built-in PdfDocument API, honoring detected or
+ * user-selected page sizes (A4, A3, Legal, Letter, 16:9, 4:3) and margins (Narrow, Normal).
  */
 object OfficeAndXmlToPdfConverter {
 
-    private const val A4_WIDTH = 595
-    private const val A4_HEIGHT = 842
-    private const val SLIDE_WIDTH = 842
-    private const val SLIDE_HEIGHT = 474
     private const val MAX_PDF_PAGES = 250
 
     private val InkPrimary = Color.rgb(15, 23, 42)
     private val InkSecondary = Color.rgb(30, 41, 59)
     private val InkMuted = Color.rgb(100, 116, 139)
-    private val LineNumInk = Color.rgb(148, 163, 184)
     private val DividerInk = Color.rgb(203, 213, 225)
     private val SlideAccent = Color.rgb(234, 88, 12)
+    private val ExcelAccent = Color.rgb(22, 163, 74)
+    private val ExcelHeaderBg = Color.rgb(241, 245, 249)
+    private val ExcelZebraBg = Color.rgb(248, 250, 252)
     private val NotesBg = Color.rgb(248, 250, 252)
     private val NotesBorder = Color.rgb(203, 213, 225)
-
-    // High-contrast XML colors tuned for crisp white PDF pages
-    private val PdfXmlTag = Color.rgb(29, 78, 216)
-    private val PdfXmlAttr = Color.rgb(124, 58, 237)
-    private val PdfXmlValue = Color.rgb(21, 128, 61)
-    private val PdfXmlComment = Color.rgb(100, 116, 139)
 
     fun convertWordToPdf(
         blocks: List<WordBlock>,
         baseFontSizeSp: Float,
-        outputFile: File
+        outputFile: File,
+        layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_WORD_A4
     ): Boolean {
-        val marginH = 44f
-        val marginTop = 46f
-        val marginBottom = 46f
-        val contentWidth = (A4_WIDTH - marginH * 2f).toInt()
-        val pageBottom = A4_HEIGHT - marginBottom
+        val pageW = layout.widthPt.roundToInt().coerceIn(280, 1800)
+        val pageH = layout.heightPt.roundToInt().coerceIn(280, 1800)
+        val marginLeft = layout.marginLeftPt.coerceIn(16f, pageW * 0.28f)
+        val marginRight = layout.marginRightPt.coerceIn(16f, pageW * 0.28f)
+        val marginTop = layout.marginTopPt.coerceIn(18f, pageH * 0.25f)
+        val marginBottom = layout.marginBottomPt.coerceIn(18f, pageH * 0.25f)
+        val contentWidth = (pageW - marginLeft - marginRight).toInt().coerceAtLeast(160)
+        val pageBottom = pageH - marginBottom
 
         val userScale = (baseFontSizeSp.coerceIn(10f, 22f) / 15f).coerceIn(0.85f, 1.35f)
         val clampedBase = baseFontSizeSp.coerceIn(10f, 20f) * 0.84f
@@ -71,7 +71,7 @@ object OfficeAndXmlToPdfConverter {
         }
 
         return writePdfAtomically(outputFile) { pdf ->
-            val state = PagedCanvasState(pdf, A4_WIDTH, A4_HEIGHT, marginTop)
+            val state = PagedCanvasState(pdf, pageW, pageH, marginTop)
             state.startPage()
 
             val ensureBlockSpace: (Float) -> Float = { needed ->
@@ -100,7 +100,7 @@ object OfficeAndXmlToPdfConverter {
                     }
                     state.cursorY = OfficeGraphicPdfRenderer.drawImageBlock(
                         image = block.image,
-                        marginH = marginH,
+                        marginH = marginLeft,
                         contentWidth = contentWidth.toFloat(),
                         marginTop = marginTop,
                         pageBottom = pageBottom,
@@ -118,7 +118,7 @@ object OfficeAndXmlToPdfConverter {
                     }
                     state.cursorY = OfficeGraphicPdfRenderer.drawChartBlock(
                         chart = block.chart,
-                        marginH = marginH,
+                        marginH = marginLeft,
                         contentWidth = contentWidth.toFloat(),
                         pageBottom = pageBottom,
                         marginTop = marginTop,
@@ -136,7 +136,7 @@ object OfficeAndXmlToPdfConverter {
                     state.cursorY = OfficeGraphicPdfRenderer.drawTableBlock(
                         rows = block.tableRows,
                         hasBorders = block.tableHasBorders,
-                        marginH = marginH,
+                        marginH = marginLeft,
                         contentWidth = contentWidth.toFloat(),
                         baseFontSizePt = clampedBase,
                         marginTop = marginTop,
@@ -155,7 +155,7 @@ object OfficeAndXmlToPdfConverter {
                 if (block.hasBottomBorder && block.text.isBlank()) {
                     if (state.cursorY + 8f <= pageBottom) {
                         state.cursorY += 4f
-                        state.canvas.drawLine(marginH, state.cursorY, A4_WIDTH - marginH, state.cursorY, rulePaint)
+                        state.canvas.drawLine(marginLeft, state.cursorY, pageW - marginRight, state.cursorY, rulePaint)
                         state.cursorY += 6f
                     }
                     continue
@@ -197,16 +197,19 @@ object OfficeAndXmlToPdfConverter {
                 )
                 val androidAlign = toAndroidAlignment(block.alignment)
                 val justify = block.alignment == DocAlignment.JUSTIFY
+                val indentLeft = block.leftIndentPt.coerceIn(0f, contentWidth * 0.4f)
+                val effectiveW = (contentWidth - indentLeft).toInt().coerceAtLeast(120)
+                val lineSpacing = block.lineSpacingMult ?: if (block.isHeading) 1.24f else 1.32f
 
                 drawFlowingText(
                     state = state,
                     text = displayCharSeq,
                     paint = paint,
-                    x = marginH,
-                    width = contentWidth,
+                    x = marginLeft + indentLeft,
+                    width = effectiveW,
                     marginTop = marginTop,
                     pageBottom = pageBottom,
-                    lineSpacingMult = if (block.isHeading) 1.24f else 1.32f,
+                    lineSpacingMult = lineSpacing,
                     alignment = androidAlign,
                     justify = justify
                 )
@@ -216,7 +219,7 @@ object OfficeAndXmlToPdfConverter {
                 if (drawUnderlineRule && !state.reachedPageLimit) {
                     if (state.cursorY + 6f <= pageBottom) {
                         state.cursorY += 3f
-                        state.canvas.drawLine(marginH, state.cursorY, A4_WIDTH - marginH, state.cursorY, rulePaint)
+                        state.canvas.drawLine(marginLeft, state.cursorY, pageW - marginRight, state.cursorY, rulePaint)
                         state.cursorY += 5f
                     }
                 } else {
@@ -289,13 +292,17 @@ object OfficeAndXmlToPdfConverter {
 
     fun convertSlidesToPdf(
         slides: List<SlidePage>,
-        outputFile: File
+        outputFile: File,
+        layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_SLIDE_16_9
     ): Boolean {
-        val marginH = 44f
-        val marginTop = 34f
-        val marginBottom = 30f
-        val contentWidth = (SLIDE_WIDTH - marginH * 2f).toInt()
-        val pageBottom = SLIDE_HEIGHT - marginBottom
+        val slideW = layout.widthPt.roundToInt().coerceIn(320, 1800)
+        val slideH = layout.heightPt.roundToInt().coerceIn(280, 1800)
+        val marginLeft = layout.marginLeftPt.coerceIn(16f, slideW * 0.25f)
+        val marginRight = layout.marginRightPt.coerceIn(16f, slideW * 0.25f)
+        val marginTop = layout.marginTopPt.coerceIn(18f, slideH * 0.22f)
+        val marginBottom = layout.marginBottomPt.coerceIn(18f, slideH * 0.22f)
+        val contentWidth = (slideW - marginLeft - marginRight).toInt().coerceAtLeast(180)
+        val pageBottom = slideH - marginBottom
 
         val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = SlideAccent }
         val dividerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -336,14 +343,34 @@ object OfficeAndXmlToPdfConverter {
         }
 
         return writePdfAtomically(outputFile) { pdf ->
-            val state = PagedCanvasState(pdf, SLIDE_WIDTH, SLIDE_HEIGHT, marginTop)
+            val state = PagedCanvasState(pdf, slideW, slideH, marginTop)
             val totalSlides = slides.size.coerceAtLeast(1)
 
             for (slide in slides) {
                 if (state.reachedPageLimit) break
-                state.startPage(onPageStarted = { canvas ->
-                    canvas.drawRect(0f, 0f, SLIDE_WIDTH.toFloat(), 7f, accentPaint)
-                })
+
+                val slideBgRgb = slide.backgroundRgb
+                val isDarkSlideBg = if (slideBgRgb != null) {
+                    val r = (slideBgRgb shr 16) and 0xFF
+                    val g = (slideBgRgb shr 8) and 0xFF
+                    val b = slideBgRgb and 0xFF
+                    (0.299f * r + 0.587f * g + 0.114f * b) < 120f
+                } else false
+
+                val paintSlideHeader: (Canvas) -> Unit = { canvas ->
+                    if (slideBgRgb != null) {
+                        canvas.drawColor(
+                            Color.rgb(
+                                (slideBgRgb shr 16) and 0xFF,
+                                (slideBgRgb shr 8) and 0xFF,
+                                slideBgRgb and 0xFF
+                            )
+                        )
+                    }
+                    canvas.drawRect(0f, 0f, slideW.toFloat(), 7f, accentPaint)
+                }
+
+                state.startPage(onPageStarted = paintSlideHeader)
 
                 val badgeLayout = buildStaticLayout(
                     "SLIDE ${slide.slideNumber} OF $totalSlides",
@@ -352,47 +379,141 @@ object OfficeAndXmlToPdfConverter {
                     1.1f
                 )
                 state.canvas.save()
-                state.canvas.translate(marginH, state.cursorY)
+                state.canvas.translate(marginLeft, state.cursorY)
                 badgeLayout.draw(state.canvas)
                 state.canvas.restore()
                 state.cursorY += badgeLayout.height + 8f
 
-                drawFlowingText(
-                    state = state,
-                    text = slide.title,
-                    paint = titlePaint,
-                    x = marginH,
-                    width = contentWidth,
-                    marginTop = marginTop,
-                    pageBottom = pageBottom,
-                    lineSpacingMult = 1.25f,
-                    onNewOverflowPage = { canvas ->
-                        canvas.drawRect(0f, 0f, SLIDE_WIDTH.toFloat(), 7f, accentPaint)
+                if (slide.blocks.isNotEmpty()) {
+                    val ensureSlideSpace: (Float) -> Float = { needed ->
+                        if (!state.reachedPageLimit && state.cursorY + needed > pageBottom && state.cursorY > marginTop + 8f) {
+                            state.finishCurrentPage()
+                            if (!state.reachedPageLimit) state.startPage(onPageStarted = paintSlideHeader)
+                        }
+                        state.cursorY
                     }
-                )
 
-                state.cursorY += 10f
-                if (state.cursorY + 8f < pageBottom) {
-                    state.canvas.drawLine(marginH, state.cursorY, SLIDE_WIDTH - marginH, state.cursorY, dividerPaint)
-                    state.cursorY += 14f
-                }
+                    for ((blockIdx, block) in slide.blocks.withIndex()) {
+                        if (state.reachedPageLimit) break
+                        if (block.image != null) {
+                            state.cursorY = OfficeGraphicPdfRenderer.drawImageBlock(
+                                image = block.image,
+                                marginH = marginLeft,
+                                contentWidth = contentWidth.toFloat(),
+                                marginTop = marginTop,
+                                pageBottom = pageBottom,
+                                cursorY = state.cursorY,
+                                ensureSpace = ensureSlideSpace,
+                                canvasProvider = { state.canvas }
+                            )
+                            continue
+                        }
+                        if (block.chart != null) {
+                            state.cursorY = OfficeGraphicPdfRenderer.drawChartBlock(
+                                chart = block.chart,
+                                marginH = marginLeft,
+                                contentWidth = contentWidth.toFloat(),
+                                pageBottom = pageBottom,
+                                marginTop = marginTop,
+                                ensureSpace = ensureSlideSpace,
+                                canvasProvider = { state.canvas }
+                            )
+                            continue
+                        }
+                        if (block.tableRows.isNotEmpty()) {
+                            state.cursorY = OfficeGraphicPdfRenderer.drawTableBlock(
+                                rows = block.tableRows,
+                                hasBorders = block.tableHasBorders,
+                                marginH = marginLeft,
+                                contentWidth = contentWidth.toFloat(),
+                                baseFontSizePt = 12f,
+                                marginTop = marginTop,
+                                pageBottom = pageBottom,
+                                initialCursorY = state.cursorY,
+                                startNewPage = {
+                                    state.finishCurrentPage()
+                                    if (!state.reachedPageLimit) state.startPage(onPageStarted = paintSlideHeader)
+                                    state.cursorY
+                                },
+                                canvasProvider = { state.canvas }
+                            )
+                            continue
+                        }
 
-                for (line in slide.bodyLines) {
-                    if (state.reachedPageLimit) break
+                        val effectiveTitle = block.isHeading || blockIdx == 0
+                        val txtColor = if (isDarkSlideBg) Color.WHITE else if (effectiveTitle) InkPrimary else InkSecondary
+                        val sz = (block.fontSizePt ?: if (effectiveTitle) 20f else 13.5f).coerceIn(9f, 34f)
+                        val slideTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = txtColor
+                            textSize = sz
+                            typeface = Typeface.create(
+                                Typeface.SANS_SERIF,
+                                when {
+                                    (effectiveTitle || block.isBold) && block.isItalic -> Typeface.BOLD_ITALIC
+                                    effectiveTitle || block.isBold -> Typeface.BOLD
+                                    block.isItalic -> Typeface.ITALIC
+                                    else -> Typeface.NORMAL
+                                }
+                            )
+                        }
+                        val seq = buildWordParagraphText(block, userScale = 1f)
+                        drawFlowingText(
+                            state = state,
+                            text = seq,
+                            paint = slideTextPaint,
+                            x = marginLeft,
+                            width = contentWidth,
+                            marginTop = marginTop,
+                            pageBottom = pageBottom,
+                            lineSpacingMult = 1.28f,
+                            alignment = toAndroidAlignment(block.alignment),
+                            onNewOverflowPage = paintSlideHeader
+                        )
+                        if (effectiveTitle && blockIdx == 0 && state.cursorY + 12f < pageBottom) {
+                            state.cursorY += 6f
+                            state.canvas.drawLine(marginLeft, state.cursorY, slideW - marginRight, state.cursorY, dividerPaint)
+                            state.cursorY += 10f
+                        } else {
+                            state.cursorY += 6f
+                        }
+                    }
+                } else {
+                    titlePaint.color = if (isDarkSlideBg) Color.WHITE else InkPrimary
+                    bodyPaint.color = if (isDarkSlideBg) Color.rgb(226, 232, 240) else InkSecondary
+
                     drawFlowingText(
                         state = state,
-                        text = "•  $line",
-                        paint = bodyPaint,
-                        x = marginH,
+                        text = slide.title,
+                        paint = titlePaint,
+                        x = marginLeft,
                         width = contentWidth,
                         marginTop = marginTop,
                         pageBottom = pageBottom,
-                        lineSpacingMult = 1.35f,
-                        onNewOverflowPage = { canvas ->
-                            canvas.drawRect(0f, 0f, SLIDE_WIDTH.toFloat(), 7f, accentPaint)
-                        }
+                        lineSpacingMult = 1.25f,
+                        onNewOverflowPage = paintSlideHeader
                     )
-                    state.cursorY += 7f
+
+                    state.cursorY += 10f
+                    if (state.cursorY + 8f < pageBottom) {
+                        state.canvas.drawLine(marginLeft, state.cursorY, slideW - marginRight, state.cursorY, dividerPaint)
+                        state.cursorY += 14f
+                    }
+
+                    for (line in slide.bodyLines) {
+                        if (state.reachedPageLimit) break
+                        drawFlowingText(
+                            state = state,
+                            text = "•  $line",
+                            paint = bodyPaint,
+                            x = marginLeft,
+                            width = contentWidth,
+                            marginTop = marginTop,
+                            pageBottom = pageBottom,
+                            lineSpacingMult = 1.35f,
+                            onNewOverflowPage = paintSlideHeader
+                        )
+                        state.cursorY += 7f
+                    }
                 }
 
                 if (slide.notes.isNotBlank() && !state.reachedPageLimit) {
@@ -402,21 +523,19 @@ object OfficeAndXmlToPdfConverter {
                     if (state.cursorY + boxHeight + 8f > pageBottom && state.cursorY > marginTop + 40f) {
                         state.finishCurrentPage()
                         if (!state.reachedPageLimit) {
-                            state.startPage(onPageStarted = { canvas ->
-                                canvas.drawRect(0f, 0f, SLIDE_WIDTH.toFloat(), 7f, accentPaint)
-                            })
+                            state.startPage(onPageStarted = paintSlideHeader)
                         }
                     }
                     if (!state.reachedPageLimit) {
                         val boxTop = state.cursorY.coerceAtMost(pageBottom - boxHeight)
                         val clampedBottom = (boxTop + boxHeight).coerceAtMost(pageBottom)
                         if (clampedBottom - boxTop >= 32f) {
-                            val rect = RectF(marginH, boxTop, SLIDE_WIDTH - marginH, clampedBottom)
+                            val rect = RectF(marginLeft, boxTop, slideW - marginRight, clampedBottom)
                             state.canvas.drawRoundRect(rect, 10f, 10f, notesBgPaint)
                             state.canvas.drawRoundRect(rect, 10f, 10f, notesBorderPaint)
 
                             state.canvas.save()
-                            state.canvas.translate(marginH + 12f, boxTop + 8f)
+                            state.canvas.translate(marginLeft + 12f, boxTop + 8f)
                             val labelLayout = buildStaticLayout("SPEAKER NOTES", notesLabelPaint, notesInnerWidth, 1.1f)
                             labelLayout.draw(state.canvas)
                             state.canvas.translate(0f, labelLayout.height + 4f)
@@ -432,140 +551,362 @@ object OfficeAndXmlToPdfConverter {
         }
     }
 
-    fun convertXmlToPdf(
-        formattedXml: String,
-        syntaxHighlight: Boolean,
-        showLineNumbers: Boolean,
+    fun convertExcelToPdf(
+        workbook: ExcelWorkbook,
+        showGridlines: Boolean,
         baseFontSizeSp: Float,
         outputFile: File,
-        embeddedMedia: List<WordBlock> = emptyList()
+        pageSizeOption: OfficePageSizeOption = OfficePageSizeOption.AUTO,
+        marginOption: OfficeMarginOption = OfficeMarginOption.AUTO
     ): Boolean {
-        val marginH = 30f
-        val marginTop = 34f
-        val marginBottom = 34f
-        val pageBottom = A4_HEIGHT - marginBottom
+        val cellTextSize = (baseFontSizeSp.coerceIn(11f, 22f) * 0.64f).coerceIn(7.5f, 13.5f)
+        val headerTextSize = (cellTextSize * 0.94f).coerceIn(7f, 12.5f)
+        val sansNormal = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+        val sansBold = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+        val sansItalic = Typeface.create(Typeface.SANS_SERIF, Typeface.ITALIC)
+        val sansBoldItalic = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD_ITALIC)
 
-        val codeFontSize = (baseFontSizeSp - 3.5f).coerceIn(8.5f, 13.5f)
-        val lineNumColWidth = if (showLineNumbers) 36f else 0f
-        val codeStartX = marginH + lineNumColWidth
-        val codeWidth = (A4_WIDTH - codeStartX - marginH).toInt().coerceAtLeast(160)
-
-        val codePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+        val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = ExcelAccent }
+        val bannerPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = ExcelAccent
+            textSize = 9.5f
+            typeface = sansBold
+        }
+        val sheetTitlePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             color = InkPrimary
-            textSize = codeFontSize
-            typeface = Typeface.MONOSPACE
+            textSize = 14f
+            typeface = sansBold
         }
-        val lineNumPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = LineNumInk
-            textSize = (codeFontSize - 1f).coerceAtLeast(7.5f)
-            typeface = Typeface.MONOSPACE
-            textAlign = Paint.Align.RIGHT
+        val colHeaderTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = InkSecondary
+            textSize = headerTextSize
+            typeface = sansBold
+            textAlign = Paint.Align.CENTER
         }
+        val rowNumTextPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = InkMuted
+            textSize = headerTextSize
+            typeface = sansNormal
+            textAlign = Paint.Align.CENTER
+        }
+        val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = DividerInk
+            style = Paint.Style.STROKE
+            strokeWidth = 0.7f
+        }
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 
-        val lines = formattedXml.lines().ifEmpty { listOf("") }
+        val sheets = workbook.sheets.ifEmpty {
+            listOf(ExcelSheet(name = "Sheet1", maxColumns = 1, rows = emptyList()))
+        }
 
         return writePdfAtomically(outputFile) { pdf ->
-            val state = PagedCanvasState(pdf, A4_WIDTH, A4_HEIGHT, marginTop)
-            state.startPage()
+            val defaultLayout = OfficeLayoutResolver.resolve(
+                workbook.layout,
+                pageSizeOption,
+                marginOption,
+                isSpreadsheet = true
+            )
+            val state = PagedCanvasState(
+                pdf = pdf,
+                pageWidth = defaultLayout.widthPt.roundToInt(),
+                pageHeight = defaultLayout.heightPt.roundToInt(),
+                marginTop = defaultLayout.marginTopPt
+            )
 
-            for ((idx, line) in lines.withIndex()) {
+            for ((sheetIdx, sheet) in sheets.withIndex()) {
                 if (state.reachedPageLimit) break
 
-                val styledLine: CharSequence = if (syntaxHighlight) {
-                    highlightXmlForPdf(line)
-                } else {
-                    line
-                }
-
-                val layout = buildStaticLayout(styledLine, codePaint, codeWidth, 1.32f)
-                val firstLineHeight = if (layout.lineCount > 0) {
-                    (layout.getLineBottom(0) - layout.getLineTop(0)).toFloat()
-                } else {
-                    codeFontSize * 1.32f
-                }
-
-                if (state.cursorY + firstLineHeight > pageBottom) {
-                    state.finishCurrentPage()
-                    if (state.reachedPageLimit) break
-                    state.startPage()
-                }
-
-                if (showLineNumbers) {
-                    val baseline = state.cursorY + if (layout.lineCount > 0) layout.getLineBaseline(0).toFloat() else codeFontSize
-                    state.canvas.drawText(
-                        (idx + 1).toString(),
-                        marginH + lineNumColWidth - 8f,
-                        baseline,
-                        lineNumPaint
-                    )
-                }
-
-                drawStaticLayoutAcrossPages(
-                    state = state,
-                    source = styledLine,
-                    layout = layout,
-                    paint = codePaint,
-                    x = codeStartX,
-                    width = codeWidth,
-                    marginTop = marginTop,
-                    pageBottom = pageBottom,
-                    lineSpacingMult = 1.32f
+                val sheetLayout = OfficeLayoutResolver.resolve(
+                    sheet.layout,
+                    pageSizeOption,
+                    marginOption,
+                    isSpreadsheet = true
                 )
-                state.cursorY += 1.5f
-            }
+                val sheetW = sheetLayout.widthPt.roundToInt().coerceIn(280, 1800)
+                val sheetH = sheetLayout.heightPt.roundToInt().coerceIn(280, 1800)
+                val marginLeft = sheetLayout.marginLeftPt.coerceIn(14f, sheetW * 0.25f)
+                val marginRight = sheetLayout.marginRightPt.coerceIn(14f, sheetW * 0.25f)
+                val marginTop = sheetLayout.marginTopPt.coerceIn(16f, sheetH * 0.22f)
+                val marginBottom = sheetLayout.marginBottomPt.coerceIn(16f, sheetH * 0.22f)
+                val contentWidth = (sheetW - marginLeft - marginRight).coerceAtLeast(180f)
+                val pageBottom = sheetH - marginBottom
 
-            if (embeddedMedia.isNotEmpty() && !state.reachedPageLimit) {
-                val ensureMediaSpace: (Float) -> Float = { needed ->
-                    if (!state.reachedPageLimit && state.cursorY + needed > pageBottom && state.cursorY > marginTop + 8f) {
-                        state.finishCurrentPage()
-                        if (!state.reachedPageLimit) state.startPage()
+                val totalCols = sheet.maxColumns.coerceAtLeast(1)
+                val rowNumColW = if (showGridlines) 28f else 0f
+                val availTableW = (contentWidth - rowNumColW).coerceAtLeast(160f)
+
+                val colWidthsPt = FloatArray(totalCols) { colIdx ->
+                    val explicitChars = sheet.columnWidthsChars[colIdx]
+                    val maxSampleChars = sheet.rows
+                        .asSequence()
+                        .take(80)
+                        .flatMap { it.cells.asSequence() }
+                        .filter { it.colIndex == colIdx && it.colSpan == 1 }
+                        .maxOfOrNull { it.text.length } ?: 6
+                    val approxW = if (explicitChars != null && explicitChars > 0f) {
+                        explicitChars * (cellTextSize * 0.62f) + 12f
+                    } else {
+                        maxSampleChars * (cellTextSize * 0.56f) + 16f
                     }
-                    state.cursorY
+                    approxW.coerceIn(46f, minOf(210f, availTableW))
                 }
-                val contentW = (A4_WIDTH - marginH * 2f)
-                val sectionLabelPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = InkMuted
-                    textSize = 9.5f
-                    typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.BOLD)
+
+                // Partition columns into horizontal bands so wide spreadsheets never crush columns
+                val colBands = mutableListOf<IntRange>()
+                var bandStart = 0
+                while (bandStart < totalCols) {
+                    var widthAcc = 0f
+                    var bandEnd = bandStart
+                    while (bandEnd < totalCols) {
+                        val w = colWidthsPt[bandEnd]
+                        if (bandEnd > bandStart && widthAcc + w > availTableW) break
+                        widthAcc += w
+                        bandEnd++
+                    }
+                    colBands.add(bandStart until bandEnd)
+                    bandStart = bandEnd
                 }
-                state.cursorY = ensureMediaSpace(24f)
-                if (!state.reachedPageLimit) {
-                    state.cursorY += 8f
-                    state.canvas.drawText("EMBEDDED IMAGES & CHARTS", marginH, state.cursorY + 10f, sectionLabelPaint)
-                    state.cursorY += 18f
+
+                fun scaledBandWidths(band: IntRange): FloatArray {
+                    val raw = FloatArray(band.count()) { i -> colWidthsPt[band.first + i] }
+                    val sum = raw.sum().coerceAtLeast(1f)
+                    if (sum < availTableW) {
+                        val factor = (availTableW / sum).coerceAtMost(1.8f)
+                        for (i in raw.indices) raw[i] *= factor
+                    } else if (sum > availTableW) {
+                        val factor = availTableW / sum
+                        for (i in raw.indices) raw[i] *= factor
+                    }
+                    return raw
                 }
-                for (mediaBlock in embeddedMedia) {
+
+                fun drawSheetHeaderBanner(band: IntRange) {
+                    val canvas = state.canvas
+                    canvas.drawRect(0f, 0f, sheetW.toFloat(), 5f, accentPaint)
+                    val colSpanLabel = if (colBands.size > 1) {
+                        "  •  Cols ${OoxmlWorkbookParser.columnLetter(band.first)}–${OoxmlWorkbookParser.columnLetter(band.last)}"
+                    } else {
+                        ""
+                    }
+                    val badge = "SHEET ${sheetIdx + 1} OF ${sheets.size}  •  ${sheetLayout.detectedPaperName} ${sheetLayout.detectedMarginName}$colSpanLabel"
+                    canvas.drawText(badge, marginLeft, state.cursorY + 8f, bannerPaint)
+                    canvas.drawText(sheet.name.take(58), marginLeft, state.cursorY + 23f, sheetTitlePaint)
+                    state.cursorY += 30f
+                }
+
+                fun drawColumnLetterBar(band: IntRange, widths: FloatArray) {
+                    if (!showGridlines) return
+                    val barH = 18f
+                    val canvas = state.canvas
+                    fillPaint.color = ExcelHeaderBg
+                    val totalBarW = rowNumColW + widths.sum()
+                    canvas.drawRect(marginLeft, state.cursorY, marginLeft + totalBarW, state.cursorY + barH, fillPaint)
+                    canvas.drawRect(marginLeft, state.cursorY, marginLeft + totalBarW, state.cursorY + barH, gridPaint)
+
+                    if (rowNumColW > 0f) {
+                        canvas.drawLine(marginLeft + rowNumColW, state.cursorY, marginLeft + rowNumColW, state.cursorY + barH, gridPaint)
+                    }
+                    var x = marginLeft + rowNumColW
+                    band.forEachIndexed { idx, colIdx ->
+                        val cw = widths[idx]
+                        canvas.drawText(
+                            OoxmlWorkbookParser.columnLetter(colIdx),
+                            x + cw / 2f,
+                            state.cursorY + 12.5f,
+                            colHeaderTextPaint
+                        )
+                        canvas.drawLine(x + cw, state.cursorY, x + cw, state.cursorY + barH, gridPaint)
+                        x += cw
+                    }
+                    state.cursorY += barH
+                }
+
+                val repeatHeaderRow = sheet.rows.firstOrNull()?.takeIf { it.isHeaderLikely }
+
+                fun drawExcelRow(
+                    row: ExcelRow,
+                    band: IntRange,
+                    widths: FloatArray,
+                    zebraShade: Boolean
+                ): Boolean {
+                    val cellMap = row.cells.associateBy { it.colIndex }
+                    val padH = 5f
+                    val padV = 4f
+                    val layouts = mutableListOf<Triple<Int, Float, StaticLayout?>>()
+                    val colStyles = mutableListOf<ExcelCell?>()
+                    var maxH = (cellTextSize + padV * 2f + 3f).coerceAtLeast(17f)
+
+                    var ci = band.first
+                    while (ci <= band.last) {
+                        val cell = cellMap[ci]
+                        val spanCols = (cell?.colSpan ?: 1).coerceIn(1, band.last - ci + 1)
+                        var spanWidth = 0f
+                        for (k in 0 until spanCols) {
+                            spanWidth += widths[(ci - band.first) + k]
+                        }
+                        val innerW = (spanWidth - padH * 2f).coerceAtLeast(16f).toInt()
+                        val text = cell?.text.orEmpty()
+                        val layout = if (text.isNotEmpty()) {
+                            val paint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                                color = cell?.textColorRgb?.let {
+                                    Color.rgb((it shr 16) and 0xFF, (it shr 8) and 0xFF, it and 0xFF)
+                                } ?: InkPrimary
+                                textSize = cellTextSize
+                                typeface = when {
+                                    cell?.isBold == true && cell.isItalic -> sansBoldItalic
+                                    cell?.isBold == true || row.isHeaderLikely -> sansBold
+                                    cell?.isItalic == true -> sansItalic
+                                    else -> sansNormal
+                                }
+                            }
+                            buildStaticLayout(
+                                text = text,
+                                paint = paint,
+                                width = innerW,
+                                lineSpacingMult = 1.18f,
+                                alignment = toAndroidAlignment(cell?.alignment ?: DocAlignment.LEFT)
+                            )
+                        } else null
+                        if (layout != null) {
+                            maxH = maxOf(maxH, layout.height + padV * 2f)
+                        }
+                        layouts.add(Triple(ci - band.first, spanWidth, layout))
+                        colStyles.add(cell)
+                        ci += spanCols
+                    }
+
+                    val rowH = maxH.coerceAtMost((pageBottom - marginTop - 60f).coerceAtLeast(36f))
+                    if (state.cursorY + rowH > pageBottom && state.cursorY > marginTop + 54f) {
+                        return false
+                    }
+
+                    val canvas = state.canvas
+                    if (showGridlines && rowNumColW > 0f) {
+                        fillPaint.color = ExcelHeaderBg
+                        canvas.drawRect(marginLeft, state.cursorY, marginLeft + rowNumColW, state.cursorY + rowH, fillPaint)
+                        canvas.drawRect(marginLeft, state.cursorY, marginLeft + rowNumColW, state.cursorY + rowH, gridPaint)
+                        canvas.drawText(
+                            row.rowNumber.toString(),
+                            marginLeft + rowNumColW / 2f,
+                            state.cursorY + rowH / 2f + headerTextSize * 0.35f,
+                            rowNumTextPaint
+                        )
+                    }
+
+                    var x = marginLeft + rowNumColW
+                    layouts.forEachIndexed { idx, (_, spanW, layout) ->
+                        val cell = colStyles[idx]
+                        val bgRgb = cell?.backgroundRgb
+                        val cellBgColor = when {
+                            bgRgb != null -> Color.rgb((bgRgb shr 16) and 0xFF, (bgRgb shr 8) and 0xFF, bgRgb and 0xFF)
+                            row.isHeaderLikely -> Color.rgb(236, 253, 245)
+                            zebraShade -> ExcelZebraBg
+                            else -> null
+                        }
+                        if (cellBgColor != null) {
+                            fillPaint.color = cellBgColor
+                            canvas.drawRect(x, state.cursorY, x + spanW, state.cursorY + rowH, fillPaint)
+                        }
+                        if (showGridlines) {
+                            canvas.drawRect(x, state.cursorY, x + spanW, state.cursorY + rowH, gridPaint)
+                        }
+                        if (layout != null) {
+                            canvas.save()
+                            canvas.clipRect(x + 2f, state.cursorY + 1f, x + spanW - 2f, state.cursorY + rowH - 1f)
+                            val yOffset = state.cursorY + ((rowH - layout.height) / 2f).coerceAtLeast(padV)
+                            canvas.translate(x + padH, yOffset)
+                            layout.draw(canvas)
+                            canvas.restore()
+                        }
+                        x += spanW
+                    }
+
+                    state.cursorY += rowH
+                    return true
+                }
+
+                for ((bandIndex, band) in colBands.withIndex()) {
                     if (state.reachedPageLimit) break
-                    mediaBlock.image?.let { img ->
-                        state.cursorY = OfficeGraphicPdfRenderer.drawImageBlock(
-                            image = img,
-                            marginH = marginH,
-                            contentWidth = contentW,
-                            marginTop = marginTop,
-                            pageBottom = pageBottom,
-                            cursorY = state.cursorY,
-                            ensureSpace = ensureMediaSpace,
-                            canvasProvider = { state.canvas }
-                        )
-                    }
-                    mediaBlock.chart?.let { ch ->
-                        state.cursorY = OfficeGraphicPdfRenderer.drawChartBlock(
-                            chart = ch,
-                            marginH = marginH,
-                            contentWidth = contentW,
-                            pageBottom = pageBottom,
-                            marginTop = marginTop,
-                            ensureSpace = ensureMediaSpace,
-                            canvasProvider = { state.canvas }
-                        )
-                    }
-                }
-            }
+                    val widths = scaledBandWidths(band)
+                    state.startPage(overrideWidth = sheetW, overrideHeight = sheetH, overrideMarginTop = marginTop)
+                    drawSheetHeaderBanner(band)
+                    drawColumnLetterBar(band, widths)
 
-            if (state.reachedPageLimit) {
-                // Already closed at page limit; no trailing draw needed
-            } else {
-                state.finishCurrentPage()
+                    if (sheet.rows.isEmpty()) {
+                        val emptyPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = InkMuted
+                            textSize = cellTextSize + 1f
+                            typeface = sansItalic
+                        }
+                        state.canvas.drawText("(Empty sheet)", marginLeft, state.cursorY + 20f, emptyPaint)
+                        state.cursorY += 28f
+                    } else {
+                        for ((rowIdx, row) in sheet.rows.withIndex()) {
+                            if (state.reachedPageLimit) break
+                            val zebra = rowIdx % 2 == 1
+                            val fits = drawExcelRow(row, band, widths, zebra)
+                            if (!fits) {
+                                state.finishCurrentPage()
+                                if (state.reachedPageLimit) break
+                                state.startPage(overrideWidth = sheetW, overrideHeight = sheetH, overrideMarginTop = marginTop)
+                                drawSheetHeaderBanner(band)
+                                drawColumnLetterBar(band, widths)
+                                if (repeatHeaderRow != null && rowIdx > 0) {
+                                    drawExcelRow(repeatHeaderRow, band, widths, zebraShade = false)
+                                }
+                                drawExcelRow(row, band, widths, zebra)
+                            }
+                        }
+                    }
+
+                    if (bandIndex == 0 && sheet.embeddedBlocks.isNotEmpty() && !state.reachedPageLimit) {
+                        val ensureSpace: (Float) -> Float = { needed ->
+                            if (!state.reachedPageLimit && state.cursorY + needed > pageBottom && state.cursorY > marginTop + 40f) {
+                                state.finishCurrentPage()
+                                if (!state.reachedPageLimit) {
+                                    state.startPage(overrideWidth = sheetW, overrideHeight = sheetH, overrideMarginTop = marginTop)
+                                    drawSheetHeaderBanner(band)
+                                }
+                            }
+                            state.cursorY
+                        }
+                        state.cursorY = ensureSpace(28f)
+                        if (!state.reachedPageLimit) {
+                            state.cursorY += 10f
+                            state.canvas.drawText("CHARTS & IMAGES", marginLeft, state.cursorY + 10f, bannerPaint)
+                            state.cursorY += 18f
+                        }
+                        for (mediaBlock in sheet.embeddedBlocks) {
+                            if (state.reachedPageLimit) break
+                            mediaBlock.image?.let { img ->
+                                state.cursorY = OfficeGraphicPdfRenderer.drawImageBlock(
+                                    image = img,
+                                    marginH = marginLeft,
+                                    contentWidth = contentWidth,
+                                    marginTop = marginTop,
+                                    pageBottom = pageBottom,
+                                    cursorY = state.cursorY,
+                                    ensureSpace = ensureSpace,
+                                    canvasProvider = { state.canvas }
+                                )
+                            }
+                            mediaBlock.chart?.let { ch ->
+                                state.cursorY = OfficeGraphicPdfRenderer.drawChartBlock(
+                                    chart = ch,
+                                    marginH = marginLeft,
+                                    contentWidth = contentWidth,
+                                    pageBottom = pageBottom,
+                                    marginTop = marginTop,
+                                    ensureSpace = ensureSpace,
+                                    canvasProvider = { state.canvas }
+                                )
+                            }
+                        }
+                    }
+
+                    state.finishCurrentPage()
+                }
             }
         }
     }
@@ -690,88 +1031,6 @@ object OfficeAndXmlToPdfConverter {
         return builder.build()
     }
 
-    private fun highlightXmlForPdf(line: String): CharSequence {
-        val sb = SpannableStringBuilder()
-        if (line.trimStart().startsWith("<!--")) {
-            val start = 0
-            sb.append(line)
-            sb.setSpan(ForegroundColorSpan(PdfXmlComment), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            sb.setSpan(StyleSpan(Typeface.ITALIC), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            return sb
-        }
-
-        var i = 0
-        while (i < line.length) {
-            if (line[i] == '<') {
-                val closeIdx = line.indexOf('>', i)
-                if (closeIdx == -1) {
-                    val start = sb.length
-                    sb.append(line.substring(i))
-                    sb.setSpan(ForegroundColorSpan(PdfXmlTag), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    break
-                }
-                appendXmlTagSpan(sb, line.substring(i, closeIdx + 1))
-                i = closeIdx + 1
-            } else {
-                val nextTag = line.indexOf('<', i)
-                val end = if (nextTag == -1) line.length else nextTag
-                sb.append(line.substring(i, end))
-                i = end
-            }
-        }
-        return sb
-    }
-
-    private fun appendXmlTagSpan(sb: SpannableStringBuilder, tagText: String) {
-        val spaceIdx = tagText.indexOfFirst { it.isWhitespace() }
-        if (spaceIdx == -1) {
-            val start = sb.length
-            sb.append(tagText)
-            sb.setSpan(ForegroundColorSpan(PdfXmlTag), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            sb.setSpan(StyleSpan(Typeface.BOLD), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            return
-        }
-
-        val tagStart = sb.length
-        sb.append(tagText.substring(0, spaceIdx))
-        sb.setSpan(ForegroundColorSpan(PdfXmlTag), tagStart, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        sb.setSpan(StyleSpan(Typeface.BOLD), tagStart, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-
-        var i = spaceIdx
-        while (i < tagText.length) {
-            val ch = tagText[i]
-            when {
-                ch == '"' || ch == '\'' -> {
-                    val endQuote = tagText.indexOf(ch, i + 1)
-                    val end = if (endQuote == -1) tagText.length else endQuote + 1
-                    val start = sb.length
-                    sb.append(tagText.substring(i, end))
-                    sb.setSpan(ForegroundColorSpan(PdfXmlValue), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    i = end
-                }
-                ch == '>' || (ch == '/' && i + 1 < tagText.length && tagText[i + 1] == '>') -> {
-                    val start = sb.length
-                    sb.append(tagText.substring(i))
-                    sb.setSpan(ForegroundColorSpan(PdfXmlTag), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    sb.setSpan(StyleSpan(Typeface.BOLD), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    break
-                }
-                ch.isLetter() || ch == '_' || ch == ':' || ch == '-' -> {
-                    var end = i + 1
-                    while (end < tagText.length && (tagText[end].isLetterOrDigit() || tagText[end] in "_:-")) end++
-                    val start = sb.length
-                    sb.append(tagText.substring(i, end))
-                    sb.setSpan(ForegroundColorSpan(PdfXmlAttr), start, sb.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    i = end
-                }
-                else -> {
-                    sb.append(ch)
-                    i++
-                }
-            }
-        }
-    }
-
     private fun writePdfAtomically(outputFile: File, block: (PdfDocument) -> Unit): Boolean {
         outputFile.parentFile?.let { if (!it.exists()) it.mkdirs() }
         val tmp = File(outputFile.parentFile, "${outputFile.name}.tmp")
@@ -812,18 +1071,23 @@ object OfficeAndXmlToPdfConverter {
         val canvas: Canvas
             get() = currentPage!!.canvas
 
-        fun startPage(onPageStarted: ((Canvas) -> Unit)? = null) {
+        fun startPage(
+            onPageStarted: ((Canvas) -> Unit)? = null,
+            overrideWidth: Int = pageWidth,
+            overrideHeight: Int = pageHeight,
+            overrideMarginTop: Float = marginTop
+        ) {
             if (pageNumber >= MAX_PDF_PAGES) {
                 reachedPageLimit = true
                 return
             }
             pageNumber++
-            val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageNumber).create()
+            val pageInfo = PdfDocument.PageInfo.Builder(overrideWidth, overrideHeight, pageNumber).create()
             val page = pdf.startPage(pageInfo)
             page.canvas.drawColor(Color.WHITE)
             onPageStarted?.invoke(page.canvas)
             currentPage = page
-            cursorY = marginTop
+            cursorY = overrideMarginTop
         }
 
         fun finishCurrentPage() {

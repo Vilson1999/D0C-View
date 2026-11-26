@@ -37,9 +37,9 @@ val DocPillColor = Color(0xFF2563EB)       // Blue
 val DocPillTintLight = Color(0xFFDBEAFE)
 val DocPillTintDark = Color(0xFF15294B)
 
-val XmlPillColor = Color(0xFF16A34A)       // Green
-val XmlPillTintLight = Color(0xFFDCFCE7)
-val XmlPillTintDark = Color(0xFF123824)
+val ExcelPillColor = Color(0xFF16A34A)     // Green
+val ExcelPillTintLight = Color(0xFFDCFCE7)
+val ExcelPillTintDark = Color(0xFF123824)
 
 val PptPillColor = Color(0xFFEA580C)       // Orange
 val PptPillTintLight = Color(0xFFFFEDD5)
@@ -48,14 +48,3 @@ val PptPillTintDark = Color(0xFF452310)
 val TextPillColor = Color(0xFF64748B)      // Gray
 val TextPillTintLight = Color(0xFFE2E8F0)
 val TextPillTintDark = Color(0xFF263040)
-
-// Syntax Highlighting Tokens
-val XmlTagLight = Color(0xFF0F766E)
-val XmlAttrLight = Color(0xFF2563EB)
-val XmlValueLight = Color(0xFFB45309)
-val XmlCommentLight = Color(0xFF64748B)
-
-val XmlTagDark = Color(0xFF5EEAD4)
-val XmlAttrDark = Color(0xFF93C5FD)
-val XmlValueDark = Color(0xFFFCD34D)
-val XmlCommentDark = Color(0xFF94A3B8)
