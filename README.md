@@ -9,15 +9,7 @@
 
 > An offline document viewer for finding and reading documents stored on your Android device. No internet connection or data collection.
 
-## Screenshots
 
-<table>
-  <tr>
-    <td><img src="public/assets/aistudio/Screenshot_20261123-155528_43c436fa.png" alt="D0C View screenshot 1" width="220"></td>
-    <td><img src="public/assets/aistudio/Screenshot_20261124-180123_218588c4.png" alt="D0C View screenshot 2" width="220"></td>
-    <td><img src="public/assets/aistudio/Screenshot_20261125-200613_c1bb3ada.png" alt="D0C View screenshot 3" width="220"></td>
-  </tr>
-</table>
 
 ## App details
 
