@@ -1,10 +1,14 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
+import android.database.ContentObserver
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -45,6 +49,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.model.ScreenOrientationPolicy
 import com.example.model.ThemeMode
 import com.example.ui.screens.DocumentViewerScreen
 import com.example.ui.screens.HomeScreen
@@ -101,15 +106,42 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         ThemeMode.DARK -> true
     }
 
+    val activity = context as? Activity
     // Refresh and scan only if storage permission changed after returning from system settings
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 viewModel.onForegroundResume()
+                if (activity != null && ScreenOrientationPolicy.isSystemAutoRotateEnabled(context.contentResolver)) {
+                    // When returning from background with system auto-rotate active, keep sensor control unlocked
+                    if (navController.currentBackStackEntry?.destination?.route != ROUTE_VIEWER) {
+                        activity.requestedOrientation = ScreenOrientationPolicy.resolveSensorFollowOrientation()
+                    }
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(context, activity) {
+        val contentObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+            override fun onChange(selfChange: Boolean) {
+                if (activity != null && ScreenOrientationPolicy.isSystemAutoRotateEnabled(context.contentResolver)) {
+                    activity.requestedOrientation = ScreenOrientationPolicy.resolveSensorFollowOrientation()
+                }
+            }
+        }
+        runCatching {
+            context.contentResolver.registerContentObserver(
+                Settings.System.getUriFor(Settings.System.ACCELEROMETER_ROTATION),
+                false,
+                contentObserver
+            )
+        }
+        onDispose {
+            runCatching { context.contentResolver.unregisterContentObserver(contentObserver) }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -207,7 +239,10 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         )
     }
 
-    DocVaultTheme(darkTheme = isDarkTheme) {
+    DocVaultTheme(
+        darkTheme = isDarkTheme,
+        useMaterialUi = uiState.settings.useMaterialUi
+    ) {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
@@ -317,6 +352,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         countsByType = uiState.rawCountsByType,
                         cacheSizeBytes = uiState.cacheSizeBytes,
                         onBack = { navController.popBackStack() },
+                        onSetUseMaterialUi = viewModel::setUseMaterialUi,
                         onSetThemeMode = viewModel::setThemeMode,
                         onSetDocTypeVisible = viewModel::setDocTypeVisible,
                         onSetScanDotFolders = viewModel::setScanDotFolders,
@@ -326,18 +362,13 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onSetPdfInvertInDarkMode = viewModel::setPdfInvertInDarkMode,
                         onSetPdfDoubleTapZoom = viewModel::setPdfDoubleTapZoom,
                         onSetDocxRenderFormat = viewModel::setDocxRenderFormat,
-                        onSetDocxPageSize = viewModel::setDocxPageSize,
-                        onSetDocxMargin = viewModel::setDocxMargin,
                         onSetDocxFontSizeSp = viewModel::setDocxFontSizeSp,
                         onSetXlsxRenderFormat = viewModel::setXlsxRenderFormat,
-                        onSetXlsxPageSize = viewModel::setXlsxPageSize,
-                        onSetXlsxMargin = viewModel::setXlsxMargin,
                         onSetShowExcelGridlines = viewModel::setShowExcelGridlines,
                         onSetXlsxFontSizeSp = viewModel::setXlsxFontSizeSp,
                         onSetPptRenderFormat = viewModel::setPptRenderFormat,
-                        onSetPptPageSize = viewModel::setPptPageSize,
-                        onSetPptMargin = viewModel::setPptMargin,
                         onSetShowPptSpeakerNotes = viewModel::setShowPptSpeakerNotes,
+                        onSetTextRenderFormat = viewModel::setTextRenderFormat,
                         onSetTextPageViewMode = viewModel::setTextPageViewMode,
                         onSetShowLineNumbers = viewModel::setShowLineNumbers,
                         onSetTextWordWrap = viewModel::setTextWordWrap,

@@ -11,22 +11,15 @@ enum class OfficeRenderFormat(val label: String, val shortLabel: String) {
     ORIGINAL("Original Format", "Original")
 }
 
-enum class OfficePageSizeOption(val label: String, val shortLabel: String) {
-    AUTO("Auto (File Default)", "Auto"),
-    A4("A4 (210 × 297 mm)", "A4"),
-    A3("A3 (297 × 420 mm)", "A3"),
-    LEGAL("Legal (8.5 × 14 in)", "Legal"),
-    LETTER("Letter (8.5 × 11 in)", "Letter")
-}
-
-enum class OfficeMarginOption(val label: String, val shortLabel: String) {
-    AUTO("Auto (File Default)", "Auto"),
-    NARROW("Narrow (0.5 in)", "Narrow"),
-    NORMAL("Normal (1.0 in)", "Normal")
+enum class DocumentViewOrientation(val label: String) {
+    AUTO("Auto"),
+    PORTRAIT("Portrait"),
+    LANDSCAPE("Landscape")
 }
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val useMaterialUi: Boolean = true,
     val scanDotFolders: Boolean = true,
     val showDotFolderBadge: Boolean = true,
     val defaultPageViewMode: PageViewMode = PageViewMode.SINGLE_PAGE,
@@ -37,28 +30,21 @@ data class AppSettings(
     val autoHideReaderUi: Boolean = true,
     val autoCleanRenderCache: Boolean = true,
     val officeRenderFormat: OfficeRenderFormat = OfficeRenderFormat.PDF,
-    val officePageSize: OfficePageSizeOption = OfficePageSizeOption.AUTO,
-    val officeMargin: OfficeMarginOption = OfficeMarginOption.AUTO,
     // PDF folder settings
     val pdfPageViewMode: PageViewMode = PageViewMode.SINGLE_PAGE,
     val pdfInvertInDarkMode: Boolean = false,
     val pdfDoubleTapZoom: Float = 2f,
     // DOCX folder settings
     val docxRenderFormat: OfficeRenderFormat = OfficeRenderFormat.PDF,
-    val docxPageSize: OfficePageSizeOption = OfficePageSizeOption.AUTO,
-    val docxMargin: OfficeMarginOption = OfficeMarginOption.AUTO,
     val docxFontSizeSp: Float = 15f,
     // XLSX folder settings
     val xlsxRenderFormat: OfficeRenderFormat = OfficeRenderFormat.PDF,
-    val xlsxPageSize: OfficePageSizeOption = OfficePageSizeOption.AUTO,
-    val xlsxMargin: OfficeMarginOption = OfficeMarginOption.AUTO,
     val xlsxFontSizeSp: Float = 14f,
     // PPT folder settings
     val pptRenderFormat: OfficeRenderFormat = OfficeRenderFormat.PDF,
-    val pptPageSize: OfficePageSizeOption = OfficePageSizeOption.AUTO,
-    val pptMargin: OfficeMarginOption = OfficeMarginOption.AUTO,
     val showPptSpeakerNotes: Boolean = true,
     // TEXT folder settings
+    val textRenderFormat: OfficeRenderFormat = OfficeRenderFormat.PDF,
     val textPageViewMode: PageViewMode = PageViewMode.SINGLE_PAGE,
     val textWordWrap: Boolean = true,
     val textMonospace: Boolean = true,

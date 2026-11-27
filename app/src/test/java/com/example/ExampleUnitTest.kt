@@ -26,10 +26,10 @@ import com.example.data.WordTableRow
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
+import com.example.model.DocumentViewOrientation
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
+import com.example.model.ScreenOrientationPolicy
 import com.example.model.SortOption
 import com.example.service.BackgroundLifecyclePolicy
 import com.example.viewmodel.DocumentQueryProcessor
@@ -93,10 +93,10 @@ class ExampleUnitTest {
         assertEquals(PageViewMode.SINGLE_PAGE, defaults.pdfPageViewMode)
         assertEquals(PageViewMode.SINGLE_PAGE, defaults.textPageViewMode)
         assertEquals(OfficeRenderFormat.PDF, defaults.docxRenderFormat)
-        assertEquals(OfficePageSizeOption.AUTO, defaults.docxPageSize)
-        assertEquals(OfficeMarginOption.AUTO, defaults.docxMargin)
         assertEquals(OfficeRenderFormat.PDF, defaults.xlsxRenderFormat)
         assertEquals(OfficeRenderFormat.PDF, defaults.pptRenderFormat)
+        assertEquals(OfficeRenderFormat.PDF, defaults.textRenderFormat)
+        assertTrue(defaults.useMaterialUi)
         assertTrue(defaults.showPptSpeakerNotes)
         assertTrue(defaults.textWordWrap)
         assertTrue(defaults.textMonospace)
@@ -756,7 +756,7 @@ class ExampleUnitTest {
     }
 
     @Test
-    fun ooxmlDocumentParser_detectsA4A3LegalLetterAndMarginsAndResolverOverrides() {
+    fun ooxmlDocumentParser_detectsA4A3LegalLetterAndTextAutoLayouts() {
         fun zipWithDocXml(docXml: String): ByteArray = ByteArrayOutputStream().use { baos ->
             ZipOutputStream(baos).use { zos ->
                 zos.putNextEntry(ZipEntry("word/document.xml"))
@@ -786,6 +786,25 @@ class ExampleUnitTest {
         assertEquals(792f, parsedLetter.layout.heightPt, 1f)
         assertEquals(36f, parsedLetter.layout.marginLeftPt, 1f)
 
+        // Legal (12240 x 20160 twips = 612 x 1008 pt) + Normal margin (1440 twips = 72 pt)
+        val legalNormalXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>Legal Contract</w:t></w:r></w:p>
+                <w:sectPr>
+                  <w:pgSz w:w="12240" w:h="20160"/>
+                  <w:pgMar w:top="1440" w:right="1440" w:bottom="1440" w:left="1440"/>
+                </w:sectPr>
+              </w:body>
+            </w:document>
+        """.trimIndent()
+        val parsedLegal = OoxmlDocumentParser.parseDocxWithLayout(zipWithDocXml(legalNormalXml))
+        assertEquals("Legal", parsedLegal.layout.detectedPaperName)
+        assertEquals("Normal", parsedLegal.layout.detectedMarginName)
+        assertEquals(612f, parsedLegal.layout.widthPt, 1f)
+        assertEquals(1008f, parsedLegal.layout.heightPt, 1f)
+
         // A3 Landscape (16838 x 23811 twips) + Normal margin (1440 twips = 72 pt)
         val a3NormalXml = """
             <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -804,16 +823,16 @@ class ExampleUnitTest {
         assertEquals("Normal", parsedA3.layout.detectedMarginName)
         assertTrue(parsedA3.layout.isLandscape)
 
-        // Override Legal + Narrow on top of detected layout
-        val legalOverride = OfficeLayoutResolver.resolve(
-            detected = parsedLetter.layout,
-            sizeOverride = OfficePageSizeOption.LEGAL,
-            marginOverride = OfficeMarginOption.NORMAL
-        )
-        assertEquals("Legal", legalOverride.detectedPaperName)
-        assertEquals("Normal", legalOverride.detectedMarginName)
-        assertEquals(612f, legalOverride.widthPt, 1f)
-        assertEquals(1008f, legalOverride.heightPt, 1f)
+        // TEXT auto-layout detection: short prose -> A4 Portrait Normal; wide table/code -> Landscape Narrow
+        val proseLayout = OfficeLayoutResolver.detectTextLayout("Short line\nAnother clean line")
+        assertEquals("A4", proseLayout.detectedPaperName)
+        assertFalse(proseLayout.isLandscape)
+        assertEquals("Normal", proseLayout.detectedMarginName)
+
+        val wideLine = "col1 | col2 | col3 | " + "x".repeat(120)
+        val wideLayout = OfficeLayoutResolver.detectTextLayout("$wideLine\n$wideLine")
+        assertTrue(wideLayout.isLandscape)
+        assertEquals("Narrow", wideLayout.detectedMarginName)
     }
 
     @Test
@@ -1099,6 +1118,16 @@ class ExampleUnitTest {
             assertTrue(DocumentCacheManager.saveParsedToFile(sheetFile, sheetDoc))
             assertEquals(sheetDoc, DocumentCacheManager.loadParsedFromFile(sheetFile))
 
+            val textDoc = ParsedDocument.PlainText(
+                fullText = "Line 1\nLine 2",
+                pages = listOf(listOf("Line 1", "Line 2")),
+                layout = OfficeLayoutResolver.DEFAULT_WORD_A4,
+                summary = summary
+            )
+            val textFile = File(tempDir, "text.dat")
+            assertTrue(DocumentCacheManager.saveParsedToFile(textFile, textDoc))
+            assertEquals(textDoc, DocumentCacheManager.loadParsedFromFile(textFile))
+
             val recentsFile = File(tempDir, DocumentCacheManager.RECENTS_FILE_NAME)
             DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/a.pdf", maxEntries = 3)
             DocumentCacheManager.recordRecentIdToFile(recentsFile, "/docs/b.docx", maxEntries = 3)
@@ -1121,5 +1150,47 @@ class ExampleUnitTest {
 
         val pullRefreshState = HomeUiState(isScanning = true, isPullRefreshing = true)
         assertTrue(pullRefreshState.isPullRefreshing)
+    }
+
+    @Test
+    fun screenOrientationPolicy_togglesPortraitAndLandscapeAndFollowsSensor() {
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            ScreenOrientationPolicy.nextManualOrientation(isCurrentlyLandscape = false)
+        )
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            ScreenOrientationPolicy.nextManualOrientation(isCurrentlyLandscape = true)
+        )
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            ScreenOrientationPolicy.resolveSensorFollowOrientation()
+        )
+    }
+
+    @Test
+    fun officeLayoutResolver_appliesPortraitAndLandscapeDocumentOrientation() {
+        val portraitWord = OfficeLayoutResolver.DEFAULT_WORD_A4
+        assertFalse(portraitWord.isLandscape)
+
+        val autoWord = OfficeLayoutResolver.applyOrientation(portraitWord, DocumentViewOrientation.AUTO)
+        assertEquals(portraitWord, autoWord)
+
+        val landscapeWord = OfficeLayoutResolver.applyOrientation(portraitWord, DocumentViewOrientation.LANDSCAPE)
+        assertTrue(landscapeWord.isLandscape)
+        assertEquals(842f, landscapeWord.widthPt, 0.1f)
+        assertEquals(595f, landscapeWord.heightPt, 0.1f)
+        assertEquals("A4", landscapeWord.detectedPaperName)
+
+        val backToPortrait = OfficeLayoutResolver.applyOrientation(landscapeWord, DocumentViewOrientation.PORTRAIT)
+        assertFalse(backToPortrait.isLandscape)
+        assertEquals(595f, backToPortrait.widthPt, 0.1f)
+        assertEquals(842f, backToPortrait.heightPt, 0.1f)
+
+        val slideLandscape = OfficeLayoutResolver.DEFAULT_SLIDE_16_9
+        val slidePortrait = OfficeLayoutResolver.applyOrientation(slideLandscape, DocumentViewOrientation.PORTRAIT)
+        assertFalse(slidePortrait.isLandscape)
+        assertEquals(540f, slidePortrait.widthPt, 0.1f)
+        assertEquals(960f, slidePortrait.heightPt, 0.1f)
     }
 }

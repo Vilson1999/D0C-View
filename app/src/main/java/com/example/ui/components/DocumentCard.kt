@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.DocumentItem
+import com.example.ui.theme.LocalMaterialUiEnabled
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -80,18 +81,23 @@ fun DocumentCard(
         label = "cardPressScale"
     )
 
+    val materialUi = LocalMaterialUiEnabled.current
     val cardColor by animateColorAsState(
         targetValue = if (isSelected) {
-            document.type.pillColor.copy(alpha = if (isDarkTheme) 0.18f else 0.09f)
+            if (materialUi) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+            } else {
+                document.type.pillColor.copy(alpha = if (isDarkTheme) 0.18f else 0.09f)
+            }
         } else {
-            MaterialTheme.colorScheme.surface
+            if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface
         },
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "cardBg"
     )
     val borderColor by animateColorAsState(
         targetValue = if (isSelected) {
-            document.type.pillColor
+            if (materialUi) MaterialTheme.colorScheme.primary else document.type.pillColor
         } else {
             MaterialTheme.colorScheme.outlineVariant
         },
@@ -108,7 +114,7 @@ fun DocumentCard(
                 scaleX = pressScale
                 scaleY = pressScale
             }
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(if (materialUi) 18.dp else 16.dp))
             .combinedClickable(
                 interactionSource = interactionSource,
                 indication = ripple(),
@@ -116,10 +122,10 @@ fun DocumentCard(
                 onLongClick = onLongClick
             )
             .testTag("doc_card_${document.name}"),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(if (materialUi) 18.dp else 16.dp),
         color = cardColor,
         border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, borderColor),
-        tonalElevation = if (isSelected) 2.dp else 0.dp
+        tonalElevation = if (isSelected) 3.dp else if (materialUi) 1.dp else 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -212,7 +218,11 @@ fun DocumentCard(
                     if (document.isFromDotFolder && showDotFolderBadge) {
                         Surface(
                             shape = CircleShape,
-                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                            color = if (materialUi) {
+                                MaterialTheme.colorScheme.secondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                            }
                         ) {
                             Text(
                                 text = ".dot",
@@ -220,7 +230,11 @@ fun DocumentCard(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold
                                 ),
-                                color = MaterialTheme.colorScheme.secondary,
+                                color = if (materialUi) {
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.secondary
+                                },
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
                             )
                         }

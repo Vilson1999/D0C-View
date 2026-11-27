@@ -11,9 +11,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,15 +33,11 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -56,7 +51,6 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -75,18 +69,13 @@ import com.example.data.DocAlignment
 import com.example.data.ExcelWorkbook
 import com.example.data.OfficeChart
 import com.example.data.OfficeChartType
-import com.example.data.OfficeContentSummary
 import com.example.data.OfficePageLayout
 import com.example.data.SlidePage
 import com.example.data.WordBlock
 import com.example.data.WordPage
 import com.example.data.WordTableRow
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
-import com.example.model.OfficeRenderFormat
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private val ChartPalette = listOf(
@@ -144,34 +133,37 @@ fun OfficeOriginalWordPaperCard(
     val padRight = (layout.marginRightPt * 0.36f).coerceIn(12f, 36f).dp
     val padTop = (layout.marginTopPt * 0.34f).coerceIn(14f, 34f).dp
     val padBottom = (layout.marginBottomPt * 0.30f).coerceIn(12f, 30f).dp
-    val maxWidthDp = if (layout.isLandscape) 820.dp else 700.dp
+    val maxWidthDp = if (layout.isLandscape) 860.dp else 700.dp
+    val aspect = (layout.widthPt / layout.heightPt.coerceAtLeast(1f)).coerceIn(0.55f, 1.9f)
 
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, PaperBorder),
-        shadowElevation = 3.dp,
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = maxWidthDp)
-            .testTag("word_original_page_${page.pageNumber}")
+            .widthIn(max = maxWidthDp),
+        contentAlignment = Alignment.TopCenter
     ) {
-        Column(
+        val minPageHeight = (maxWidth / aspect).coerceIn(190.dp, 540.dp)
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = Color.White,
+            border = BorderStroke(1.dp, PaperBorder),
+            shadowElevation = 3.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = padLeft, end = padRight, top = padTop, bottom = padBottom),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .defaultMinSize(minHeight = minPageHeight)
+                .testTag("word_original_page_${page.pageNumber}")
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = padLeft, end = padRight, top = padTop, bottom = padBottom),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "${layout.detectedPaperName} • ${layout.detectedMarginName} Margin",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = PaperInkMuted
-                )
                 Text(
                     text = "Page ${page.pageNumber}",
                     style = MaterialTheme.typography.labelSmall,
@@ -189,6 +181,7 @@ fun OfficeOriginalWordPaperCard(
                     borderColor = PaperBorder
                 )
             }
+        }
         }
     }
 }
@@ -212,7 +205,7 @@ fun OfficeOriginalSlideCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = 760.dp)
+            .widthIn(max = if (layout.isLandscape) 880.dp else 680.dp)
             .testTag("slide_original_card_${slide.slideNumber}"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -223,7 +216,7 @@ fun OfficeOriginalSlideCard(
             shadowElevation = 3.dp,
             modifier = Modifier
                 .fillMaxWidth()
-                .defaultMinSize(minHeight = (320f / aspect).coerceIn(200f, 440f).dp)
+                .defaultMinSize(minHeight = (320f / aspect).coerceIn(180f, 520f).dp)
         ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Box(
@@ -238,23 +231,12 @@ fun OfficeOriginalSlideCard(
                         .padding(horizontal = padH, vertical = padV),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "SLIDE ${slide.slideNumber} OF $totalSlides",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = accentColor,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${layout.detectedPaperName} • ${layout.detectedMarginName}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = mutedInk
-                        )
-                    }
+                    Text(
+                        text = "SLIDE ${slide.slideNumber} OF $totalSlides",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                        fontWeight = FontWeight.Bold
+                    )
 
                     if (slide.blocks.isNotEmpty()) {
                         slide.blocks.forEachIndexed { idx, block ->
@@ -772,24 +754,12 @@ fun OfficeOriginalExcelContent(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${sheet.name} • ${sheet.rows.size} rows × $totalCols cols",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "${layout.detectedPaperName} • ${layout.detectedMarginName}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = "${sheet.name} • ${sheet.rows.size} rows × $totalCols cols",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                    )
                 }
             }
 
@@ -800,6 +770,7 @@ fun OfficeOriginalExcelContent(
                     border = BorderStroke(1.dp, PaperBorder),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .widthIn(max = if (layout.isLandscape) 1080.dp else 720.dp)
                         .testTag("excel_original_grid")
                 ) {
                     Column(
@@ -959,181 +930,4 @@ fun OfficeOriginalExcelContent(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
-@Composable
-fun OfficeInspectionBottomSheet(
-    docName: String,
-    summary: OfficeContentSummary?,
-    selectedFormat: OfficeRenderFormat,
-    selectedSize: OfficePageSizeOption,
-    selectedMargin: OfficeMarginOption,
-    onSelectFormat: (OfficeRenderFormat) -> Unit,
-    onSelectSize: (OfficePageSizeOption) -> Unit,
-    onSelectMargin: (OfficeMarginOption) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(horizontal = 20.dp, vertical = 10.dp)
-                .testTag("office_inspect_sheet"),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = AppIcons.Description,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Page Layout & Contents",
-                        style = MaterialTheme.typography.titleMedium
-                    )
-                    Text(
-                        text = docName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
 
-            if (summary != null) {
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        val orientLabel = if (summary.isLandscape) "Landscape" else "Portrait"
-                        val mmW = (summary.widthPt * 25.4f / 72f).roundToInt()
-                        val mmH = (summary.heightPt * 25.4f / 72f).roundToInt()
-                        Text(
-                            text = "Detected File Specs",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Page Size", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                text = "${summary.detectedPageSize} ($orientLabel, ${mmW}×${mmH} mm)",
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
-                            )
-                        }
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("Margin", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                text = summary.detectedMargin,
-                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold)
-                            )
-                        }
-                        HorizontalDivider()
-                        Text(
-                            text = "Inside File (${summary.unitCount} ${summary.unitLabel})",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            SummaryBadge("Text ${summary.textCount}")
-                            SummaryBadge("Images ${summary.imageCount}")
-                            SummaryBadge("Charts ${summary.chartCount}")
-                            SummaryBadge("Tables ${summary.tableCount}")
-                        }
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = "Show As Format", style = MaterialTheme.typography.titleSmall)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OfficeRenderFormat.entries.forEach { opt ->
-                        FilterChip(
-                            selected = selectedFormat == opt,
-                            onClick = { onSelectFormat(opt) },
-                            label = { Text(opt.label) },
-                            modifier = Modifier.testTag("inspect_format_${opt.name.lowercase()}")
-                        )
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = "Page Size", style = MaterialTheme.typography.titleSmall)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OfficePageSizeOption.entries.forEach { opt ->
-                        FilterChip(
-                            selected = selectedSize == opt,
-                            onClick = { onSelectSize(opt) },
-                            label = { Text(opt.shortLabel) },
-                            modifier = Modifier.testTag("inspect_size_${opt.name.lowercase()}")
-                        )
-                    }
-                }
-            }
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(text = "Margins", style = MaterialTheme.typography.titleSmall)
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    OfficeMarginOption.entries.forEach { opt ->
-                        FilterChip(
-                            selected = selectedMargin == opt,
-                            onClick = { onSelectMargin(opt) },
-                            label = { Text(opt.shortLabel) },
-                            modifier = Modifier.testTag("inspect_margin_${opt.name.lowercase()}")
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-        }
-    }
-}
-
-@Composable
-private fun SummaryBadge(label: String) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-        )
-    }
-}

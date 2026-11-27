@@ -13,6 +13,10 @@
     <string name="action_rename">Rename</string>
     <string name="action_more_options">More options</string>
     <string name="action_page_view_mode">Switch page view mode</string>
+    <string name="action_rotate_screen">Rotate screen</string>
+    <string name="action_document_view">Document view</string>
+    <string name="doc_view_portrait">Portrait</string>
+    <string name="doc_view_landscape">Landscape</string>
     <string name="action_clear_selection">Clear selection</string>
     <string name="action_select_all">Select all</string>
     <string name="grant_storage_title">Enable Full Document Scan</string>

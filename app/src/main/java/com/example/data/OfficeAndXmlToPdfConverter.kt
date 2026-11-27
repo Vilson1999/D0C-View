@@ -17,16 +17,14 @@ import android.text.style.ForegroundColorSpan
 import android.text.style.StrikethroughSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.roundToInt
 
 /**
- * Offline renderer that converts parsed DOC/DOCX/RTF, PPT/PPTX, and EXCEL (.xlsx/.xls) documents
- * into real paginated PDF files using Android's built-in PdfDocument API, honoring detected or
- * user-selected page sizes (A4, A3, Legal, Letter, 16:9, 4:3) and margins (Narrow, Normal).
+ * Offline renderer that converts parsed DOC/DOCX/RTF, PPT/PPTX, EXCEL (.xlsx/.xls), and TEXT
+ * documents into real paginated PDF files using Android's built-in PdfDocument API, honoring
+ * each file's auto-detected page size and margins.
  */
 object OfficeAndXmlToPdfConverter {
 
@@ -229,6 +227,92 @@ object OfficeAndXmlToPdfConverter {
                         5f
                     }
                     state.cursorY += afterSpace
+                }
+            }
+
+            state.finishCurrentPage()
+        }
+    }
+
+    fun convertTextToPdf(
+        text: String,
+        baseFontSizeSp: Float,
+        showLineNumbers: Boolean,
+        wordWrap: Boolean,
+        useMonospace: Boolean,
+        outputFile: File,
+        layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_WORD_A4
+    ): Boolean {
+        val pageW = layout.widthPt.roundToInt().coerceIn(280, 1800)
+        val pageH = layout.heightPt.roundToInt().coerceIn(280, 1800)
+        val marginLeft = layout.marginLeftPt.coerceIn(16f, pageW * 0.28f)
+        val marginRight = layout.marginRightPt.coerceIn(16f, pageW * 0.28f)
+        val marginTop = layout.marginTopPt.coerceIn(18f, pageH * 0.25f)
+        val marginBottom = layout.marginBottomPt.coerceIn(18f, pageH * 0.25f)
+        val contentWidth = (pageW - marginLeft - marginRight).coerceAtLeast(160f)
+        val pageBottom = pageH - marginBottom
+
+        val lines = text.lines()
+        val lineDigits = lines.size.coerceAtLeast(1).toString().length.coerceAtLeast(2)
+        val textSizePt = (baseFontSizeSp.coerceIn(11f, 24f) * 0.72f).coerceIn(8f, 17.5f)
+        val effectiveSize = if (!wordWrap) (textSizePt * 0.90f).coerceIn(7.5f, 15.5f) else textSizePt
+        val typeface = if (useMonospace) Typeface.MONOSPACE else Typeface.SANS_SERIF
+
+        val bodyPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = InkPrimary
+            this.textSize = effectiveSize
+            this.typeface = typeface
+        }
+        val gutterWidth = if (showLineNumbers) (lineDigits * effectiveSize * 0.64f + 12f).coerceAtLeast(24f) else 0f
+        val lineNumPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = InkMuted
+            this.textSize = (effectiveSize * 0.85f).coerceIn(6.8f, 14f)
+            this.typeface = Typeface.MONOSPACE
+            this.textAlign = Paint.Align.RIGHT
+        }
+        val textAreaX = marginLeft + gutterWidth
+        val textAreaWidth = (contentWidth - gutterWidth).toInt().coerceAtLeast(120)
+        val emptyLineHeight = effectiveSize * 1.38f
+
+        return writePdfAtomically(outputFile) { pdf ->
+            val state = PagedCanvasState(pdf, pageW, pageH, marginTop)
+            state.startPage()
+
+            if (lines.isEmpty()) {
+                state.finishCurrentPage()
+                return@writePdfAtomically
+            }
+
+            for ((idx, line) in lines.withIndex()) {
+                if (state.reachedPageLimit) break
+                if (state.cursorY + emptyLineHeight > pageBottom && state.cursorY > marginTop + 2f) {
+                    state.finishCurrentPage()
+                    if (state.reachedPageLimit) break
+                    state.startPage()
+                }
+                if (showLineNumbers) {
+                    state.canvas.drawText(
+                        (idx + 1).toString(),
+                        marginLeft + gutterWidth - 8f,
+                        state.cursorY + effectiveSize * 0.95f,
+                        lineNumPaint
+                    )
+                }
+                if (line.isEmpty()) {
+                    state.cursorY += emptyLineHeight
+                } else {
+                    drawFlowingText(
+                        state = state,
+                        text = line,
+                        paint = bodyPaint,
+                        x = textAreaX,
+                        width = textAreaWidth,
+                        marginTop = marginTop,
+                        pageBottom = pageBottom,
+                        lineSpacingMult = 1.32f,
+                        alignment = Layout.Alignment.ALIGN_NORMAL
+                    )
+                    state.cursorY += 1.5f
                 }
             }
 
@@ -555,9 +639,7 @@ object OfficeAndXmlToPdfConverter {
         workbook: ExcelWorkbook,
         showGridlines: Boolean,
         baseFontSizeSp: Float,
-        outputFile: File,
-        pageSizeOption: OfficePageSizeOption = OfficePageSizeOption.AUTO,
-        marginOption: OfficeMarginOption = OfficeMarginOption.AUTO
+        outputFile: File
     ): Boolean {
         val cellTextSize = (baseFontSizeSp.coerceIn(11f, 22f) * 0.64f).coerceIn(7.5f, 13.5f)
         val headerTextSize = (cellTextSize * 0.94f).coerceIn(7f, 12.5f)
@@ -601,12 +683,7 @@ object OfficeAndXmlToPdfConverter {
         }
 
         return writePdfAtomically(outputFile) { pdf ->
-            val defaultLayout = OfficeLayoutResolver.resolve(
-                workbook.layout,
-                pageSizeOption,
-                marginOption,
-                isSpreadsheet = true
-            )
+            val defaultLayout = workbook.layout
             val state = PagedCanvasState(
                 pdf = pdf,
                 pageWidth = defaultLayout.widthPt.roundToInt(),
@@ -617,12 +694,7 @@ object OfficeAndXmlToPdfConverter {
             for ((sheetIdx, sheet) in sheets.withIndex()) {
                 if (state.reachedPageLimit) break
 
-                val sheetLayout = OfficeLayoutResolver.resolve(
-                    sheet.layout,
-                    pageSizeOption,
-                    marginOption,
-                    isSpreadsheet = true
-                )
+                val sheetLayout = sheet.layout
                 val sheetW = sheetLayout.widthPt.roundToInt().coerceIn(280, 1800)
                 val sheetH = sheetLayout.heightPt.roundToInt().coerceIn(280, 1800)
                 val marginLeft = sheetLayout.marginLeftPt.coerceIn(14f, sheetW * 0.25f)
@@ -689,7 +761,7 @@ object OfficeAndXmlToPdfConverter {
                     } else {
                         ""
                     }
-                    val badge = "SHEET ${sheetIdx + 1} OF ${sheets.size}  •  ${sheetLayout.detectedPaperName} ${sheetLayout.detectedMarginName}$colSpanLabel"
+                    val badge = "SHEET ${sheetIdx + 1} OF ${sheets.size}$colSpanLabel"
                     canvas.drawText(badge, marginLeft, state.cursorY + 8f, bannerPaint)
                     canvas.drawText(sheet.name.take(58), marginLeft, state.cursorY + 23f, sheetTitlePaint)
                     state.cursorY += 30f

@@ -1,7 +1,5 @@
 package com.example.data
 
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
 import kotlin.math.abs
 
 enum class DocAlignment {
@@ -103,63 +101,39 @@ object OfficeLayoutResolver {
         }
     }
 
-    fun dimensionsForPaper(option: OfficePageSizeOption, landscape: Boolean): Pair<Float, Float> {
-        val (w, h) = when (option) {
-            OfficePageSizeOption.A4, OfficePageSizeOption.AUTO -> 595f to 842f
-            OfficePageSizeOption.A3 -> 842f to 1191f
-            OfficePageSizeOption.LEGAL -> 612f to 1008f
-            OfficePageSizeOption.LETTER -> 612f to 792f
-        }
-        return if (landscape) h to w else w to h
-    }
+    fun detectTextLayout(text: String): OfficePageLayout {
+        val sampleLines = text.lineSequence().take(1200).filter { it.isNotBlank() }.toList()
+        if (sampleLines.isEmpty()) return DEFAULT_WORD_A4
 
-    fun resolve(
-        detected: OfficePageLayout,
-        sizeOverride: OfficePageSizeOption,
-        marginOverride: OfficeMarginOption,
-        isSpreadsheet: Boolean = false
-    ): OfficePageLayout {
-        val landscape = detected.isLandscape
-        val (widthPt, heightPt) = when (sizeOverride) {
-            OfficePageSizeOption.AUTO -> detected.widthPt to detected.heightPt
-            else -> dimensionsForPaper(sizeOverride, landscape)
-        }
-        val paperName = if (sizeOverride == OfficePageSizeOption.AUTO) {
-            detected.detectedPaperName
-        } else {
-            sizeOverride.shortLabel
-        }
+        val expandedLengths = sampleLines
+            .map { it.replace("\t", "    ").length }
+            .sorted()
+        val p90Len = expandedLengths[(expandedLengths.size * 0.9f).toInt().coerceIn(0, expandedLengths.lastIndex)]
+        val maxLen = expandedLengths.last()
 
-        val (mLeft, mRight, mTop, mBottom, marginLabel) = when (marginOverride) {
-            OfficeMarginOption.AUTO -> listOf(
-                detected.marginLeftPt,
-                detected.marginRightPt,
-                detected.marginTopPt,
-                detected.marginBottomPt,
-                detected.detectedMarginName
-            )
-            OfficeMarginOption.NARROW -> {
-                val h = if (isSpreadsheet) 22f else 36f
-                val v = if (isSpreadsheet) 26f else 36f
-                listOf(h, h, v, v, "Narrow")
-            }
-            OfficeMarginOption.NORMAL -> {
-                val h = if (isSpreadsheet) 44f else 64f
-                val v = if (isSpreadsheet) 40f else 64f
-                listOf(h, h, v, v, "Normal")
-            }
+        val indentedOrTabLines = sampleLines.count { it.startsWith(" ") || it.startsWith("\t") || it.contains('\t') }
+        val codeSymbolLines = sampleLines.count { line ->
+            line.contains('{') || line.contains('}') || line.contains(';') ||
+                line.contains("->") || line.contains("::") || line.count { c -> c == ',' } >= 3
         }
+        val isTechnicalOrWide = p90Len > 84 || maxLen > 102 ||
+            indentedOrTabLines * 3 >= sampleLines.size ||
+            codeSymbolLines * 4 >= sampleLines.size
 
-        return OfficePageLayout(
-            widthPt = widthPt,
-            heightPt = heightPt,
-            marginLeftPt = mLeft as Float,
-            marginRightPt = mRight as Float,
-            marginTopPt = mTop as Float,
-            marginBottomPt = mBottom as Float,
-            isLandscape = widthPt > heightPt,
-            detectedPaperName = paperName,
-            detectedMarginName = marginLabel as String
+        val (rawW, rawH, landscape) = when {
+            p90Len > 125 || maxLen > 148 -> Triple(1191f, 842f, true)
+            p90Len > 84 || maxLen > 102 -> Triple(842f, 595f, true)
+            else -> Triple(595f, 842f, false)
+        }
+        val marginPt = if (isTechnicalOrWide) 36f else 54f
+        return buildLayoutFromSizeAndMargins(
+            rawWidthPt = rawW,
+            rawHeightPt = rawH,
+            leftPt = marginPt,
+            rightPt = marginPt,
+            topPt = marginPt,
+            bottomPt = marginPt,
+            forceLandscape = landscape
         )
     }
 
@@ -197,6 +171,41 @@ object OfficeLayoutResolver {
             detectedPaperName = classifyPaperName(w, h),
             detectedMarginName = classifyMarginName(clampedL, clampedR, clampedT, clampedB)
         )
+    }
+
+    fun applyOrientation(
+        layout: OfficePageLayout,
+        orientation: com.example.model.DocumentViewOrientation
+    ): OfficePageLayout {
+        return when (orientation) {
+            com.example.model.DocumentViewOrientation.AUTO -> layout
+            com.example.model.DocumentViewOrientation.PORTRAIT -> if (!layout.isLandscape) {
+                layout
+            } else {
+                buildLayoutFromSizeAndMargins(
+                    rawWidthPt = layout.widthPt,
+                    rawHeightPt = layout.heightPt,
+                    leftPt = layout.marginLeftPt,
+                    rightPt = layout.marginRightPt,
+                    topPt = layout.marginTopPt,
+                    bottomPt = layout.marginBottomPt,
+                    forceLandscape = false
+                )
+            }
+            com.example.model.DocumentViewOrientation.LANDSCAPE -> if (layout.isLandscape) {
+                layout
+            } else {
+                buildLayoutFromSizeAndMargins(
+                    rawWidthPt = layout.widthPt,
+                    rawHeightPt = layout.heightPt,
+                    leftPt = layout.marginLeftPt,
+                    rightPt = layout.marginRightPt,
+                    topPt = layout.marginTopPt,
+                    bottomPt = layout.marginBottomPt,
+                    forceLandscape = true
+                )
+            }
+        }
     }
 }
 

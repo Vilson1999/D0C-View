@@ -3,14 +3,14 @@ package com.example.data
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import com.example.DocViewApplication
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
+import com.example.model.DocumentViewOrientation
 import com.example.model.OfficeRenderFormat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +51,13 @@ sealed interface ParsedDocument {
         val summary: OfficeContentSummary? = null
     ) : ParsedDocument
 
-    data class PlainText(val fullText: String, val pages: List<List<String>>) : ParsedDocument
+    data class PlainText(
+        val fullText: String,
+        val pages: List<List<String>>,
+        val layout: OfficePageLayout = OfficeLayoutResolver.DEFAULT_WORD_A4,
+        val summary: OfficeContentSummary? = null
+    ) : ParsedDocument
+
     data class Error(val message: String) : ParsedDocument
 }
 
@@ -59,8 +65,15 @@ class PdfDocumentSession(
     private val docKey: String,
     private val pfd: ParcelFileDescriptor,
     private val renderer: PdfRenderer,
-    private val cacheManager: DocumentCacheManager
+    private val cacheManager: DocumentCacheManager,
+    val viewOrientation: DocumentViewOrientation = DocumentViewOrientation.AUTO,
+    val isFirstPageNaturallyLandscape: Boolean = false
 ) {
+    private val effectiveCacheKey: String = if (viewOrientation == DocumentViewOrientation.AUTO) {
+        docKey
+    } else {
+        "${docKey}_orient_${viewOrientation.name.lowercase()}"
+    }
     private val mutex = Mutex()
     @Volatile
     private var isClosed = false
@@ -69,29 +82,56 @@ class PdfDocumentSession(
     fun peekCachedPage(index: Int, targetWidthPx: Int): Bitmap? {
         if (isClosed) return null
         val safeWidth = targetWidthPx.coerceIn(480, 2048)
-        return cacheManager.getMemoryPdfPageBitmap(docKey, index, safeWidth)
+        return cacheManager.getMemoryPdfPageBitmap(effectiveCacheKey, index, safeWidth)
     }
 
     suspend fun renderPage(index: Int, targetWidthPx: Int): Bitmap? = withContext(Dispatchers.IO) {
         if (isClosed) return@withContext null
         val safeWidth = targetWidthPx.coerceIn(480, 2048)
-        cacheManager.getCachedPdfPageBitmap(docKey, index, safeWidth)?.let { cached ->
+        cacheManager.getCachedPdfPageBitmap(effectiveCacheKey, index, safeWidth)?.let { cached ->
             return@withContext cached
         }
         mutex.withLock {
             if (isClosed || index !in 0 until renderer.pageCount) return@withLock null
-            cacheManager.getCachedPdfPageBitmap(docKey, index, safeWidth)?.let { cached ->
+            cacheManager.getCachedPdfPageBitmap(effectiveCacheKey, index, safeWidth)?.let { cached ->
                 return@withLock cached
             }
             runCatching {
                 renderer.openPage(index).use { page ->
-                    val aspect = if (page.width > 0) page.height.toFloat() / page.width.toFloat() else 1.414f
-                    val targetHeight = (safeWidth * aspect).toInt().coerceIn(320, 3200)
-                    val bitmap = Bitmap.createBitmap(safeWidth, targetHeight, Bitmap.Config.ARGB_8888)
-                    bitmap.eraseColor(Color.WHITE)
-                    page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                    cacheManager.putCachedPdfPageBitmap(docKey, index, safeWidth, bitmap)
-                    bitmap
+                    val needsRotate = when (viewOrientation) {
+                        DocumentViewOrientation.AUTO -> false
+                        DocumentViewOrientation.PORTRAIT -> page.width > page.height
+                        DocumentViewOrientation.LANDSCAPE -> page.width < page.height
+                    }
+                    val postW = if (needsRotate) page.height else page.width
+                    val postH = if (needsRotate) page.width else page.height
+                    val aspectPost = if (postW > 0) postH.toFloat() / postW.toFloat() else 1.414f
+                    val targetPostH = (safeWidth * aspectPost).toInt().coerceIn(320, 3200)
+                    val rawW = if (needsRotate) targetPostH else safeWidth
+                    val rawH = if (needsRotate) safeWidth else targetPostH
+
+                    val rawBitmap = Bitmap.createBitmap(rawW, rawH, Bitmap.Config.ARGB_8888)
+                    rawBitmap.eraseColor(Color.WHITE)
+                    page.render(rawBitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+
+                    val finalBitmap = if (needsRotate) {
+                        val matrix = Matrix().apply { postRotate(90f) }
+                        val rotated = Bitmap.createBitmap(
+                            rawBitmap,
+                            0,
+                            0,
+                            rawBitmap.width,
+                            rawBitmap.height,
+                            matrix,
+                            true
+                        )
+                        if (rotated !== rawBitmap) rawBitmap.recycle()
+                        rotated
+                    } else {
+                        rawBitmap
+                    }
+                    cacheManager.putCachedPdfPageBitmap(effectiveCacheKey, index, safeWidth, finalBitmap)
+                    finalBitmap
                 }
             }.getOrNull()
         }
@@ -103,7 +143,7 @@ class PdfDocumentSession(
         for (neighbor in neighbors) {
             if (isClosed) return
             if (neighbor in 0 until pageCount &&
-                cacheManager.getCachedPdfPageBitmap(docKey, neighbor, safeWidth) == null
+                cacheManager.getCachedPdfPageBitmap(effectiveCacheKey, neighbor, safeWidth) == null
             ) {
                 renderPage(neighbor, safeWidth)
             }
@@ -134,8 +174,7 @@ class DocumentParser(private val context: Context) {
         doc: DocumentItem,
         settings: AppSettings = AppSettings(),
         renderFormatOverride: OfficeRenderFormat? = null,
-        pageSizeOverride: OfficePageSizeOption? = null,
-        marginOverride: OfficeMarginOption? = null
+        documentOrientation: DocumentViewOrientation = DocumentViewOrientation.AUTO
     ): ParsedDocument = withContext(Dispatchers.IO) {
         DocViewApplication.beginBackgroundWork(context)
         try {
@@ -143,8 +182,7 @@ class DocumentParser(private val context: Context) {
                 doc = doc,
                 settings = settings,
                 renderFormatOverride = renderFormatOverride,
-                pageSizeOverride = pageSizeOverride,
-                marginOverride = marginOverride
+                documentOrientation = documentOrientation
             )
         } finally {
             DocViewApplication.endBackgroundWork(context)
@@ -179,48 +217,25 @@ class DocumentParser(private val context: Context) {
         doc: DocumentItem,
         settings: AppSettings,
         renderFormatOverride: OfficeRenderFormat? = null,
-        pageSizeOverride: OfficePageSizeOption? = null,
-        marginOverride: OfficeMarginOption? = null
+        documentOrientation: DocumentViewOrientation = DocumentViewOrientation.AUTO
     ): ParsedDocument {
         val defaultFormat = when (doc.type) {
             DocType.DOC -> settings.docxRenderFormat
             DocType.EXCEL -> settings.xlsxRenderFormat
             DocType.PPT -> settings.pptRenderFormat
-            else -> settings.officeRenderFormat
-        }
-        val defaultPageSize = when (doc.type) {
-            DocType.DOC -> settings.docxPageSize
-            DocType.EXCEL -> settings.xlsxPageSize
-            DocType.PPT -> settings.pptPageSize
-            else -> settings.officePageSize
-        }
-        val defaultMargin = when (doc.type) {
-            DocType.DOC -> settings.docxMargin
-            DocType.EXCEL -> settings.xlsxMargin
-            DocType.PPT -> settings.pptMargin
-            else -> settings.officeMargin
+            DocType.TEXT -> settings.textRenderFormat
+            DocType.PDF -> OfficeRenderFormat.PDF
         }
         val renderFormat = renderFormatOverride ?: defaultFormat
-        val pageSizeOption = pageSizeOverride ?: defaultPageSize
-        val marginOption = marginOverride ?: defaultMargin
-
-        if (doc.type == DocType.TEXT && isSourceAccessible(doc)) {
-            cacheManager.getMemoryParsed(doc, "text")?.let { return it }
-            cacheManager.loadDiskParsed(doc, "text")?.let { return it }
-        }
 
         return runCatching {
-            val parsed = when (doc.type) {
-                DocType.PDF -> parsePdf(doc)
-                DocType.DOC -> parseWordDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
-                DocType.PPT -> parseSlidesDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
-                DocType.EXCEL -> parseExcelDocument(doc, settings, renderFormat, pageSizeOption, marginOption)
-                DocType.TEXT -> parsePlainText(doc)
+            when (doc.type) {
+                DocType.PDF -> parsePdf(doc, documentOrientation)
+                DocType.DOC -> parseWordDocument(doc, settings, renderFormat, documentOrientation)
+                DocType.PPT -> parseSlidesDocument(doc, settings, renderFormat, documentOrientation)
+                DocType.EXCEL -> parseExcelDocument(doc, settings, renderFormat, documentOrientation)
+                DocType.TEXT -> parseTextDocument(doc, settings, renderFormat, documentOrientation)
             }
-            if (parsed is ParsedDocument.PlainText) {
-                cacheManager.saveDiskParsed(doc, parsed, "text")
-            }
-            parsed
         }.getOrElse { throwable ->
             ParsedDocument.Error(throwable.localizedMessage ?: "Unable to open ${doc.name}")
         }
@@ -246,10 +261,18 @@ class DocumentParser(private val context: Context) {
         }
     }
 
-    private fun parsePdf(doc: DocumentItem): ParsedDocument {
+    private fun parsePdf(
+        doc: DocumentItem,
+        documentOrientation: DocumentViewOrientation
+    ): ParsedDocument {
         val pfd = openParcelFileDescriptor(doc)
             ?: return ParsedDocument.Error("Cannot access PDF file offline.")
-        return openPdfFromPfd(pfd, DocumentCacheManager.docKey(doc), summary = null)
+        return openPdfFromPfd(
+            pfd = pfd,
+            sessionKey = DocumentCacheManager.docKey(doc),
+            summary = null,
+            documentOrientation = documentOrientation
+        )
     }
 
     private fun openConvertedPdf(
@@ -262,13 +285,14 @@ class DocumentParser(private val context: Context) {
         }.getOrElse { err ->
             return ParsedDocument.Error("Cannot open rendered PDF: ${err.localizedMessage ?: "I/O error"}")
         }
-        return openPdfFromPfd(pfd, sessionKey, summary)
+        return openPdfFromPfd(pfd, sessionKey, summary, DocumentViewOrientation.AUTO)
     }
 
     private fun openPdfFromPfd(
         pfd: ParcelFileDescriptor,
         sessionKey: String,
-        summary: OfficeContentSummary?
+        summary: OfficeContentSummary?,
+        documentOrientation: DocumentViewOrientation
     ): ParsedDocument {
         return runCatching {
             val renderer = PdfRenderer(pfd)
@@ -277,12 +301,17 @@ class DocumentParser(private val context: Context) {
                 pfd.close()
                 ParsedDocument.Error("This PDF document has no pages.")
             } else {
+                val firstLandscape = runCatching {
+                    renderer.openPage(0).use { it.width > it.height }
+                }.getOrDefault(false)
                 ParsedDocument.Pdf(
                     session = PdfDocumentSession(
                         docKey = sessionKey,
                         pfd = pfd,
                         renderer = renderer,
-                        cacheManager = cacheManager
+                        cacheManager = cacheManager,
+                        viewOrientation = documentOrientation,
+                        isFirstPageNaturallyLandscape = firstLandscape
                     ),
                     summary = summary?.copy(unitCount = renderer.pageCount)
                 )
@@ -316,26 +345,22 @@ class DocumentParser(private val context: Context) {
         }
     }
 
-    private fun summaryVariantTag(
-        prefix: String,
-        sizeOpt: OfficePageSizeOption,
-        marginOpt: OfficeMarginOption,
-        extra: String = ""
-    ): String = if (extra.isEmpty()) "${prefix}_${sizeOpt.name}_${marginOpt.name}"
-    else "${prefix}_${sizeOpt.name}_${marginOpt.name}_$extra"
+    private fun orientationSuffix(orientation: DocumentViewOrientation): String {
+        return if (orientation == DocumentViewOrientation.AUTO) "" else "_${orientation.name.lowercase()}"
+    }
 
     private fun parseWordDocument(
         doc: DocumentItem,
         settings: AppSettings,
         renderFormat: OfficeRenderFormat,
-        pageSizeOption: OfficePageSizeOption,
-        marginOption: OfficeMarginOption
+        documentOrientation: DocumentViewOrientation
     ): ParsedDocument {
+        val orientSuffix = orientationSuffix(documentOrientation)
         val fontSizeKey = settings.docxFontSizeSp.toInt().coerceIn(11, 24)
-        val variantTag = "doc_v3_fs${fontSizeKey}_sz${pageSizeOption.name}_mg${marginOption.name}"
+        val variantTag = "doc_v4_fs$fontSizeKey$orientSuffix"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = summaryVariantTag("doc", pageSizeOption, marginOption)
+        val sumVariant = "doc_v2$orientSuffix"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -375,16 +400,12 @@ class DocumentParser(private val context: Context) {
             }
         }
 
-        val resolvedLayout = OfficeLayoutResolver.resolve(
-            detected = docData.layout,
-            sizeOverride = pageSizeOption,
-            marginOverride = marginOption,
-            isSpreadsheet = false
-        )
-        val pages = paginateWordBlocks(docData.blocks, resolvedLayout, settings.docxFontSizeSp)
-        val summary = buildWordSummary(docData.blocks, docData.layout, resolvedLayout, pages.size)
+        val detectedLayout = docData.layout
+        val effectiveLayout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
+        val pages = paginateWordBlocks(docData.blocks, effectiveLayout, settings.docxFontSizeSp)
+        val summary = buildWordSummary(docData.blocks, detectedLayout, effectiveLayout, pages.size)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
-        val wordParsed = ParsedDocument.Word(pages = pages, layout = resolvedLayout, summary = summary)
+        val wordParsed = ParsedDocument.Word(pages = pages, layout = effectiveLayout, summary = summary)
         cacheManager.saveDiskParsed(doc, wordParsed, variantTag)
 
         if (renderFormat == OfficeRenderFormat.ORIGINAL) {
@@ -400,7 +421,7 @@ class DocumentParser(private val context: Context) {
             blocks = docData.blocks,
             baseFontSizeSp = settings.docxFontSizeSp,
             outputFile = cachedPdf,
-            layout = resolvedLayout
+            layout = effectiveLayout
         )
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
@@ -559,14 +580,14 @@ class DocumentParser(private val context: Context) {
         doc: DocumentItem,
         settings: AppSettings,
         renderFormat: OfficeRenderFormat,
-        pageSizeOption: OfficePageSizeOption,
-        marginOption: OfficeMarginOption
+        documentOrientation: DocumentViewOrientation
     ): ParsedDocument {
+        val orientSuffix = orientationSuffix(documentOrientation)
         val notesFlag = if (settings.showPptSpeakerNotes) 1 else 0
-        val variantTag = "ppt_v2_n${notesFlag}_sz${pageSizeOption.name}_mg${marginOption.name}"
+        val variantTag = "ppt_v3_n$notesFlag$orientSuffix"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = summaryVariantTag("ppt", pageSizeOption, marginOption, "n$notesFlag")
+        val sumVariant = "ppt_v2_n$notesFlag$orientSuffix"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -620,15 +641,11 @@ class DocumentParser(private val context: Context) {
             deck.slides.map { it.copy(notes = "") }
         }
 
-        val resolvedLayout = OfficeLayoutResolver.resolve(
-            detected = deck.layout,
-            sizeOverride = pageSizeOption,
-            marginOverride = marginOption,
-            isSpreadsheet = false
-        )
-        val summary = buildSlidesSummary(effectiveSlides, deck.layout, resolvedLayout)
+        val detectedLayout = deck.layout
+        val effectiveLayout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
+        val summary = buildSlidesSummary(effectiveSlides, detectedLayout, effectiveLayout)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
-        val slidesParsed = ParsedDocument.Slides(slides = effectiveSlides, layout = resolvedLayout, summary = summary)
+        val slidesParsed = ParsedDocument.Slides(slides = effectiveSlides, layout = effectiveLayout, summary = summary)
         cacheManager.saveDiskParsed(doc, slidesParsed, variantTag)
 
         if (renderFormat == OfficeRenderFormat.ORIGINAL) {
@@ -643,7 +660,7 @@ class DocumentParser(private val context: Context) {
         val ok = OfficeAndXmlToPdfConverter.convertSlidesToPdf(
             slides = effectiveSlides,
             outputFile = cachedPdf,
-            layout = resolvedLayout
+            layout = effectiveLayout
         )
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
@@ -783,15 +800,15 @@ class DocumentParser(private val context: Context) {
         doc: DocumentItem,
         settings: AppSettings,
         renderFormat: OfficeRenderFormat,
-        pageSizeOption: OfficePageSizeOption,
-        marginOption: OfficeMarginOption
+        documentOrientation: DocumentViewOrientation
     ): ParsedDocument {
+        val orientSuffix = orientationSuffix(documentOrientation)
         val fontSizeKey = settings.xlsxFontSizeSp.toInt().coerceIn(11, 22)
         val gridFlag = if (settings.showExcelGridlines) 1 else 0
-        val variantTag = "xlsx_v2_fs${fontSizeKey}_gl${gridFlag}_sz${pageSizeOption.name}_mg${marginOption.name}"
+        val variantTag = "xlsx_v3_fs${fontSizeKey}_gl${gridFlag}$orientSuffix"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = summaryVariantTag("xlsx", pageSizeOption, marginOption)
+        val sumVariant = "xlsx_v2$orientSuffix"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -843,17 +860,25 @@ class DocumentParser(private val context: Context) {
             workbook
         }
 
-        val resolvedLayout = OfficeLayoutResolver.resolve(
-            detected = normalizedWorkbook.layout,
-            sizeOverride = pageSizeOption,
-            marginOverride = marginOption,
-            isSpreadsheet = true
-        )
-        val summary = buildExcelSummary(normalizedWorkbook, normalizedWorkbook.layout, resolvedLayout)
+        val detectedLayout = normalizedWorkbook.layout
+        val effectiveWorkbook = if (documentOrientation == DocumentViewOrientation.AUTO) {
+            normalizedWorkbook
+        } else {
+            normalizedWorkbook.copy(
+                sheets = normalizedWorkbook.sheets.map { sheet ->
+                    sheet.copy(
+                        layout = OfficeLayoutResolver.applyOrientation(sheet.layout, documentOrientation)
+                    )
+                },
+                layout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
+            )
+        }
+        val effectiveLayout = effectiveWorkbook.layout
+        val summary = buildExcelSummary(effectiveWorkbook, detectedLayout, effectiveLayout)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
         val excelParsed = ParsedDocument.Spreadsheet(
-            workbook = normalizedWorkbook,
-            layout = resolvedLayout,
+            workbook = effectiveWorkbook,
+            layout = effectiveLayout,
             summary = summary
         )
         cacheManager.saveDiskParsed(doc, excelParsed, variantTag)
@@ -868,12 +893,10 @@ class DocumentParser(private val context: Context) {
         }
 
         val ok = OfficeAndXmlToPdfConverter.convertExcelToPdf(
-            workbook = normalizedWorkbook,
+            workbook = effectiveWorkbook,
             showGridlines = settings.showExcelGridlines,
             baseFontSizeSp = settings.xlsxFontSizeSp,
-            outputFile = cachedPdf,
-            pageSizeOption = pageSizeOption,
-            marginOption = marginOption
+            outputFile = cachedPdf
         )
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
@@ -947,12 +970,105 @@ class DocumentParser(private val context: Context) {
         return ExcelWorkbook(listOf(ExcelSheet(name = "Sheet1", maxColumns = maxCols, rows = rows)))
     }
 
-    private fun parsePlainText(doc: DocumentItem): ParsedDocument {
-        val text = readTextSmart(doc)
-            ?: return ParsedDocument.Error("Cannot read text file.")
-        val lines = text.lines()
-        val pages = if (lines.isEmpty()) listOf(listOf("")) else lines.chunked(42)
-        return ParsedDocument.PlainText(fullText = text, pages = pages)
+    private fun parseTextDocument(
+        doc: DocumentItem,
+        settings: AppSettings,
+        renderFormat: OfficeRenderFormat,
+        documentOrientation: DocumentViewOrientation
+    ): ParsedDocument {
+        val orientSuffix = orientationSuffix(documentOrientation)
+        val fontSizeKey = settings.textFontSizeSp.toInt().coerceIn(11, 24)
+        val lnFlag = if (settings.showLineNumbers) 1 else 0
+        val wwFlag = if (settings.textWordWrap) 1 else 0
+        val msFlag = if (settings.textMonospace) 1 else 0
+        val variantTag = "txt_v1_fs${fontSizeKey}_ln${lnFlag}_ww${wwFlag}_ms${msFlag}$orientSuffix"
+        val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
+        val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
+        val sumVariant = "txt_v1$orientSuffix"
+        val textCacheKey = "text$orientSuffix"
+        val accessible = isSourceAccessible(doc)
+
+        if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
+            val cachedSummary = cacheManager.getMemorySummary(doc, sumVariant)
+                ?: cacheManager.loadDiskSummary(doc, sumVariant)
+            if (cachedSummary != null) {
+                cachedPdf.setLastModified(System.currentTimeMillis())
+                return openConvertedPdf(cachedPdf, sessionKey, cachedSummary)
+            }
+        }
+
+        if (accessible && renderFormat == OfficeRenderFormat.ORIGINAL) {
+            (cacheManager.getMemoryParsed(doc, textCacheKey)
+                ?: cacheManager.loadDiskParsed(doc, textCacheKey))?.let { cached ->
+                if (cached is ParsedDocument.PlainText) {
+                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, sumVariant) }
+                    return cached
+                }
+            }
+        }
+
+        val cachedOriginal = if (accessible) {
+            (cacheManager.getMemoryParsed(doc, textCacheKey)
+                ?: cacheManager.loadDiskParsed(doc, textCacheKey)) as? ParsedDocument.PlainText
+        } else null
+
+        val plainParsed = if (cachedOriginal != null) {
+            cachedOriginal
+        } else {
+            val text = readTextSmart(doc) ?: return ParsedDocument.Error("Cannot read text file.")
+            val detectedLayout = OfficeLayoutResolver.detectTextLayout(text)
+            val effectiveLayout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
+            val lines = text.lines()
+            val pages = if (lines.isEmpty()) listOf(listOf("")) else lines.chunked(42)
+            val summary = OfficeContentSummary(
+                detectedPageSize = detectedLayout.detectedPaperName,
+                detectedMargin = detectedLayout.detectedMarginName,
+                effectivePageSize = effectiveLayout.detectedPaperName,
+                effectiveMargin = effectiveLayout.detectedMarginName,
+                isLandscape = effectiveLayout.isLandscape,
+                widthPt = effectiveLayout.widthPt,
+                heightPt = effectiveLayout.heightPt,
+                textCount = lines.count { it.isNotBlank() },
+                imageCount = 0,
+                chartCount = 0,
+                tableCount = 0,
+                unitCount = pages.size.coerceAtLeast(1),
+                unitLabel = "Pages"
+            )
+            cacheManager.saveDiskSummary(doc, summary, sumVariant)
+            ParsedDocument.PlainText(
+                fullText = text,
+                pages = pages,
+                layout = effectiveLayout,
+                summary = summary
+            ).also {
+                cacheManager.saveDiskParsed(doc, it, textCacheKey)
+            }
+        }
+
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            return plainParsed
+        }
+
+        if (cachedPdf.isFile && cachedPdf.length() > 0L) {
+            cachedPdf.setLastModified(System.currentTimeMillis())
+            return openConvertedPdf(cachedPdf, sessionKey, plainParsed.summary)
+        }
+
+        val ok = OfficeAndXmlToPdfConverter.convertTextToPdf(
+            text = plainParsed.fullText,
+            baseFontSizeSp = settings.textFontSizeSp,
+            showLineNumbers = settings.showLineNumbers,
+            wordWrap = settings.textWordWrap,
+            useMonospace = settings.textMonospace,
+            outputFile = cachedPdf,
+            layout = plainParsed.layout
+        )
+        return if (ok) {
+            openConvertedPdf(cachedPdf, sessionKey, plainParsed.summary)
+        } else {
+            plainParsed
+        }
     }
 
     private fun readTextSmart(doc: DocumentItem): String? {

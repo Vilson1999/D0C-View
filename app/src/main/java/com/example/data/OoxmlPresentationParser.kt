@@ -87,13 +87,15 @@ object OoxmlPresentationParser {
             }
         }
 
+        val marginH = (wPt * 0.045f).coerceIn(24f, 54f)
+        val marginV = (hPt * 0.055f).coerceIn(20f, 42f)
         return OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
             rawWidthPt = wPt,
             rawHeightPt = hPt,
-            leftPt = 44f,
-            rightPt = 44f,
-            topPt = 34f,
-            bottomPt = 30f,
+            leftPt = marginH,
+            rightPt = marginH,
+            topPt = marginV,
+            bottomPt = marginV,
             forceLandscape = wPt >= hPt
         )
     }

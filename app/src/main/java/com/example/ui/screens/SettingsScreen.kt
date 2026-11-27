@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -67,8 +68,6 @@ import com.example.BuildConfig
 import com.example.R
 import com.example.model.AppSettings
 import com.example.model.DocType
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.ThemeMode
@@ -78,6 +77,7 @@ import com.example.ui.components.DocViewerAppIcon
 import com.example.ui.components.docTypeIcon
 import com.example.ui.theme.DocPillColor
 import com.example.ui.theme.ExcelPillColor
+import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.PdfPillColor
 import com.example.ui.theme.PptPillColor
 import com.example.ui.theme.TextPillColor
@@ -91,6 +91,7 @@ fun SettingsScreen(
     countsByType: Map<DocType, Int>,
     cacheSizeBytes: Long,
     onBack: () -> Unit,
+    onSetUseMaterialUi: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -102,21 +103,16 @@ fun SettingsScreen(
     onSetPdfDoubleTapZoom: (Float) -> Unit,
     // DOCX folder
     onSetDocxRenderFormat: (OfficeRenderFormat) -> Unit,
-    onSetDocxPageSize: (OfficePageSizeOption) -> Unit,
-    onSetDocxMargin: (OfficeMarginOption) -> Unit,
     onSetDocxFontSizeSp: (Float) -> Unit,
     // XLSX folder
     onSetXlsxRenderFormat: (OfficeRenderFormat) -> Unit,
-    onSetXlsxPageSize: (OfficePageSizeOption) -> Unit,
-    onSetXlsxMargin: (OfficeMarginOption) -> Unit,
     onSetShowExcelGridlines: (Boolean) -> Unit,
     onSetXlsxFontSizeSp: (Float) -> Unit,
     // PPT folder
     onSetPptRenderFormat: (OfficeRenderFormat) -> Unit,
-    onSetPptPageSize: (OfficePageSizeOption) -> Unit,
-    onSetPptMargin: (OfficeMarginOption) -> Unit,
     onSetShowPptSpeakerNotes: (Boolean) -> Unit,
     // TEXT folder
+    onSetTextRenderFormat: (OfficeRenderFormat) -> Unit,
     onSetTextPageViewMode: (PageViewMode) -> Unit,
     onSetShowLineNumbers: (Boolean) -> Unit,
     onSetTextWordWrap: (Boolean) -> Unit,
@@ -146,15 +142,17 @@ fun SettingsScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
+            val materialUi = LocalMaterialUiEnabled.current
             Surface(
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
+                color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
+                tonalElevation = if (materialUi) 2.dp else 1.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
+                        .displayCutoutPadding()
                         .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -183,6 +181,7 @@ fun SettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .displayCutoutPadding()
                 .navigationBarsPadding(),
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -233,8 +232,8 @@ fun SettingsScreen(
             item(key = "folder_docx") {
                 SettingsFolder(
                     title = "DOCX",
-                    subtitle = "${settings.docxRenderFormat.shortLabel} • ${settings.docxPageSize.shortLabel} • ${settings.docxMargin.shortLabel} • ${settings.docxFontSizeSp.roundToInt()}sp",
-                    itemCount = 4,
+                    subtitle = "${settings.docxRenderFormat.shortLabel} • Auto Layout • ${settings.docxFontSizeSp.roundToInt()}sp",
+                    itemCount = 2,
                     folderColor = DocPillColor,
                     icon = docTypeIcon(DocType.DOC),
                     expanded = docxExpanded,
@@ -251,24 +250,6 @@ fun SettingsScreen(
                             tagPrefix = "docx_format"
                         )
                         HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Page Size",
-                            options = OfficePageSizeOption.entries,
-                            selected = settings.docxPageSize,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetDocxPageSize,
-                            tagPrefix = "docx_size"
-                        )
-                        HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Page Margins",
-                            options = OfficeMarginOption.entries,
-                            selected = settings.docxMargin,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetDocxMargin,
-                            tagPrefix = "docx_margin"
-                        )
-                        HorizontalDivider()
                         FontSizeSliderRow(
                             title = "DOCX Text Size",
                             valueSp = settings.docxFontSizeSp,
@@ -282,9 +263,9 @@ fun SettingsScreen(
             item(key = "folder_xlsx") {
                 SettingsFolder(
                     title = "XLSX",
-                    subtitle = "${settings.xlsxRenderFormat.shortLabel} • ${settings.xlsxPageSize.shortLabel} • ${settings.xlsxMargin.shortLabel}" +
+                    subtitle = "${settings.xlsxRenderFormat.shortLabel} • Auto Layout" +
                         if (settings.showExcelGridlines) " • Grid" else "",
-                    itemCount = 5,
+                    itemCount = 3,
                     folderColor = ExcelPillColor,
                     icon = docTypeIcon(DocType.EXCEL),
                     expanded = xlsxExpanded,
@@ -299,24 +280,6 @@ fun SettingsScreen(
                             labelFor = { it.label },
                             onSelect = onSetXlsxRenderFormat,
                             tagPrefix = "xlsx_format"
-                        )
-                        HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Sheet Page Size",
-                            options = OfficePageSizeOption.entries,
-                            selected = settings.xlsxPageSize,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetXlsxPageSize,
-                            tagPrefix = "xlsx_size"
-                        )
-                        HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Sheet Margins",
-                            options = OfficeMarginOption.entries,
-                            selected = settings.xlsxMargin,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetXlsxMargin,
-                            tagPrefix = "xlsx_margin"
                         )
                         HorizontalDivider()
                         SettingsSwitchRow(
@@ -340,8 +303,9 @@ fun SettingsScreen(
             item(key = "folder_ppt") {
                 SettingsFolder(
                     title = "PPT",
-                    subtitle = "${settings.pptRenderFormat.shortLabel} • ${settings.pptPageSize.shortLabel} • ${settings.pptMargin.shortLabel}",
-                    itemCount = 4,
+                    subtitle = "${settings.pptRenderFormat.shortLabel} • Auto Layout" +
+                        if (settings.showPptSpeakerNotes) " • Notes" else "",
+                    itemCount = 2,
                     folderColor = PptPillColor,
                     icon = docTypeIcon(DocType.PPT),
                     expanded = pptExpanded,
@@ -358,24 +322,6 @@ fun SettingsScreen(
                             tagPrefix = "ppt_format"
                         )
                         HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Slide Page Size",
-                            options = OfficePageSizeOption.entries,
-                            selected = settings.pptPageSize,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetPptPageSize,
-                            tagPrefix = "ppt_size"
-                        )
-                        HorizontalDivider()
-                        OptionChipsFlowRow(
-                            title = "Slide Margins",
-                            options = OfficeMarginOption.entries,
-                            selected = settings.pptMargin,
-                            labelFor = { it.shortLabel },
-                            onSelect = onSetPptMargin,
-                            tagPrefix = "ppt_margin"
-                        )
-                        HorizontalDivider()
                         SettingsSwitchRow(
                             title = "Show Speaker Notes",
                             subtitle = "Include slide presenter notes in PDF and Original slide view",
@@ -390,9 +336,9 @@ fun SettingsScreen(
             item(key = "folder_text") {
                 SettingsFolder(
                     title = "TEXT",
-                    subtitle = "${settings.textPageViewMode.label.removeSuffix(" View")} • ${settings.textFontSizeSp.roundToInt()}sp" +
+                    subtitle = "${settings.textRenderFormat.shortLabel} • ${settings.textPageViewMode.label.removeSuffix(" View")} • ${settings.textFontSizeSp.roundToInt()}sp" +
                         if (settings.showLineNumbers) " • Line #" else "",
-                    itemCount = 5,
+                    itemCount = 6,
                     folderColor = TextPillColor,
                     icon = docTypeIcon(DocType.TEXT),
                     expanded = textExpanded,
@@ -400,6 +346,15 @@ fun SettingsScreen(
                     testTag = "folder_text"
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        OptionChipsFlowRow(
+                            title = "Show TEXT As",
+                            options = OfficeRenderFormat.entries,
+                            selected = settings.textRenderFormat,
+                            labelFor = { it.label },
+                            onSelect = onSetTextRenderFormat,
+                            tagPrefix = "text_format"
+                        )
+                        HorizontalDivider()
                         OptionChipsFlowRow(
                             title = "TEXT Page Layout",
                             options = PageViewMode.entries,
@@ -471,16 +426,30 @@ fun SettingsScreen(
             }
 
             item(key = "folder_appearance") {
+                val appearanceSummary = buildString {
+                    append(settings.themeMode.label.removeSuffix(" Mode"))
+                    append(if (settings.useMaterialUi) " • Material UI" else " • Classic UI")
+                    if (settings.autoHideReaderUi) append(" • Auto-hide")
+                }
                 SettingsFolder(
                     title = "Appearance & Reader UI",
-                    subtitle = "Theme mode & auto-hide controls",
-                    itemCount = 2,
+                    subtitle = appearanceSummary,
+                    itemCount = 3,
                     folderColor = DocPillColor,
+                    icon = AppIcons.Palette,
                     expanded = appearanceExpanded,
                     onToggle = { appearanceExpanded = !appearanceExpanded },
                     testTag = "folder_appearance"
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        SettingsSwitchRow(
+                            title = "Material UI",
+                            subtitle = "Use Material Design 3 dynamic colors and tonal surfaces",
+                            checked = settings.useMaterialUi,
+                            onCheckedChange = onSetUseMaterialUi,
+                            modifier = Modifier.testTag("toggle_material_ui")
+                        )
+                        HorizontalDivider()
                         OptionChipsFlowRow(
                             title = "Theme",
                             options = ThemeMode.entries,
@@ -786,9 +755,21 @@ private fun SettingsFolder(
         label = "folderChevron"
     )
 
+    val materialUi = LocalMaterialUiEnabled.current
+    val folderBg by animateColorAsState(
+        targetValue = when {
+            materialUi && expanded -> MaterialTheme.colorScheme.surfaceContainer
+            materialUi -> MaterialTheme.colorScheme.surfaceContainerLow
+            else -> MaterialTheme.colorScheme.surface
+        },
+        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        label = "folderBg"
+    )
+
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
+        color = folderBg,
+        tonalElevation = if (materialUi) if (expanded) 3.dp else 1.dp else 0.dp,
         border = BorderStroke(
             width = 1.dp,
             color = borderColor

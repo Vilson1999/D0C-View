@@ -215,7 +215,7 @@ class DocumentCacheManager(private val context: Context) {
         const val CONVERTED_PDFS_DIR = "converted_pdfs"
         const val SUMMARIES_DIR = "doc_summaries"
         private const val DEFAULT_VARIANT = "default"
-        private const val CACHE_SCHEMA_VERSION = 2
+        private const val CACHE_SCHEMA_VERSION = 3
         private const val SUMMARY_SCHEMA_VERSION = 1
         private const val KIND_WORD = 1
         private const val KIND_SLIDES = 2
@@ -405,6 +405,8 @@ class DocumentCacheManager(private val context: Context) {
                         }
                         is ParsedDocument.PlainText -> {
                             out.writeByte(KIND_TEXT)
+                            writeLayout(out, parsed.layout)
+                            writeNullableSummary(out, parsed.summary)
                             out.writeUTFCompat(parsed.fullText)
                             writeStringPages(out, parsed.pages)
                         }
@@ -475,9 +477,16 @@ class DocumentCacheManager(private val context: Context) {
                             ParsedDocument.Spreadsheet(workbook = workbook, layout = layout, summary = summary)
                         }
                         KIND_TEXT -> {
+                            val layout = readLayout(input)
+                            val summary = readNullableSummary(input)
                             val fullText = input.readUTFCompat()
                             val pages = readStringPages(input)
-                            ParsedDocument.PlainText(fullText = fullText, pages = pages)
+                            ParsedDocument.PlainText(
+                                fullText = fullText,
+                                pages = pages,
+                                layout = layout,
+                                summary = summary
+                            )
                         }
                         else -> return null
                     }

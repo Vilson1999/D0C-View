@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.app.Activity
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -37,6 +38,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -87,6 +89,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -100,24 +103,26 @@ import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.data.DocumentParser
-import com.example.data.OfficeContentSummary
+import com.example.data.OfficePageLayout
 import com.example.data.ParsedDocument
 import com.example.data.PdfDocumentSession
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import com.example.model.DocumentViewOrientation
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
+import com.example.model.ScreenOrientationPolicy
 import com.example.ui.components.AppIcons
 import com.example.ui.components.DeleteConfirmDialog
 import com.example.ui.components.DocumentActionDropdownMenu
 import com.example.ui.components.DocumentInfoSheet
-import com.example.ui.components.OfficeInspectionBottomSheet
 import com.example.ui.components.OfficeOriginalExcelContent
 import com.example.ui.components.OfficeOriginalSlideCard
 import com.example.ui.components.OfficeOriginalWordPaperCard
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalMaterialUiEnabled
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -147,53 +152,71 @@ fun DocumentViewerScreen(
         mutableStateOf(initialViewMode)
     }
 
-    val isOfficeDoc = currentDoc.type == DocType.DOC ||
+    val supportsFormatSwitch = currentDoc.type == DocType.DOC ||
         currentDoc.type == DocType.EXCEL ||
-        currentDoc.type == DocType.PPT
+        currentDoc.type == DocType.PPT ||
+        currentDoc.type == DocType.TEXT
+
+    val originalFormatShortLabel = when (currentDoc.type) {
+        DocType.DOC -> "DOCX"
+        DocType.EXCEL -> "XLSX"
+        DocType.PPT -> "PPT"
+        DocType.TEXT -> "TEXT"
+        else -> ""
+    }
 
     val defaultFormatForDoc = when (currentDoc.type) {
         DocType.DOC -> settings.docxRenderFormat
         DocType.EXCEL -> settings.xlsxRenderFormat
         DocType.PPT -> settings.pptRenderFormat
+        DocType.TEXT -> settings.textRenderFormat
         else -> settings.officeRenderFormat
-    }
-    val defaultSizeForDoc = when (currentDoc.type) {
-        DocType.DOC -> settings.docxPageSize
-        DocType.EXCEL -> settings.xlsxPageSize
-        DocType.PPT -> settings.pptPageSize
-        else -> settings.officePageSize
-    }
-    val defaultMarginForDoc = when (currentDoc.type) {
-        DocType.DOC -> settings.docxMargin
-        DocType.EXCEL -> settings.xlsxMargin
-        DocType.PPT -> settings.pptMargin
-        else -> settings.officeMargin
-    }
-
-    var activeRenderFormat by remember(document.id, defaultFormatForDoc) {
-        mutableStateOf(defaultFormatForDoc)
-    }
-    var activePageSize by remember(document.id, defaultSizeForDoc) {
-        mutableStateOf(defaultSizeForDoc)
-    }
-    var activeMargin by remember(document.id, defaultMarginForDoc) {
-        mutableStateOf(defaultMarginForDoc)
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showInfoSheet by remember { mutableStateOf(false) }
-    var showInspectSheet by remember { mutableStateOf(false) }
 
     var isReaderUiVisible by remember(document.id) { mutableStateOf(true) }
     var uiInteractionNonce by remember(document.id) { mutableIntStateOf(0) }
 
+    var activeRenderFormat by remember(document.id, defaultFormatForDoc) {
+        mutableStateOf(defaultFormatForDoc)
+    }
+    var documentOrientation by remember(document.id) {
+        mutableStateOf(DocumentViewOrientation.AUTO)
+    }
+
+    val toggleFormatMenuLabel = if (supportsFormatSwitch) {
+        if (activeRenderFormat == OfficeRenderFormat.PDF) {
+            "Show as $originalFormatShortLabel"
+        } else {
+            "Show as PDF"
+        }
+    } else {
+        null
+    }
+
+    val onToggleRenderFormat: (() -> Unit)? = if (supportsFormatSwitch) {
+        {
+            activeRenderFormat = if (activeRenderFormat == OfficeRenderFormat.PDF) {
+                OfficeRenderFormat.ORIGINAL
+            } else {
+                OfficeRenderFormat.PDF
+            }
+            uiInteractionNonce++
+        }
+    } else {
+        null
+    }
+
     val parseKey = when (currentDoc.type) {
-        DocType.DOC -> "${currentDoc.id}|${currentDoc.uriString}|${settings.docxFontSizeSp.toInt()}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
-        DocType.EXCEL -> "${currentDoc.id}|${currentDoc.uriString}|${settings.xlsxFontSizeSp.toInt()}|${settings.showExcelGridlines}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
-        DocType.PPT -> "${currentDoc.id}|${currentDoc.uriString}|${settings.showPptSpeakerNotes}|${activeRenderFormat.name}|${activePageSize.name}|${activeMargin.name}"
-        else -> "${currentDoc.id}|${currentDoc.uriString}"
+        DocType.DOC -> "${currentDoc.id}|${currentDoc.uriString}|${settings.docxFontSizeSp.toInt()}|${activeRenderFormat.name}|${documentOrientation.name}"
+        DocType.EXCEL -> "${currentDoc.id}|${currentDoc.uriString}|${settings.xlsxFontSizeSp.toInt()}|${settings.showExcelGridlines}|${activeRenderFormat.name}|${documentOrientation.name}"
+        DocType.PPT -> "${currentDoc.id}|${currentDoc.uriString}|${settings.showPptSpeakerNotes}|${activeRenderFormat.name}|${documentOrientation.name}"
+        DocType.TEXT -> "${currentDoc.id}|${currentDoc.uriString}|${settings.textFontSizeSp.toInt()}|${settings.showLineNumbers}|${settings.textWordWrap}|${settings.textMonospace}|${activeRenderFormat.name}|${documentOrientation.name}"
+        DocType.PDF -> "${currentDoc.id}|${currentDoc.uriString}|${documentOrientation.name}"
     }
 
     LaunchedEffect(parseKey) {
@@ -203,8 +226,7 @@ fun DocumentViewerScreen(
             doc = currentDoc,
             settings = settings,
             renderFormatOverride = activeRenderFormat,
-            pageSizeOverride = activePageSize,
-            marginOverride = activeMargin
+            documentOrientation = documentOrientation
         )
     }
 
@@ -214,7 +236,7 @@ fun DocumentViewerScreen(
         }
     }
 
-    val hasOpenOverlay = menuExpanded || showRenameDialog || showDeleteDialog || showInfoSheet || showInspectSheet
+    val hasOpenOverlay = menuExpanded || showRenameDialog || showDeleteDialog || showInfoSheet
     LaunchedEffect(
         isReaderUiVisible,
         settings.autoHideReaderUi,
@@ -236,17 +258,18 @@ fun DocumentViewerScreen(
         }
     }
 
-    val activeSummary: OfficeContentSummary? = when (val d = parsedDoc) {
-        is ParsedDocument.Pdf -> d.summary
-        is ParsedDocument.Word -> d.summary
-        is ParsedDocument.Slides -> d.summary
-        is ParsedDocument.Spreadsheet -> d.summary
-        else -> null
-    }
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     DisposableEffect(parsedDoc) {
         val pdfSession = (parsedDoc as? ParsedDocument.Pdf)?.session
         onDispose { pdfSession?.close() }
+    }
+
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.requestedOrientation = ScreenOrientationPolicy.resolveSensorFollowOrientation()
+        }
     }
 
     BackHandler { onBack() }
@@ -270,11 +293,11 @@ fun DocumentViewerScreen(
                     when (doc) {
                         null -> "loading"
                         is ParsedDocument.Error -> "error_${doc.message}"
-                        is ParsedDocument.Pdf -> "pdf_${currentDoc.id}_${activeRenderFormat.name}_${activePageSize.name}_${activeMargin.name}"
-                        is ParsedDocument.Word -> "word_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
-                        is ParsedDocument.Slides -> "slides_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
-                        is ParsedDocument.Spreadsheet -> "sheet_${currentDoc.id}_${activePageSize.name}_${activeMargin.name}"
-                        is ParsedDocument.PlainText -> "text_${currentDoc.id}"
+                        is ParsedDocument.Pdf -> "pdf_${currentDoc.id}_${activeRenderFormat.name}_${documentOrientation.name}"
+                        is ParsedDocument.Word -> "word_${currentDoc.id}_${documentOrientation.name}"
+                        is ParsedDocument.Slides -> "slides_${currentDoc.id}_${documentOrientation.name}"
+                        is ParsedDocument.Spreadsheet -> "sheet_${currentDoc.id}_${documentOrientation.name}"
+                        is ParsedDocument.PlainText -> "text_${currentDoc.id}_${activeRenderFormat.name}_${documentOrientation.name}"
                     }
                 },
                 transitionSpec = {
@@ -424,6 +447,7 @@ fun DocumentViewerScreen(
                     is ParsedDocument.PlainText -> PlainTextViewerContent(
                         fullText = doc.fullText,
                         pages = doc.pages,
+                        layout = doc.layout,
                         mode = pageViewMode,
                         showLineNumbers = settings.showLineNumbers,
                         wordWrap = settings.textWordWrap,
@@ -446,8 +470,12 @@ fun DocumentViewerScreen(
                     .testTag("viewer_topbar")
             ) {
                 Surface(
-                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                    tonalElevation = 3.dp,
+                    color = (if (LocalMaterialUiEnabled.current) {
+                        MaterialTheme.colorScheme.surfaceContainerLow
+                    } else {
+                        MaterialTheme.colorScheme.surface
+                    }).copy(alpha = 0.96f),
+                    tonalElevation = if (LocalMaterialUiEnabled.current) 4.dp else 3.dp,
                     shadowElevation = 4.dp,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -459,6 +487,7 @@ fun DocumentViewerScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
+                            .displayCutoutPadding()
                             .height(43.dp)
                             .padding(start = 14.dp, end = 4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -475,49 +504,49 @@ fun DocumentViewerScreen(
                                 .testTag("viewer_doc_title")
                         )
 
-                        if (isOfficeDoc) {
+                        if (supportsFormatSwitch) {
                             Spacer(modifier = Modifier.width(6.dp))
                             Surface(
                                 shape = RoundedCornerShape(50),
                                 color = currentDoc.type.pillColor.copy(alpha = 0.14f),
                                 border = BorderStroke(1.dp, currentDoc.type.pillColor.copy(alpha = 0.45f)),
-                                onClick = {
-                                    activeRenderFormat = if (activeRenderFormat == OfficeRenderFormat.PDF) {
-                                        OfficeRenderFormat.ORIGINAL
-                                    } else {
-                                        OfficeRenderFormat.PDF
-                                    }
-                                    uiInteractionNonce++
-                                },
+                                onClick = { onToggleRenderFormat?.invoke() },
                                 modifier = Modifier.testTag("viewer_format_toggle")
                             ) {
                                 Text(
-                                    text = if (activeRenderFormat == OfficeRenderFormat.PDF) "PDF" else "Orig",
+                                    text = if (activeRenderFormat == OfficeRenderFormat.PDF) "PDF" else originalFormatShortLabel,
                                     style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
                                     color = currentDoc.type.pillColor,
                                     modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
                                 )
                             }
-
-                            Spacer(modifier = Modifier.width(5.dp))
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = MaterialTheme.colorScheme.surfaceVariant,
-                                onClick = {
-                                    showInspectSheet = true
-                                    uiInteractionNonce++
-                                },
-                                modifier = Modifier.testTag("viewer_layout_button")
-                            ) {
-                                Text(
-                                    text = activeSummary?.effectivePageSize ?: activePageSize.shortLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                )
-                            }
                         } else {
                             Spacer(modifier = Modifier.width(8.dp))
+                        }
+
+                        val rotateRotation by animateFloatAsState(
+                            targetValue = if (isLandscape) 90f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = 0.78f,
+                                stiffness = Spring.StiffnessMedium
+                            ),
+                            label = "viewerRotateIconAngle"
+                        )
+                        IconButton(
+                            onClick = {
+                                if (activity != null) {
+                                    activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
+                                }
+                                uiInteractionNonce++
+                            },
+                            modifier = Modifier.testTag("viewer_rotate_button")
+                        ) {
+                            Icon(
+                                imageVector = AppIcons.ScreenRotation,
+                                contentDescription = stringResource(R.string.action_rotate_screen),
+                                tint = MaterialTheme.colorScheme.onSurface,
+                                modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
+                            )
                         }
 
                         IconButton(
@@ -583,6 +612,19 @@ fun DocumentViewerScreen(
                                 )
                             }
 
+                            val activeDocIsLandscape = when (documentOrientation) {
+                                DocumentViewOrientation.PORTRAIT -> false
+                                DocumentViewOrientation.LANDSCAPE -> true
+                                DocumentViewOrientation.AUTO -> when (val doc = parsedDoc) {
+                                    is ParsedDocument.Word -> doc.layout.isLandscape
+                                    is ParsedDocument.Slides -> doc.layout.isLandscape
+                                    is ParsedDocument.Spreadsheet -> doc.layout.isLandscape
+                                    is ParsedDocument.PlainText -> doc.layout.isLandscape
+                                    is ParsedDocument.Pdf -> doc.summary?.isLandscape ?: doc.session.isFirstPageNaturallyLandscape
+                                    else -> currentDoc.type == DocType.PPT || currentDoc.type == DocType.EXCEL
+                                }
+                            }
+
                             DocumentActionDropdownMenu(
                                 expanded = menuExpanded,
                                 onDismiss = {
@@ -598,6 +640,13 @@ fun DocumentViewerScreen(
                                 },
                                 onInfo = { showInfoSheet = true },
                                 onDelete = { showDeleteDialog = true },
+                                toggleFormatLabel = toggleFormatMenuLabel,
+                                onToggleFormat = onToggleRenderFormat,
+                                activeDocumentIsLandscape = activeDocIsLandscape,
+                                onSelectDocumentOrientation = { chosenOrientation ->
+                                    documentOrientation = chosenOrientation
+                                    uiInteractionNonce++
+                                },
                                 tagPrefix = "viewer_menu"
                             )
                         }
@@ -641,32 +690,6 @@ fun DocumentViewerScreen(
             docs = listOf(currentDoc),
             onDismiss = {
                 showInfoSheet = false
-                uiInteractionNonce++
-            }
-        )
-    }
-
-    if (showInspectSheet && isOfficeDoc) {
-        OfficeInspectionBottomSheet(
-            docName = currentDoc.name,
-            summary = activeSummary,
-            selectedFormat = activeRenderFormat,
-            selectedSize = activePageSize,
-            selectedMargin = activeMargin,
-            onSelectFormat = {
-                activeRenderFormat = it
-                uiInteractionNonce++
-            },
-            onSelectSize = {
-                activePageSize = it
-                uiInteractionNonce++
-            },
-            onSelectMargin = {
-                activeMargin = it
-                uiInteractionNonce++
-            },
-            onDismiss = {
-                showInspectSheet = false
                 uiInteractionNonce++
             }
         )
@@ -766,7 +789,7 @@ private fun <T> PagedOrContinuousViewer(
                         top = topClearance + 10.dp,
                         bottom = bottomClearance + 52.dp
                     ),
-                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     itemsIndexed(items, key = { _, item -> keySelector(item) }) { idx, item ->
@@ -950,6 +973,7 @@ private fun PdfPageBitmapCard(
         session.prefetchAdjacent(pageIndex, targetWidthPx)
     }
 
+    val bmp = bitmap
     Surface(
         shape = RoundedCornerShape(8.dp),
         color = if (invertInDark) Color(0xFF0F172A) else Color.White,
@@ -957,9 +981,8 @@ private fun PdfPageBitmapCard(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .widthIn(max = 720.dp)
+            .widthIn(max = if (bmp != null && bmp.width > bmp.height) 1040.dp else 720.dp)
     ) {
-        val bmp = bitmap
         if (bmp != null) {
             Image(
                 bitmap = bmp.asImageBitmap(),
@@ -985,6 +1008,7 @@ private fun PdfPageBitmapCard(
 private fun PlainTextViewerContent(
     fullText: String,
     pages: List<List<String>>,
+    layout: OfficePageLayout,
     mode: PageViewMode,
     showLineNumbers: Boolean,
     wordWrap: Boolean,
@@ -996,6 +1020,12 @@ private fun PlainTextViewerContent(
     onToggleUi: () -> Unit
 ) {
     val wrapModifier = if (wordWrap) Modifier.fillMaxSize() else Modifier.fillMaxSize().horizontalScroll(rememberScrollState())
+    val padLeft = (layout.marginLeftPt * 0.32f).coerceIn(10f, 28f).dp
+    val padRight = (layout.marginRightPt * 0.32f).coerceIn(10f, 28f).dp
+    val padTop = (layout.marginTopPt * 0.30f).coerceIn(12f, 26f).dp
+    val padBottom = (layout.marginBottomPt * 0.28f).coerceIn(10f, 24f).dp
+    val maxWidthDp = if (layout.isLandscape) 820.dp else 700.dp
+
     AnimatedContent(
         targetState = mode,
         transitionSpec = {
@@ -1019,10 +1049,7 @@ private fun PlainTextViewerContent(
                 keySelector = { it.first },
                 singleItemContent = { (pageIdx, pageLines) ->
                     val lineOffset = pageIdx * 42
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .padding(
@@ -1030,22 +1057,37 @@ private fun PlainTextViewerContent(
                                 end = 14.dp,
                                 top = topClearance + 10.dp,
                                 bottom = bottomClearance + 52.dp
-                            )
+                            ),
+                        contentAlignment = Alignment.TopCenter
                     ) {
-                        LazyColumn(
-                            modifier = wrapModifier,
-                            contentPadding = PaddingValues(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .widthIn(max = maxWidthDp)
                         ) {
-                            itemsIndexed(pageLines) { idx, line ->
-                                PlainTextLine(
-                                    lineNumber = lineOffset + idx + 1,
-                                    line = line,
-                                    showLineNumber = showLineNumbers,
-                                    wordWrap = wordWrap,
-                                    useMonospace = useMonospace,
-                                    fontSizeSp = fontSizeSp
-                                )
+                            LazyColumn(
+                                modifier = wrapModifier,
+                                contentPadding = PaddingValues(
+                                    start = padLeft,
+                                    end = padRight,
+                                    top = padTop,
+                                    bottom = padBottom
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                itemsIndexed(pageLines) { idx, line ->
+                                    PlainTextLine(
+                                        lineNumber = lineOffset + idx + 1,
+                                        line = line,
+                                        showLineNumber = showLineNumbers,
+                                        wordWrap = wordWrap,
+                                        useMonospace = useMonospace,
+                                        fontSizeSp = fontSizeSp
+                                    )
+                                }
                             }
                         }
                     }
@@ -1068,9 +1110,9 @@ private fun PlainTextViewerContent(
                     modifier = wrapModifier
                         .background(MaterialTheme.colorScheme.surface),
                     contentPadding = PaddingValues(
-                        start = 14.dp,
-                        end = 14.dp,
-                        top = topClearance + 12.dp,
+                        start = padLeft,
+                        end = padRight,
+                        top = topClearance + padTop,
                         bottom = bottomClearance + 52.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(2.dp)

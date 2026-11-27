@@ -13,6 +13,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -40,8 +41,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.model.DocumentViewOrientation
 import kotlinx.coroutines.delay
 
 @Composable
@@ -53,19 +56,77 @@ fun DocumentActionDropdownMenu(
     onPrint: () -> Unit,
     onInfo: () -> Unit,
     onDelete: () -> Unit,
+    toggleFormatLabel: String? = null,
+    onToggleFormat: (() -> Unit)? = null,
+    activeDocumentIsLandscape: Boolean? = null,
+    onSelectDocumentOrientation: ((DocumentViewOrientation) -> Unit)? = null,
     tagPrefix: String = "menu"
 ) {
+    val safeToggleLabel = toggleFormatLabel
+    val safeToggleAction = onToggleFormat
+    val hasToggleFormat = safeToggleLabel != null && safeToggleAction != null
+    val safeOrientationSelect = onSelectDocumentOrientation
+    val hasDocumentView = safeOrientationSelect != null && activeDocumentIsLandscape != null
+    val baseIndex = (if (hasToggleFormat) 1 else 0) + (if (hasDocumentView) 2 else 0)
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(14.dp),
         containerColor = MaterialTheme.colorScheme.surface
     ) {
+        if (hasToggleFormat) {
+            CompactMenuActionItem(
+                icon = AppIcons.Description,
+                label = safeToggleLabel!!,
+                menuExpanded = expanded,
+                staggerIndex = 0,
+                onClick = {
+                    onDismiss()
+                    safeToggleAction!!.invoke()
+                },
+                testTag = "${tagPrefix}_toggle_format"
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+        }
+        if (hasDocumentView) {
+            val docViewBaseIdx = if (hasToggleFormat) 1 else 0
+            Text(
+                text = stringResource(R.string.action_document_view),
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+            CompactMenuActionItem(
+                icon = AppIcons.CropPortrait,
+                label = stringResource(R.string.doc_view_portrait),
+                menuExpanded = expanded,
+                staggerIndex = docViewBaseIdx,
+                selected = activeDocumentIsLandscape == false,
+                onClick = {
+                    onDismiss()
+                    safeOrientationSelect!!.invoke(DocumentViewOrientation.PORTRAIT)
+                },
+                testTag = "${tagPrefix}_doc_view_portrait"
+            )
+            CompactMenuActionItem(
+                icon = AppIcons.CropLandscape,
+                label = stringResource(R.string.doc_view_landscape),
+                menuExpanded = expanded,
+                staggerIndex = docViewBaseIdx + 1,
+                selected = activeDocumentIsLandscape == true,
+                onClick = {
+                    onDismiss()
+                    safeOrientationSelect!!.invoke(DocumentViewOrientation.LANDSCAPE)
+                },
+                testTag = "${tagPrefix}_doc_view_landscape"
+            )
+            HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+        }
         CompactMenuActionItem(
             icon = AppIcons.Rename,
             label = stringResource(R.string.action_rename),
             menuExpanded = expanded,
-            staggerIndex = 0,
+            staggerIndex = baseIndex,
             onClick = {
                 onDismiss()
                 onRename()
@@ -76,7 +137,7 @@ fun DocumentActionDropdownMenu(
             icon = Icons.Outlined.Share,
             label = stringResource(R.string.action_share),
             menuExpanded = expanded,
-            staggerIndex = 1,
+            staggerIndex = baseIndex + 1,
             onClick = {
                 onDismiss()
                 onShare()
@@ -87,7 +148,7 @@ fun DocumentActionDropdownMenu(
             icon = AppIcons.Print,
             label = stringResource(R.string.action_print),
             menuExpanded = expanded,
-            staggerIndex = 2,
+            staggerIndex = baseIndex + 2,
             onClick = {
                 onDismiss()
                 onPrint()
@@ -98,7 +159,7 @@ fun DocumentActionDropdownMenu(
             icon = Icons.Outlined.Info,
             label = stringResource(R.string.action_info),
             menuExpanded = expanded,
-            staggerIndex = 3,
+            staggerIndex = baseIndex + 3,
             onClick = {
                 onDismiss()
                 onInfo()
@@ -110,7 +171,7 @@ fun DocumentActionDropdownMenu(
             icon = AppIcons.DeleteOutline,
             label = stringResource(R.string.action_delete),
             menuExpanded = expanded,
-            staggerIndex = 4,
+            staggerIndex = baseIndex + 4,
             tint = MaterialTheme.colorScheme.error,
             onClick = {
                 onDismiss()
@@ -129,6 +190,7 @@ private fun CompactMenuActionItem(
     staggerIndex: Int,
     onClick: () -> Unit,
     testTag: String,
+    selected: Boolean = false,
     tint: Color = MaterialTheme.colorScheme.onSurface
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -148,6 +210,7 @@ private fun CompactMenuActionItem(
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "menuItemPress"
     )
+    val effectiveTint = if (selected) MaterialTheme.colorScheme.primary else tint
 
     AnimatedVisibility(
         visible = visible,
@@ -179,14 +242,25 @@ private fun CompactMenuActionItem(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = tint,
+                tint = effectiveTint,
                 modifier = Modifier.size(18.dp)
             )
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                color = tint
+                style = MaterialTheme.typography.bodyMedium.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                ),
+                color = effectiveTint
             )
+            if (selected) {
+                Spacer(modifier = Modifier.weight(1f))
+                Icon(
+                    imageVector = AppIcons.Check,
+                    contentDescription = null,
+                    tint = effectiveTint,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
     }
 }

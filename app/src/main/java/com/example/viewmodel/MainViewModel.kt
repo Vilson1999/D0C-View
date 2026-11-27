@@ -12,8 +12,6 @@ import com.example.data.SettingsRepository
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
-import com.example.model.OfficeMarginOption
-import com.example.model.OfficePageSizeOption
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.SortOption
@@ -405,6 +403,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setThemeMode(mode) }
     }
 
+    fun setUseMaterialUi(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setUseMaterialUi(enabled) }
+    }
+
     fun setSortOption(option: SortOption) {
         viewModelScope.launch { settingsRepo.setSortOption(option) }
     }
@@ -448,14 +450,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setOfficeRenderFormat(format) }
     }
 
-    fun setOfficePageSize(size: OfficePageSizeOption) {
-        viewModelScope.launch { settingsRepo.setOfficePageSize(size) }
-    }
-
-    fun setOfficeMargin(margin: OfficeMarginOption) {
-        viewModelScope.launch { settingsRepo.setOfficeMargin(margin) }
-    }
-
     fun setPdfPageViewMode(mode: PageViewMode) {
         viewModelScope.launch { settingsRepo.setPdfPageViewMode(mode) }
     }
@@ -472,28 +466,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setDocxRenderFormat(format) }
     }
 
-    fun setDocxPageSize(size: OfficePageSizeOption) {
-        viewModelScope.launch { settingsRepo.setDocxPageSize(size) }
-    }
-
-    fun setDocxMargin(margin: OfficeMarginOption) {
-        viewModelScope.launch { settingsRepo.setDocxMargin(margin) }
-    }
-
     fun setDocxFontSizeSp(sizeSp: Float) {
         viewModelScope.launch { settingsRepo.setDocxFontSizeSp(sizeSp) }
     }
 
     fun setXlsxRenderFormat(format: OfficeRenderFormat) {
         viewModelScope.launch { settingsRepo.setXlsxRenderFormat(format) }
-    }
-
-    fun setXlsxPageSize(size: OfficePageSizeOption) {
-        viewModelScope.launch { settingsRepo.setXlsxPageSize(size) }
-    }
-
-    fun setXlsxMargin(margin: OfficeMarginOption) {
-        viewModelScope.launch { settingsRepo.setXlsxMargin(margin) }
     }
 
     fun setXlsxFontSizeSp(sizeSp: Float) {
@@ -504,16 +482,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setPptRenderFormat(format) }
     }
 
-    fun setPptPageSize(size: OfficePageSizeOption) {
-        viewModelScope.launch { settingsRepo.setPptPageSize(size) }
-    }
-
-    fun setPptMargin(margin: OfficeMarginOption) {
-        viewModelScope.launch { settingsRepo.setPptMargin(margin) }
-    }
-
     fun setShowPptSpeakerNotes(enabled: Boolean) {
         viewModelScope.launch { settingsRepo.setShowPptSpeakerNotes(enabled) }
+    }
+
+    fun setTextRenderFormat(format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setTextRenderFormat(format) }
     }
 
     fun setTextPageViewMode(mode: PageViewMode) {

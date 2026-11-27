@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -111,6 +112,7 @@ import com.example.ui.components.EmptyDocumentsIllustration
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.SortOptionsSheet
 import com.example.ui.components.TopBarSearchField
+import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.viewmodel.HomeUiState
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -306,11 +308,18 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .statusBarsPadding()
+            val materialUi = LocalMaterialUiEnabled.current
+            Surface(
+                color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.background,
+                tonalElevation = if (materialUi) 1.dp else 0.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .displayCutoutPadding()
+                ) {
                 AnimatedContent(
                     targetState = uiState.isSelectionMode,
                     transitionSpec = {
@@ -348,7 +357,7 @@ fun HomeScreen(
                     }
                 }
 
-                // Category Pills Row (PDF, DOC, XML, PPT, TEXT) — hides when scrolling up
+                // Category Pills Row (PDF, DOC, EXCEL, PPT, TEXT) — hides when scrolling up
                 CategoryPillsRow(
                     selectedType = uiState.selectedCategory,
                     visibleTypes = visibleTypes,
@@ -357,6 +366,7 @@ fun HomeScreen(
                     isDarkTheme = isDarkTheme,
                     onSelectType = onSelectCategory
                 )
+            }
             }
         },
         bottomBar = {
@@ -391,6 +401,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .displayCutoutPadding()
                 .nestedScroll(nestedScrollConnection),
             contentAlignment = Alignment.TopCenter
         ) {
@@ -761,8 +772,9 @@ private fun SelectionBottomToolbar(
     onPrint: () -> Unit,
     onInfo: () -> Unit
 ) {
+    val materialUi = LocalMaterialUiEnabled.current
     Surface(
-        color = MaterialTheme.colorScheme.surface,
+        color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface,
         tonalElevation = 6.dp,
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
@@ -770,6 +782,7 @@ private fun SelectionBottomToolbar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .displayCutoutPadding()
                 .navigationBarsPadding()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
