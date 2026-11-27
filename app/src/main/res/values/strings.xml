@@ -26,5 +26,8 @@
     <string name="grant_storage_desc">Allow offline access to automatically scan all device folders, including hidden (.) dot folders.</string>
     <string name="grant_storage_button">Grant Access</string>
     <string name="empty_category_title">No %1$s documents found</string>
-    <string name="empty_category_subtitle">Pull to refresh, grant storage access, or import a file offline.</string>
+    <string name="permission_dialog_title">Storage Permissions</string>
+    <string name="permission_dialog_desc">Allow storage permissions so D0C View can scan and open your offline documents across device folders.</string>
+    <string name="permission_allow_button">Allow</string>
+    <string name="permission_later_button">Not Now</string>
 </resources>

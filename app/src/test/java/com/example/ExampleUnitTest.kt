@@ -1147,6 +1147,11 @@ class ExampleUnitTest {
         val backgroundScanState = HomeUiState(isScanning = true)
         assertTrue(backgroundScanState.isScanning)
         assertFalse(backgroundScanState.isPullRefreshing)
+        assertFalse(backgroundScanState.isAccessGrantScanning)
+
+        val accessGrantState = HomeUiState(isScanning = true, isAccessGrantScanning = true)
+        assertTrue(accessGrantState.isAccessGrantScanning)
+        assertFalse(accessGrantState.isPullRefreshing)
 
         val pullRefreshState = HomeUiState(isScanning = true, isPullRefreshing = true)
         assertTrue(pullRefreshState.isPullRefreshing)

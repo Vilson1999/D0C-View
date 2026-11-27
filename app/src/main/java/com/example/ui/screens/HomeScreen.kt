@@ -50,10 +50,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,6 +71,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -111,6 +112,7 @@ import com.example.ui.components.DocumentInfoSheet
 import com.example.ui.components.EmptyDocumentsIllustration
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.SortOptionsSheet
+import com.example.ui.components.StoragePermissionDialog
 import com.example.ui.components.TopBarSearchField
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.viewmodel.HomeUiState
@@ -137,9 +139,7 @@ fun HomeScreen(
     onRenameDocument: (DocumentItem, String) -> Unit,
     onDeleteDocuments: (List<DocumentItem>) -> Unit,
     onRequestStorageAccess: () -> Unit,
-    onImportFile: () -> Unit,
-    onRescan: () -> Unit,
-    onPullRefresh: () -> Unit = onRescan,
+    onPullRefresh: () -> Unit,
     onShowAllDocTypes: () -> Unit
 ) {
     val context = LocalContext.current
@@ -243,6 +243,7 @@ fun HomeScreen(
 
     // Dialog & sheet state
     var showSortSheet by remember { mutableStateOf(false) }
+    var permissionDialogDismissed by rememberSaveable { mutableStateOf(false) }
     var renameTarget by remember { mutableStateOf<DocumentItem?>(null) }
     var deleteTargets by remember { mutableStateOf<List<DocumentItem>?>(null) }
     var infoTargets by remember { mutableStateOf<List<DocumentItem>?>(null) }
@@ -454,7 +455,23 @@ fun HomeScreen(
                         }
                         .testTag("document_pull_refresh_${pageType.name.lowercase()}")
                 ) {
-                    if (docs.isEmpty()) {
+                    val showCenterLoading = uiState.isAccessGrantScanning ||
+                        (uiState.isScanning && !uiState.isPullRefreshing && docs.isEmpty())
+
+                    if (showCenterLoading) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .testTag("home_center_loading_${pageType.name.lowercase()}"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                color = pageType.pillColor,
+                                strokeWidth = 5.dp,
+                                modifier = Modifier.size(64.dp)
+                            )
+                        }
+                    } else if (docs.isEmpty()) {
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(16.dp)
@@ -466,11 +483,7 @@ fun HomeScreen(
                                 ) {
                                     EmptyCategoryState(
                                         docType = pageType,
-                                        hasFullStorageAccess = uiState.hasFullStorageAccess,
-                                        isSearching = uiState.searchQuery.isNotBlank(),
-                                        onRequestStorageAccess = onRequestStorageAccess,
-                                        onImportFile = onImportFile,
-                                        onRescan = onRescan
+                                        isSearching = uiState.searchQuery.isNotBlank()
                                     )
                                 }
                             }
@@ -486,15 +499,6 @@ fun HomeScreen(
                             ),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            if (!uiState.hasFullStorageAccess) {
-                                item(key = "storage_access_banner") {
-                                    StorageAccessCard(
-                                        onGrantAccess = onRequestStorageAccess,
-                                        onImportFile = onImportFile
-                                    )
-                                }
-                            }
-
                             items(docs, key = { it.id }) { doc ->
                                 val isSelected = doc.id in uiState.selectedDocIds
                                 DocumentCard(
@@ -580,6 +584,13 @@ fun HomeScreen(
         DocumentInfoSheet(
             docs = targets,
             onDismiss = { infoTargets = null }
+        )
+    }
+
+    if (!uiState.hasFullStorageAccess && !permissionDialogDismissed) {
+        StoragePermissionDialog(
+            onAllow = onRequestStorageAccess,
+            onDismiss = { permissionDialogDismissed = true }
         )
     }
     }
@@ -863,71 +874,9 @@ private fun BottomToolbarAction(
 }
 
 @Composable
-private fun StorageAccessCard(
-    onGrantAccess: () -> Unit,
-    onImportFile: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Icon(
-                    imageVector = AppIcons.FolderOpen,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    text = stringResource(R.string.grant_storage_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Text(
-                text = stringResource(R.string.grant_storage_desc),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(
-                    onClick = onGrantAccess,
-                    modifier = Modifier.testTag("grant_storage_button")
-                ) {
-                    Text(stringResource(R.string.grant_storage_button))
-                }
-                OutlinedButton(
-                    onClick = onImportFile,
-                    modifier = Modifier.testTag("import_file_button")
-                ) {
-                    Icon(
-                        AppIcons.FileOpen,
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Import")
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun EmptyCategoryState(
     docType: DocType,
-    hasFullStorageAccess: Boolean,
-    isSearching: Boolean,
-    onRequestStorageAccess: () -> Unit,
-    onImportFile: () -> Unit,
-    onRescan: () -> Unit
+    isSearching: Boolean
 ) {
     Box(
         modifier = Modifier
@@ -938,7 +887,9 @@ private fun EmptyCategoryState(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            modifier = Modifier.widthIn(max = 360.dp)
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .testTag("empty_category_state_${docType.name.lowercase()}")
         ) {
             EmptyDocumentsIllustration(
                 accentColor = docType.pillColor,
@@ -954,38 +905,6 @@ private fun EmptyCategoryState(
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )
-            Text(
-                text = stringResource(R.string.empty_category_subtitle),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!hasFullStorageAccess) {
-                    Button(onClick = onRequestStorageAccess) {
-                        Text(stringResource(R.string.grant_storage_button))
-                    }
-                } else {
-                    Button(onClick = onRescan) {
-                        Icon(
-                            Icons.Rounded.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Rescan")
-                    }
-                }
-                OutlinedButton(onClick = onImportFile) {
-                    Icon(
-                        AppIcons.FileOpen,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Open File")
-                }
-            }
         }
     }
 }

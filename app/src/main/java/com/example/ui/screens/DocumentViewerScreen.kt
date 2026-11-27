@@ -126,7 +126,6 @@ import com.example.ui.components.DocumentInfoSheet
 import com.example.ui.components.OfficeOriginalExcelContent
 import com.example.ui.components.OfficeOriginalSlideCard
 import com.example.ui.components.OfficeOriginalWordPaperCard
-import com.example.ui.components.ReaderZoomControlsPill
 import com.example.ui.components.ReaderZoomState
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.ZoomableReaderViewport
@@ -551,25 +550,7 @@ fun DocumentViewerScreen(
                                 .testTag("viewer_doc_title")
                         )
 
-                        if (supportsFormatSwitch) {
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Surface(
-                                shape = RoundedCornerShape(50),
-                                color = currentDoc.type.pillColor.copy(alpha = 0.14f),
-                                border = BorderStroke(1.dp, currentDoc.type.pillColor.copy(alpha = 0.45f)),
-                                onClick = { onToggleRenderFormat?.invoke() },
-                                modifier = Modifier.testTag("viewer_format_toggle")
-                            ) {
-                                Text(
-                                    text = if (activeRenderFormat == OfficeRenderFormat.PDF) "PDF" else originalFormatShortLabel,
-                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                                    color = currentDoc.type.pillColor,
-                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
-                                )
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.width(8.dp))
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         val rotateRotation by animateFloatAsState(
                             targetValue = if (isLandscape) 90f else 0f,
@@ -845,21 +826,10 @@ private fun <T> PagedOrContinuousViewer(
                         .navigationBarsPadding()
                         .padding(bottom = 14.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        PageIndicatorPill(
-                            text = "$unitLabel ${pagerState.currentPage + 1} / $total",
-                            modifier = Modifier.testTag("viewer_page_pill")
-                        )
-                        if (zoomState != null) {
-                            ReaderZoomControlsPill(
-                                zoomState = zoomState,
-                                onUserInteraction = onZoomInteraction
-                            )
-                        }
-                    }
+                    PageIndicatorPill(
+                        text = "$unitLabel ${pagerState.currentPage + 1} / $total",
+                        modifier = Modifier.testTag("viewer_page_pill")
+                    )
                 }
             }
         } else {
@@ -908,21 +878,10 @@ private fun <T> PagedOrContinuousViewer(
                         .navigationBarsPadding()
                         .padding(bottom = 14.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        PageIndicatorPill(
-                            text = "$unitLabel $current / ${items.size}",
-                            modifier = Modifier.testTag("viewer_page_pill")
-                        )
-                        if (zoomState != null) {
-                            ReaderZoomControlsPill(
-                                zoomState = zoomState,
-                                onUserInteraction = onZoomInteraction
-                            )
-                        }
-                    }
+                    PageIndicatorPill(
+                        text = "$unitLabel $current / ${items.size}",
+                        modifier = Modifier.testTag("viewer_page_pill")
+                    )
                 }
             }
         }
@@ -1260,7 +1219,7 @@ private fun PlainTextViewerContent(
                     }
                 }
                 AnimatedVisibility(
-                    visible = showPagePill,
+                    visible = showPagePill && pages.size > 1,
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
                     exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
                     modifier = Modifier
@@ -1268,21 +1227,10 @@ private fun PlainTextViewerContent(
                         .navigationBarsPadding()
                         .padding(bottom = 14.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (pages.size > 1) {
-                            PageIndicatorPill(
-                                text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}",
-                                modifier = Modifier.testTag("viewer_page_pill")
-                            )
-                        }
-                        ReaderZoomControlsPill(
-                            zoomState = zoomState,
-                            onUserInteraction = onZoomInteraction
-                        )
-                    }
+                    PageIndicatorPill(
+                        text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}",
+                        modifier = Modifier.testTag("viewer_page_pill")
+                    )
                 }
             }
         }

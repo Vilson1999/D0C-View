@@ -20,6 +20,7 @@ import com.example.model.ThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -31,10 +32,12 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 data class HomeUiState(
     val isScanning: Boolean = false,
+    val isAccessGrantScanning: Boolean = false,
     val isPullRefreshing: Boolean = false,
     val hasFullStorageAccess: Boolean = false,
     val selectedCategory: DocType = DocType.PDF,
@@ -124,12 +127,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val cacheManager = DocumentCacheManager(application)
     private val parser = DocumentParser(application)
     private var scanJob: Job? = null
+    private var pullRefreshJob: Job? = null
     private var prewarmJob: Job? = null
 
     private val _rawDocuments = MutableStateFlow<List<DocumentItem>>(emptyList())
     val foundDocuments: StateFlow<List<DocumentItem>> = _rawDocuments.asStateFlow()
 
     private val _isScanning = MutableStateFlow(false)
+    private val _isAccessGrantScanning = MutableStateFlow(false)
     private val _isPullRefreshing = MutableStateFlow(false)
     private val _hasFullAccess = MutableStateFlow(scanner.hasFullStorageAccess())
     private val _selectedCategory = MutableStateFlow(DocType.PDF)
@@ -162,7 +167,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _isSearchActive,
         _selectedDocIds,
         _cacheSizeBytes,
-        settingsFlow
+        settingsFlow,
+        _isAccessGrantScanning
     ) { values ->
         @Suppress("UNCHECKED_CAST")
         val rawDocs = values[0] as List<DocumentItem>
@@ -176,6 +182,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val selectedIds = values[7] as Set<String>
         val cacheBytes = values[8] as Long
         val settings = values[9] as AppSettings
+        val accessGrantScanning = values[10] as Boolean
 
         val visibleTypes = DocumentQueryProcessor.resolveHomePillTypes(
             documents = rawDocs,
@@ -202,6 +209,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
         HomeUiState(
             isScanning = scanning,
+            isAccessGrantScanning = accessGrantScanning,
             isPullRefreshing = pullRefreshing,
             hasFullStorageAccess = fullAccess,
             selectedCategory = effectiveCategory,
@@ -216,11 +224,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             cacheSizeBytes = cacheBytes,
             settings = settings
         )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), HomeUiState())
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        HomeUiState(hasFullStorageAccess = _hasFullAccess.value)
+    )
 
     private val backgroundCloseListener: () -> Unit = {
         scanJob?.cancel()
+        pullRefreshJob?.cancel()
         prewarmJob?.cancel()
+        _isPullRefreshing.value = false
+        _isAccessGrantScanning.value = false
     }
 
     init {
@@ -245,13 +260,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     override fun onCleared() {
+        pullRefreshJob?.cancel()
         prewarmJob?.cancel()
         DocViewApplication.unregisterBackgroundCloseListener(backgroundCloseListener)
         super.onCleared()
     }
 
     fun pullToRefreshDocuments() {
-        refreshStorageAccessAndScan(userInitiated = true, isPullToRefresh = true)
+        val currentAccess = scanner.hasFullStorageAccess()
+        val accessJustGranted = !lastKnownStorageAccess && currentAccess
+        lastKnownStorageAccess = currentAccess
+        _hasFullAccess.value = currentAccess
+
+        pullRefreshJob?.cancel()
+        _isPullRefreshing.value = true
+
+        scanDocuments(
+            forceRestart = true,
+            userInitiated = true,
+            isPullToRefresh = true,
+            isAccessGrantScan = accessJustGranted
+        )
+
+        val activeScan = scanJob
+        pullRefreshJob = viewModelScope.launch {
+            val minDurationMs = 500L
+            val maxDurationMs = 1000L
+            val startedAt = System.currentTimeMillis()
+            if (activeScan != null) {
+                withTimeoutOrNull(maxDurationMs) {
+                    activeScan.join()
+                }
+            }
+            val elapsed = System.currentTimeMillis() - startedAt
+            if (elapsed < minDurationMs) {
+                delay(minDurationMs - elapsed)
+            }
+            _isPullRefreshing.value = false
+        }
     }
 
     fun recordDocumentOpened(doc: DocumentItem) {
@@ -265,12 +311,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         isPullToRefresh: Boolean = false
     ) {
         val currentAccess = scanner.hasFullStorageAccess()
+        val accessJustGranted = !lastKnownStorageAccess && currentAccess
         lastKnownStorageAccess = currentAccess
         _hasFullAccess.value = currentAccess
+        if (!accessJustGranted && !userInitiated && !isPullToRefresh && scanJob?.isActive == true) {
+            return
+        }
         scanDocuments(
             forceRestart = true,
             userInitiated = userInitiated,
-            isPullToRefresh = isPullToRefresh
+            isPullToRefresh = isPullToRefresh,
+            isAccessGrantScan = accessJustGranted
         )
     }
 
@@ -278,23 +329,36 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val currentAccess = scanner.hasFullStorageAccess()
         _hasFullAccess.value = currentAccess
         if (currentAccess != lastKnownStorageAccess) {
+            val accessJustGranted = !lastKnownStorageAccess && currentAccess
             lastKnownStorageAccess = currentAccess
-            scanDocuments(forceRestart = true)
+            scanDocuments(
+                forceRestart = true,
+                isAccessGrantScan = accessJustGranted
+            )
         }
     }
 
     fun scanDocuments(
         forceRestart: Boolean = false,
         userInitiated: Boolean = false,
-        isPullToRefresh: Boolean = false
+        isPullToRefresh: Boolean = false,
+        isAccessGrantScan: Boolean = false
     ) {
+        val keepAccessGrantFlag = isAccessGrantScan || (_isAccessGrantScanning.value && scanJob?.isActive == true)
         if (scanJob?.isActive == true) {
             if (!forceRestart) return
             scanJob?.cancel()
         }
-        _isPullRefreshing.value = isPullToRefresh
+        if (!isPullToRefresh) {
+            pullRefreshJob?.cancel()
+            _isPullRefreshing.value = false
+        }
+        if (keepAccessGrantFlag) {
+            _isAccessGrantScanning.value = true
+        }
         scanJob = viewModelScope.launch {
             val selfJob = currentCoroutineContext()[Job]
+            val scanStartedAt = System.currentTimeMillis()
             _isScanning.value = true
             DocViewApplication.beginBackgroundWork(getApplication())
             try {
@@ -341,10 +405,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
+                if (keepAccessGrantFlag) {
+                    val elapsed = System.currentTimeMillis() - scanStartedAt
+                    if (elapsed < 450L) {
+                        delay(450L - elapsed)
+                    }
+                }
             } finally {
                 if (scanJob == null || scanJob === selfJob) {
                     _isScanning.value = false
-                    _isPullRefreshing.value = false
+                    _isAccessGrantScanning.value = false
+                    if (!isPullToRefresh) {
+                        _isPullRefreshing.value = false
+                    }
                 }
                 DocViewApplication.endBackgroundWork(getApplication())
             }

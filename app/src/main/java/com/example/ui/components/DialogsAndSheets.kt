@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -49,9 +50,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.ripple
+import com.example.R
 import com.example.model.DocumentItem
 import com.example.model.SortOption
 import com.example.ui.theme.JetBrainsMonoFontFamily
@@ -379,4 +382,123 @@ fun SortOptionsSheet(
             }
         }
     }
+}
+
+@Composable
+fun StoragePermissionDialog(
+    onAllow: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val permissionItems = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            listOf(
+                Triple(
+                    AppIcons.FolderOpen,
+                    "All Files Access",
+                    "Scan PDF, DOC, EXCEL, PPT, and TEXT files across all folders including hidden (.) folders."
+                ),
+                Triple(
+                    AppIcons.Storage,
+                    "Offline File Management",
+                    "Open, rename, and delete documents directly on your device without internet."
+                )
+            )
+        } else {
+            listOf(
+                Triple(
+                    AppIcons.FolderOpen,
+                    "Read Device Storage",
+                    "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files stored on your device."
+                ),
+                Triple(
+                    AppIcons.Storage,
+                    "Write Device Storage",
+                    "Rename and delete documents offline from device folders."
+                )
+            )
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                imageVector = AppIcons.FolderOpen,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary
+            )
+        },
+        title = {
+            Text(
+                text = stringResource(R.string.permission_dialog_title),
+                fontWeight = FontWeight.SemiBold
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = stringResource(R.string.permission_dialog_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                permissionItems.forEach { (icon, label, desc) ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .padding(top = 2.dp)
+                                    .size(20.dp)
+                            )
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = desc,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onAllow,
+                modifier = Modifier.testTag("permission_allow_button")
+            ) {
+                Text(stringResource(R.string.permission_allow_button))
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.testTag("permission_dismiss_button")
+            ) {
+                Text(stringResource(R.string.permission_later_button))
+            }
+        },
+        modifier = Modifier.testTag("storage_permission_dialog")
+    )
 }

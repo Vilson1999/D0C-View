@@ -305,8 +305,6 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onRenameDocument = { doc, name -> viewModel.renameDocument(doc, name) },
                         onDeleteDocuments = { docs -> viewModel.deleteDocuments(docs) },
                         onRequestStorageAccess = requestStorageAccess,
-                        onImportFile = openImportFile,
-                        onRescan = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
                         onPullRefresh = viewModel::pullToRefreshDocuments,
                         onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) }
                     )
