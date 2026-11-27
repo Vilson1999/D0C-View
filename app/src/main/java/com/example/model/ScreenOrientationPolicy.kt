@@ -29,4 +29,16 @@ object ScreenOrientationPolicy {
     }
 
     fun resolveSensorFollowOrientation(): Int = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+
+    fun resolveSavedReaderOrientation(
+        savedOrientation: DocumentViewOrientation,
+        isSystemAutoRotateEnabled: Boolean
+    ): Int {
+        if (isSystemAutoRotateEnabled) return ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        return when (savedOrientation) {
+            DocumentViewOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            DocumentViewOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            DocumentViewOrientation.AUTO -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 }

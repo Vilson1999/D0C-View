@@ -1193,4 +1193,329 @@ class ExampleUnitTest {
         assertEquals(540f, slidePortrait.widthPt, 0.1f)
         assertEquals(960f, slidePortrait.heightPt, 0.1f)
     }
+
+    @Test
+    fun officeLayoutResolver_withA4DefaultForcesA4ForOriginalViewOfDocxXlsxPpt() {
+        val letterWord = OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
+            rawWidthPt = 612f,
+            rawHeightPt = 792f,
+            leftPt = 36f,
+            rightPt = 36f,
+            topPt = 36f,
+            bottomPt = 36f
+        )
+        val orgWordAuto = OfficeLayoutResolver.withA4Default(letterWord, DocumentViewOrientation.AUTO)
+        assertEquals("A4", orgWordAuto.detectedPaperName)
+        assertFalse(orgWordAuto.isLandscape)
+        assertEquals(595f, orgWordAuto.widthPt, 0.1f)
+        assertEquals(842f, orgWordAuto.heightPt, 0.1f)
+        assertEquals(36f, orgWordAuto.marginLeftPt, 0.1f)
+
+        val orgWordLandscape = OfficeLayoutResolver.withA4Default(letterWord, DocumentViewOrientation.LANDSCAPE)
+        assertEquals("A4", orgWordLandscape.detectedPaperName)
+        assertTrue(orgWordLandscape.isLandscape)
+        assertEquals(842f, orgWordLandscape.widthPt, 0.1f)
+        assertEquals(595f, orgWordLandscape.heightPt, 0.1f)
+
+        val slide16x9 = OfficeLayoutResolver.DEFAULT_SLIDE_16_9
+        val orgSlideAuto = OfficeLayoutResolver.withA4Default(slide16x9, DocumentViewOrientation.AUTO)
+        assertEquals("A4", orgSlideAuto.detectedPaperName)
+        assertTrue(orgSlideAuto.isLandscape)
+        assertEquals(842f, orgSlideAuto.widthPt, 0.1f)
+        assertEquals(595f, orgSlideAuto.heightPt, 0.1f)
+
+        val orgSlidePortrait = OfficeLayoutResolver.withA4Default(slide16x9, DocumentViewOrientation.PORTRAIT)
+        assertEquals("A4", orgSlidePortrait.detectedPaperName)
+        assertFalse(orgSlidePortrait.isLandscape)
+        assertEquals(595f, orgSlidePortrait.widthPt, 0.1f)
+        assertEquals(842f, orgSlidePortrait.heightPt, 0.1f)
+
+        val legalExcel = OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
+            rawWidthPt = 612f,
+            rawHeightPt = 1008f,
+            leftPt = 36f,
+            rightPt = 36f,
+            topPt = 36f,
+            bottomPt = 36f
+        )
+        val orgExcelAuto = OfficeLayoutResolver.withA4Default(legalExcel, DocumentViewOrientation.AUTO)
+        assertEquals("A4", orgExcelAuto.detectedPaperName)
+        assertEquals(595f, orgExcelAuto.widthPt, 0.1f)
+        assertEquals(842f, orgExcelAuto.heightPt, 0.1f)
+    }
+
+    @Test
+    fun readerZoomMath_stepsAndClampsZoomAndPanBounds() {
+        assertEquals(1.25f, com.example.ui.components.ReaderZoomMath.stepZoomIn(1.0f), 0.01f)
+        assertEquals(1.50f, com.example.ui.components.ReaderZoomMath.stepZoomIn(1.25f), 0.01f)
+        assertEquals(4.0f, com.example.ui.components.ReaderZoomMath.stepZoomIn(3.9f), 0.01f)
+        assertEquals(1.0f, com.example.ui.components.ReaderZoomMath.stepZoomOut(1.25f), 0.01f)
+        assertEquals(1.0f, com.example.ui.components.ReaderZoomMath.stepZoomOut(1.0f), 0.01f)
+
+        // At 1x zoom offset is locked to zero
+        val (zeroX, zeroY) = com.example.ui.components.ReaderZoomMath.clampOffset(120f, -80f, 1.0f, 1000f, 2000f)
+        assertEquals(0f, zeroX, 0.01f)
+        assertEquals(0f, zeroY, 0.01f)
+
+        // At 2x zoom on 1000x2000 viewport, max pan is +/-500, +/-1000
+        val (clampedX, clampedY) = com.example.ui.components.ReaderZoomMath.clampOffset(800f, -1500f, 2.0f, 1000f, 2000f)
+        assertEquals(500f, clampedX, 0.01f)
+        assertEquals(-1000f, clampedY, 0.01f)
+    }
+
+    @Test
+    fun appSettings_resolvesPerTypeReaderMenusAndSavedOrientations() {
+        val custom = AppSettings(
+            selectedCategory = DocType.DOC,
+            readerScreenOrientation = DocumentViewOrientation.LANDSCAPE,
+            pdfPageViewMode = PageViewMode.CONTINUOUS,
+            pdfViewOrientation = DocumentViewOrientation.LANDSCAPE,
+            docxRenderFormat = OfficeRenderFormat.ORIGINAL,
+            docxPageViewMode = PageViewMode.CONTINUOUS,
+            docxViewOrientation = DocumentViewOrientation.PORTRAIT,
+            docxOrgZoomScale = 1.75f,
+            xlsxRenderFormat = OfficeRenderFormat.ORIGINAL,
+            xlsxPageViewMode = PageViewMode.SINGLE_PAGE,
+            xlsxViewOrientation = DocumentViewOrientation.LANDSCAPE,
+            xlsxOrgZoomScale = 2.25f,
+            pptRenderFormat = OfficeRenderFormat.PDF,
+            pptPageViewMode = PageViewMode.CONTINUOUS,
+            pptViewOrientation = DocumentViewOrientation.PORTRAIT,
+            pptOrgZoomScale = 1.5f,
+            textRenderFormat = OfficeRenderFormat.ORIGINAL,
+            textPageViewMode = PageViewMode.CONTINUOUS,
+            textViewOrientation = DocumentViewOrientation.LANDSCAPE,
+            textOrgZoomScale = 2.0f
+        )
+
+        assertEquals(DocType.DOC, custom.selectedCategory)
+        assertEquals(PageViewMode.CONTINUOUS, custom.pageViewModeFor(DocType.PDF))
+        assertEquals(PageViewMode.CONTINUOUS, custom.pageViewModeFor(DocType.DOC))
+        assertEquals(PageViewMode.SINGLE_PAGE, custom.pageViewModeFor(DocType.EXCEL))
+        assertEquals(PageViewMode.CONTINUOUS, custom.pageViewModeFor(DocType.PPT))
+        assertEquals(PageViewMode.CONTINUOUS, custom.pageViewModeFor(DocType.TEXT))
+
+        assertEquals(DocumentViewOrientation.LANDSCAPE, custom.viewOrientationFor(DocType.PDF))
+        assertEquals(DocumentViewOrientation.PORTRAIT, custom.viewOrientationFor(DocType.DOC))
+        assertEquals(DocumentViewOrientation.LANDSCAPE, custom.viewOrientationFor(DocType.EXCEL))
+        assertEquals(DocumentViewOrientation.PORTRAIT, custom.viewOrientationFor(DocType.PPT))
+        assertEquals(DocumentViewOrientation.LANDSCAPE, custom.viewOrientationFor(DocType.TEXT))
+
+        assertEquals(OfficeRenderFormat.PDF, custom.renderFormatFor(DocType.PDF))
+        assertEquals(OfficeRenderFormat.ORIGINAL, custom.renderFormatFor(DocType.DOC))
+        assertEquals(OfficeRenderFormat.ORIGINAL, custom.renderFormatFor(DocType.EXCEL))
+        assertEquals(OfficeRenderFormat.PDF, custom.renderFormatFor(DocType.PPT))
+        assertEquals(OfficeRenderFormat.ORIGINAL, custom.renderFormatFor(DocType.TEXT))
+
+        assertEquals(1f, custom.orgZoomScaleFor(DocType.PDF), 0.01f)
+        assertEquals(1.75f, custom.orgZoomScaleFor(DocType.DOC), 0.01f)
+        assertEquals(2.25f, custom.orgZoomScaleFor(DocType.EXCEL), 0.01f)
+        assertEquals(1.5f, custom.orgZoomScaleFor(DocType.PPT), 0.01f)
+        assertEquals(2.0f, custom.orgZoomScaleFor(DocType.TEXT), 0.01f)
+
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
+            ScreenOrientationPolicy.resolveSavedReaderOrientation(
+                savedOrientation = DocumentViewOrientation.LANDSCAPE,
+                isSystemAutoRotateEnabled = false
+            )
+        )
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT,
+            ScreenOrientationPolicy.resolveSavedReaderOrientation(
+                savedOrientation = DocumentViewOrientation.PORTRAIT,
+                isSystemAutoRotateEnabled = false
+            )
+        )
+        assertEquals(
+            android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED,
+            ScreenOrientationPolicy.resolveSavedReaderOrientation(
+                savedOrientation = DocumentViewOrientation.LANDSCAPE,
+                isSystemAutoRotateEnabled = true
+            )
+        )
+    }
+
+    @Test
+    fun officeLayoutResolver_andParsers_autoDetectPortraitVsLandscapeFromDimensions() {
+        // Direct dimension rule: small length & big height -> Portrait; small height & big length -> Landscape
+        assertFalse(OfficeLayoutResolver.isLandscapeFromDimensions(lengthPt = 595f, heightPt = 842f))
+        assertTrue(OfficeLayoutResolver.isLandscapeFromDimensions(lengthPt = 842f, heightPt = 595f))
+        assertFalse(OfficeLayoutResolver.isLandscapeFromDimensions(lengthPt = 600f, heightPt = 600f))
+
+        fun zipEntries(vararg files: Pair<String, String>): ByteArray = ByteArrayOutputStream().use { baos ->
+            ZipOutputStream(baos).use { zos ->
+                files.forEach { (name, content) ->
+                    zos.putNextEntry(ZipEntry(name))
+                    zos.write(content.toByteArray())
+                    zos.closeEntry()
+                }
+            }
+            baos.toByteArray()
+        }
+
+        // 1. DOCX without w:orient attribute: length < height -> Portrait, length > height -> Landscape
+        val docxPortraitXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>Portrait DOCX</w:t></w:r></w:p>
+                <w:sectPr><w:pgSz w:w="11906" w:h="16838"/></w:sectPr>
+              </w:body>
+            </w:document>
+        """.trimIndent()
+        val docxPortrait = OoxmlDocumentParser.parseDocxWithLayout(zipEntries("word/document.xml" to docxPortraitXml))
+        assertFalse(docxPortrait.layout.isLandscape)
+
+        val docxLandscapeXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+              <w:body>
+                <w:p><w:r><w:t>Landscape DOCX</w:t></w:r></w:p>
+                <w:sectPr><w:pgSz w:w="16838" w:h="11906"/></w:sectPr>
+              </w:body>
+            </w:document>
+        """.trimIndent()
+        val docxLandscape = OoxmlDocumentParser.parseDocxWithLayout(zipEntries("word/document.xml" to docxLandscapeXml))
+        assertTrue(docxLandscape.layout.isLandscape)
+
+        // 2. PPTX: cx < cy -> Portrait, cx > cy -> Landscape
+        val slideXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+              <p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Deck Slide</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld>
+            </p:sld>
+        """.trimIndent()
+        val presRels = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" Target="slides/slide1.xml"/>
+            </Relationships>
+        """.trimIndent()
+        val pptPortraitXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst>
+              <p:sldSz cx="6858000" cy="12192000"/>
+            </p:presentation>
+        """.trimIndent()
+        val pptPortrait = OoxmlPresentationParser.parsePptxBytes(
+            zipEntries(
+                "ppt/presentation.xml" to pptPortraitXml,
+                "ppt/_rels/presentation.xml.rels" to presRels,
+                "ppt/slides/slide1.xml" to slideXml
+            )
+        )
+        assertFalse(pptPortrait.layout.isLandscape)
+
+        val pptLandscapeXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                            xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <p:sldIdLst><p:sldId id="256" r:id="rId1"/></p:sldIdLst>
+              <p:sldSz cx="12192000" cy="6858000"/>
+            </p:presentation>
+        """.trimIndent()
+        val pptLandscape = OoxmlPresentationParser.parsePptxBytes(
+            zipEntries(
+                "ppt/presentation.xml" to pptLandscapeXml,
+                "ppt/_rels/presentation.xml.rels" to presRels,
+                "ppt/slides/slide1.xml" to slideXml
+            )
+        )
+        assertTrue(pptLandscape.layout.isLandscape)
+
+        // 3. XLSX without explicit <pageSetup>: tall 5-col x 40-row sheet -> Portrait; wide 10-col x 5-row sheet -> Landscape
+        val wbXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+                      xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+              <sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+            </workbook>
+        """.trimIndent()
+        val wbRels = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+              <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+            </Relationships>
+        """.trimIndent()
+
+        val tallRows = (1..40).joinToString("") { r ->
+            """<row r="$r"><c r="A$r" t="inlineStr"><is><t>Row $r</t></is></c><c r="E$r"><v>$r</v></c></row>"""
+        }
+        val tallSheetXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData>$tallRows</sheetData>
+            </worksheet>
+        """.trimIndent()
+        val tallWorkbook = OoxmlWorkbookParser.parseXlsxBytes(
+            zipEntries(
+                "xl/workbook.xml" to wbXml,
+                "xl/_rels/workbook.xml.rels" to wbRels,
+                "xl/worksheets/sheet1.xml" to tallSheetXml
+            )
+        )
+        assertFalse(tallWorkbook.layout.isLandscape)
+
+        val wideCells = ('A'..'J').joinToString("") { c ->
+            """<c r="${c}1" t="inlineStr"><is><t>Column $c Header</t></is></c>"""
+        }
+        val wideRows = (1..5).joinToString("") { r ->
+            val rowCells = ('A'..'J').joinToString("") { c ->
+                """<c r="$c$r" t="inlineStr"><is><t>Value $c$r</t></is></c>"""
+            }
+            """<row r="$r">$rowCells</row>"""
+        }
+        val wideSheetXml = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <cols><col min="1" max="10" width="16"/></cols>
+              <sheetData>$wideRows</sheetData>
+            </worksheet>
+        """.trimIndent()
+        val wideWorkbook = OoxmlWorkbookParser.parseXlsxBytes(
+            zipEntries(
+                "xl/workbook.xml" to wbXml,
+                "xl/_rels/workbook.xml.rels" to wbRels,
+                "xl/worksheets/sheet1.xml" to wideSheetXml
+            )
+        )
+        assertTrue(wideWorkbook.layout.isLandscape)
+
+        // 4. XLSX with explicit paperWidth / paperHeight dimensions (no orientation attribute)
+        val explicitLandscapeSheet = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Wide Paper</t></is></c></row></sheetData>
+              <pageSetup paperWidth="297mm" paperHeight="210mm"/>
+            </worksheet>
+        """.trimIndent()
+        val explicitLandscapeWb = OoxmlWorkbookParser.parseXlsxBytes(
+            zipEntries(
+                "xl/workbook.xml" to wbXml,
+                "xl/_rels/workbook.xml.rels" to wbRels,
+                "xl/worksheets/sheet1.xml" to explicitLandscapeSheet
+            )
+        )
+        assertTrue(explicitLandscapeWb.layout.isLandscape)
+
+        val explicitPortraitSheet = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+            <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+              <sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>Tall Paper</t></is></c></row></sheetData>
+              <pageSetup paperWidth="210mm" paperHeight="297mm"/>
+            </worksheet>
+        """.trimIndent()
+        val explicitPortraitWb = OoxmlWorkbookParser.parseXlsxBytes(
+            zipEntries(
+                "xl/workbook.xml" to wbXml,
+                "xl/_rels/workbook.xml.rels" to wbRels,
+                "xl/worksheets/sheet1.xml" to explicitPortraitSheet
+            )
+        )
+        assertFalse(explicitPortraitWb.layout.isLandscape)
+    }
 }

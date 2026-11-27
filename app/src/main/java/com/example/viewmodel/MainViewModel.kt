@@ -12,6 +12,7 @@ import com.example.data.SettingsRepository
 import com.example.model.AppSettings
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import com.example.model.DocumentViewOrientation
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.SortOption
@@ -138,6 +139,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _cacheSizeBytes = MutableStateFlow(0L)
 
     private var lastKnownStorageAccess = _hasFullAccess.value
+    private var hasUserSelectedCategory = false
     private val renamedIdAliases = HashMap<String, String>()
     private var activeViewingExternalDoc: DocumentItem? = null
 
@@ -225,6 +227,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         DocViewApplication.registerBackgroundCloseListener(backgroundCloseListener)
         viewModelScope.launch {
             val initialSettings = settingsRepo.settingsFlow.first()
+            if (!hasUserSelectedCategory) {
+                _selectedCategory.value = initialSettings.selectedCategory
+            }
             val cachedDocs = withContext(Dispatchers.IO) {
                 cacheManager.loadDocumentIndex()
                     .filter { initialSettings.scanDotFolders || !it.isFromDotFolder }
@@ -372,7 +377,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectCategory(type: DocType) {
+        hasUserSelectedCategory = true
         _selectedCategory.value = type
+        viewModelScope.launch { settingsRepo.setSelectedCategory(type) }
     }
 
     fun toggleSearch() {
@@ -450,8 +457,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setOfficeRenderFormat(format) }
     }
 
+    fun setReaderScreenOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setReaderScreenOrientation(orientation) }
+    }
+
+    fun setPageViewModeForType(type: DocType, mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setPageViewModeForType(type, mode) }
+    }
+
+    fun setViewOrientationForType(type: DocType, orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setViewOrientationForType(type, orientation) }
+    }
+
+    fun setRenderFormatForType(type: DocType, format: OfficeRenderFormat) {
+        viewModelScope.launch { settingsRepo.setRenderFormatForType(type, format) }
+    }
+
+    fun setOrgZoomScaleForType(type: DocType, scale: Float) {
+        viewModelScope.launch { settingsRepo.setOrgZoomScaleForType(type, scale) }
+    }
+
     fun setPdfPageViewMode(mode: PageViewMode) {
         viewModelScope.launch { settingsRepo.setPdfPageViewMode(mode) }
+    }
+
+    fun setPdfViewOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setPdfViewOrientation(orientation) }
     }
 
     fun setPdfInvertInDarkMode(enabled: Boolean) {
@@ -466,6 +497,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setDocxRenderFormat(format) }
     }
 
+    fun setDocxPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setDocxPageViewMode(mode) }
+    }
+
+    fun setDocxViewOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setDocxViewOrientation(orientation) }
+    }
+
     fun setDocxFontSizeSp(sizeSp: Float) {
         viewModelScope.launch { settingsRepo.setDocxFontSizeSp(sizeSp) }
     }
@@ -474,12 +513,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setXlsxRenderFormat(format) }
     }
 
+    fun setXlsxPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setXlsxPageViewMode(mode) }
+    }
+
+    fun setXlsxViewOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setXlsxViewOrientation(orientation) }
+    }
+
     fun setXlsxFontSizeSp(sizeSp: Float) {
         viewModelScope.launch { settingsRepo.setXlsxFontSizeSp(sizeSp) }
     }
 
     fun setPptRenderFormat(format: OfficeRenderFormat) {
         viewModelScope.launch { settingsRepo.setPptRenderFormat(format) }
+    }
+
+    fun setPptPageViewMode(mode: PageViewMode) {
+        viewModelScope.launch { settingsRepo.setPptPageViewMode(mode) }
+    }
+
+    fun setPptViewOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setPptViewOrientation(orientation) }
     }
 
     fun setShowPptSpeakerNotes(enabled: Boolean) {
@@ -492,6 +547,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTextPageViewMode(mode: PageViewMode) {
         viewModelScope.launch { settingsRepo.setTextPageViewMode(mode) }
+    }
+
+    fun setTextViewOrientation(orientation: DocumentViewOrientation) {
+        viewModelScope.launch { settingsRepo.setTextViewOrientation(orientation) }
     }
 
     fun setTextWordWrap(enabled: Boolean) {
@@ -636,7 +695,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settingsRepo.addImportedFileUri(uri.toString())
             val resolved = scanner.resolveContentUriToDocument(uri)
             if (resolved != null) {
+                hasUserSelectedCategory = true
                 _selectedCategory.value = resolved.type
+                settingsRepo.setSelectedCategory(resolved.type)
             }
             scanDocuments(forceRestart = true)
         }

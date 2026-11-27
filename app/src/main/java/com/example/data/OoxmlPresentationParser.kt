@@ -45,7 +45,9 @@ object OoxmlPresentationParser {
             return PresentationDeck(emptyList(), OfficeLayoutResolver.DEFAULT_SLIDE_16_9)
         }
 
-        val layout = parsePresentationLayout(parts["ppt/presentation.xml"])
+        val presBytes = parts["ppt/presentation.xml"]
+            ?: parts.entries.firstOrNull { it.key.endsWith("/presentation.xml") }?.value
+        val layout = parsePresentationLayout(presBytes)
         val slidePaths = resolveOrderedSlidePaths(parts)
 
         val slides = slidePaths.mapIndexed { idx, slidePath ->
@@ -74,8 +76,14 @@ object OoxmlPresentationParser {
                 if (event == XmlPullParser.START_TAG) {
                     val local = (parser.name ?: "").substringAfter(':')
                     if (local == "sldSz") {
-                        val cx = parser.getAttributeValue(null, "cx")?.toFloatOrNull()
-                        val cy = parser.getAttributeValue(null, "cy")?.toFloatOrNull()
+                        var cx: Float? = null
+                        var cy: Float? = null
+                        for (i in 0 until parser.attributeCount) {
+                            when (parser.getAttributeName(i)?.substringAfter(':')) {
+                                "cx" -> cx = parser.getAttributeValue(i)?.toFloatOrNull()
+                                "cy" -> cy = parser.getAttributeValue(i)?.toFloatOrNull()
+                            }
+                        }
                         if (cx != null && cx > 0f && cy != null && cy > 0f) {
                             wPt = cx / 12700f
                             hPt = cy / 12700f
@@ -96,7 +104,7 @@ object OoxmlPresentationParser {
             rightPt = marginH,
             topPt = marginV,
             bottomPt = marginV,
-            forceLandscape = wPt >= hPt
+            forceLandscape = OfficeLayoutResolver.isLandscapeFromDimensions(wPt, hPt)
         )
     }
 

@@ -68,6 +68,7 @@ import com.example.BuildConfig
 import com.example.R
 import com.example.model.AppSettings
 import com.example.model.DocType
+import com.example.model.DocumentViewOrientation
 import com.example.model.OfficeRenderFormat
 import com.example.model.PageViewMode
 import com.example.model.ThemeMode
@@ -99,21 +100,29 @@ fun SettingsScreen(
     onSetAutoCleanRenderCache: (Boolean) -> Unit,
     // PDF folder
     onSetPdfPageViewMode: (PageViewMode) -> Unit,
+    onSetPdfViewOrientation: (DocumentViewOrientation) -> Unit,
     onSetPdfInvertInDarkMode: (Boolean) -> Unit,
     onSetPdfDoubleTapZoom: (Float) -> Unit,
     // DOCX folder
     onSetDocxRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetDocxPageViewMode: (PageViewMode) -> Unit,
+    onSetDocxViewOrientation: (DocumentViewOrientation) -> Unit,
     onSetDocxFontSizeSp: (Float) -> Unit,
     // XLSX folder
     onSetXlsxRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetXlsxPageViewMode: (PageViewMode) -> Unit,
+    onSetXlsxViewOrientation: (DocumentViewOrientation) -> Unit,
     onSetShowExcelGridlines: (Boolean) -> Unit,
     onSetXlsxFontSizeSp: (Float) -> Unit,
     // PPT folder
     onSetPptRenderFormat: (OfficeRenderFormat) -> Unit,
+    onSetPptPageViewMode: (PageViewMode) -> Unit,
+    onSetPptViewOrientation: (DocumentViewOrientation) -> Unit,
     onSetShowPptSpeakerNotes: (Boolean) -> Unit,
     // TEXT folder
     onSetTextRenderFormat: (OfficeRenderFormat) -> Unit,
     onSetTextPageViewMode: (PageViewMode) -> Unit,
+    onSetTextViewOrientation: (DocumentViewOrientation) -> Unit,
     onSetShowLineNumbers: (Boolean) -> Unit,
     onSetTextWordWrap: (Boolean) -> Unit,
     onSetTextMonospace: (Boolean) -> Unit,
@@ -190,9 +199,9 @@ fun SettingsScreen(
             item(key = "folder_pdf") {
                 SettingsFolder(
                     title = "PDF",
-                    subtitle = "${settings.pdfPageViewMode.label.removeSuffix(" View")} • Zoom ${settings.pdfDoubleTapZoom.roundToInt()}x" +
+                    subtitle = "${settings.pdfPageViewMode.label.removeSuffix(" View")} • ${settings.pdfViewOrientation.label} • Zoom ${settings.pdfDoubleTapZoom.roundToInt()}x" +
                         if (settings.pdfInvertInDarkMode) " • Dark Invert" else "",
-                    itemCount = 3,
+                    itemCount = 4,
                     folderColor = PdfPillColor,
                     icon = docTypeIcon(DocType.PDF),
                     expanded = pdfExpanded,
@@ -207,6 +216,15 @@ fun SettingsScreen(
                             labelFor = { it.label.removeSuffix(" View") },
                             onSelect = onSetPdfPageViewMode,
                             tagPrefix = "pdf_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Document View",
+                            options = DocumentViewOrientation.entries,
+                            selected = settings.pdfViewOrientation,
+                            labelFor = { it.label },
+                            onSelect = onSetPdfViewOrientation,
+                            tagPrefix = "pdf_orient"
                         )
                         HorizontalDivider()
                         OptionChipsFlowRow(
@@ -232,8 +250,8 @@ fun SettingsScreen(
             item(key = "folder_docx") {
                 SettingsFolder(
                     title = "DOCX",
-                    subtitle = "${settings.docxRenderFormat.shortLabel} • Auto Layout • ${settings.docxFontSizeSp.roundToInt()}sp",
-                    itemCount = 2,
+                    subtitle = "${settings.docxRenderFormat.shortLabel} • ${settings.docxPageViewMode.label.removeSuffix(" View")} • ${settings.docxViewOrientation.label} • ${settings.docxFontSizeSp.roundToInt()}sp",
+                    itemCount = 4,
                     folderColor = DocPillColor,
                     icon = docTypeIcon(DocType.DOC),
                     expanded = docxExpanded,
@@ -250,6 +268,24 @@ fun SettingsScreen(
                             tagPrefix = "docx_format"
                         )
                         HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "DOCX Page Layout",
+                            options = PageViewMode.entries,
+                            selected = settings.docxPageViewMode,
+                            labelFor = { it.label.removeSuffix(" View") },
+                            onSelect = onSetDocxPageViewMode,
+                            tagPrefix = "docx_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Document View",
+                            options = DocumentViewOrientation.entries,
+                            selected = settings.docxViewOrientation,
+                            labelFor = { it.label },
+                            onSelect = onSetDocxViewOrientation,
+                            tagPrefix = "docx_orient"
+                        )
+                        HorizontalDivider()
                         FontSizeSliderRow(
                             title = "DOCX Text Size",
                             valueSp = settings.docxFontSizeSp,
@@ -263,9 +299,9 @@ fun SettingsScreen(
             item(key = "folder_xlsx") {
                 SettingsFolder(
                     title = "XLSX",
-                    subtitle = "${settings.xlsxRenderFormat.shortLabel} • Auto Layout" +
+                    subtitle = "${settings.xlsxRenderFormat.shortLabel} • ${settings.xlsxPageViewMode.label.removeSuffix(" View")} • ${settings.xlsxViewOrientation.label}" +
                         if (settings.showExcelGridlines) " • Grid" else "",
-                    itemCount = 3,
+                    itemCount = 5,
                     folderColor = ExcelPillColor,
                     icon = docTypeIcon(DocType.EXCEL),
                     expanded = xlsxExpanded,
@@ -280,6 +316,24 @@ fun SettingsScreen(
                             labelFor = { it.label },
                             onSelect = onSetXlsxRenderFormat,
                             tagPrefix = "xlsx_format"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "XLSX Page Layout",
+                            options = PageViewMode.entries,
+                            selected = settings.xlsxPageViewMode,
+                            labelFor = { it.label.removeSuffix(" View") },
+                            onSelect = onSetXlsxPageViewMode,
+                            tagPrefix = "xlsx_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Document View",
+                            options = DocumentViewOrientation.entries,
+                            selected = settings.xlsxViewOrientation,
+                            labelFor = { it.label },
+                            onSelect = onSetXlsxViewOrientation,
+                            tagPrefix = "xlsx_orient"
                         )
                         HorizontalDivider()
                         SettingsSwitchRow(
@@ -303,9 +357,9 @@ fun SettingsScreen(
             item(key = "folder_ppt") {
                 SettingsFolder(
                     title = "PPT",
-                    subtitle = "${settings.pptRenderFormat.shortLabel} • Auto Layout" +
+                    subtitle = "${settings.pptRenderFormat.shortLabel} • ${settings.pptPageViewMode.label.removeSuffix(" View")} • ${settings.pptViewOrientation.label}" +
                         if (settings.showPptSpeakerNotes) " • Notes" else "",
-                    itemCount = 2,
+                    itemCount = 4,
                     folderColor = PptPillColor,
                     icon = docTypeIcon(DocType.PPT),
                     expanded = pptExpanded,
@@ -322,6 +376,24 @@ fun SettingsScreen(
                             tagPrefix = "ppt_format"
                         )
                         HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "PPT Page Layout",
+                            options = PageViewMode.entries,
+                            selected = settings.pptPageViewMode,
+                            labelFor = { it.label.removeSuffix(" View") },
+                            onSelect = onSetPptPageViewMode,
+                            tagPrefix = "ppt_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Document View",
+                            options = DocumentViewOrientation.entries,
+                            selected = settings.pptViewOrientation,
+                            labelFor = { it.label },
+                            onSelect = onSetPptViewOrientation,
+                            tagPrefix = "ppt_orient"
+                        )
+                        HorizontalDivider()
                         SettingsSwitchRow(
                             title = "Show Speaker Notes",
                             subtitle = "Include slide presenter notes in PDF and Original slide view",
@@ -336,9 +408,9 @@ fun SettingsScreen(
             item(key = "folder_text") {
                 SettingsFolder(
                     title = "TEXT",
-                    subtitle = "${settings.textRenderFormat.shortLabel} • ${settings.textPageViewMode.label.removeSuffix(" View")} • ${settings.textFontSizeSp.roundToInt()}sp" +
+                    subtitle = "${settings.textRenderFormat.shortLabel} • ${settings.textPageViewMode.label.removeSuffix(" View")} • ${settings.textViewOrientation.label} • ${settings.textFontSizeSp.roundToInt()}sp" +
                         if (settings.showLineNumbers) " • Line #" else "",
-                    itemCount = 6,
+                    itemCount = 7,
                     folderColor = TextPillColor,
                     icon = docTypeIcon(DocType.TEXT),
                     expanded = textExpanded,
@@ -362,6 +434,15 @@ fun SettingsScreen(
                             labelFor = { it.label.removeSuffix(" View") },
                             onSelect = onSetTextPageViewMode,
                             tagPrefix = "text_view_mode"
+                        )
+                        HorizontalDivider()
+                        OptionChipsFlowRow(
+                            title = "Document View",
+                            options = DocumentViewOrientation.entries,
+                            selected = settings.textViewOrientation,
+                            labelFor = { it.label },
+                            onSelect = onSetTextViewOrientation,
+                            tagPrefix = "text_orient"
                         )
                         HorizontalDivider()
                         SettingsSwitchRow(

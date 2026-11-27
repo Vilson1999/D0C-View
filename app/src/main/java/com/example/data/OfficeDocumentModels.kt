@@ -207,6 +207,38 @@ object OfficeLayoutResolver {
             }
         }
     }
+
+    /**
+     * Auto-detects landscape vs portrait purely from length (width) vs height:
+     * - length < height -> Portrait (false)
+     * - height < length -> Landscape (true)
+     */
+    fun isLandscapeFromDimensions(lengthPt: Float, heightPt: Float): Boolean =
+        lengthPt > heightPt
+
+    /**
+     * Normalizes an Office layout to A4 dimensions (595 x 842 pt Portrait or 842 x 595 pt Landscape)
+     * for Original View of DOCX, XLSX, and PPT while respecting the active orientation choice.
+     */
+    fun withA4Default(
+        layout: OfficePageLayout,
+        orientation: com.example.model.DocumentViewOrientation
+    ): OfficePageLayout {
+        val targetLandscape = when (orientation) {
+            com.example.model.DocumentViewOrientation.PORTRAIT -> false
+            com.example.model.DocumentViewOrientation.LANDSCAPE -> true
+            com.example.model.DocumentViewOrientation.AUTO -> layout.isLandscape
+        }
+        return buildLayoutFromSizeAndMargins(
+            rawWidthPt = if (targetLandscape) 842f else 595f,
+            rawHeightPt = if (targetLandscape) 595f else 842f,
+            leftPt = layout.marginLeftPt,
+            rightPt = layout.marginRightPt,
+            topPt = layout.marginTopPt,
+            bottomPt = layout.marginBottomPt,
+            forceLandscape = targetLandscape
+        )
+    }
 }
 
 data class WordRun(

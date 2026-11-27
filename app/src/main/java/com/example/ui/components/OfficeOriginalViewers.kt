@@ -2,12 +2,16 @@ package com.example.ui.components
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +20,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,10 +29,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -46,6 +55,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -142,7 +152,7 @@ fun OfficeOriginalWordPaperCard(
             .widthIn(max = maxWidthDp),
         contentAlignment = Alignment.TopCenter
     ) {
-        val minPageHeight = (maxWidth / aspect).coerceIn(190.dp, 540.dp)
+        val minPageHeight = (minOf(maxWidth, maxWidthDp) / aspect).coerceIn(190.dp, 980.dp)
         Surface(
             shape = RoundedCornerShape(10.dp),
             color = Color.White,
@@ -150,6 +160,7 @@ fun OfficeOriginalWordPaperCard(
             shadowElevation = 3.dp,
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(10.dp))
                 .defaultMinSize(minHeight = minPageHeight)
                 .testTag("word_original_page_${page.pageNumber}")
         ) {
@@ -202,22 +213,27 @@ fun OfficeOriginalSlideCard(
     val padH = (layout.marginLeftPt * 0.34f).coerceIn(14f, 34f).dp
     val padV = (layout.marginTopPt * 0.34f).coerceIn(14f, 30f).dp
 
+    val maxSlideWidthDp = if (layout.isLandscape) 880.dp else 680.dp
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .widthIn(max = if (layout.isLandscape) 880.dp else 680.dp)
+            .widthIn(max = maxSlideWidthDp)
             .testTag("slide_original_card_${slide.slideNumber}"),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = slideBg,
-            border = BorderStroke(1.dp, PaperBorder),
-            shadowElevation = 3.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = (320f / aspect).coerceIn(180f, 520f).dp)
-        ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val minSlideHeight = (minOf(maxWidth, maxSlideWidthDp) / aspect).coerceIn(190.dp, 880.dp)
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = slideBg,
+                border = BorderStroke(1.dp, PaperBorder),
+                shadowElevation = 3.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .defaultMinSize(minHeight = minSlideHeight)
+            ) {
             Column(modifier = Modifier.fillMaxWidth()) {
                 Box(
                     modifier = Modifier
@@ -266,12 +282,16 @@ fun OfficeOriginalSlideCard(
                             HorizontalDivider(color = if (isDarkBg) Color(0xFF334155) else Color(0xFFE2E8F0))
                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 slide.bodyLines.forEach { line ->
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
                                         Text(text = "•", color = accentColor, fontWeight = FontWeight.Bold)
                                         Text(
                                             text = line,
                                             style = MaterialTheme.typography.bodyLarge,
-                                            color = primaryInk
+                                            color = primaryInk,
+                                            modifier = Modifier.weight(1f)
                                         )
                                     }
                                 }
@@ -280,6 +300,7 @@ fun OfficeOriginalSlideCard(
                     }
                 }
             }
+        }
         }
 
         if (showNotes && slide.notes.isNotBlank()) {
@@ -483,6 +504,7 @@ private fun WordTableContent(
                     Box(
                         modifier = Modifier
                             .weight(cell.colSpan.coerceAtLeast(1).toFloat())
+                            .clipToBounds()
                             .then(if (cellBg != null) Modifier.background(cellBg) else Modifier)
                             .then(
                                 if (hasBorders && cIdx > 0) Modifier.border(0.5.dp, borderColor)
@@ -490,7 +512,10 @@ private fun WordTableContent(
                             )
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
                             cell.paragraphs.forEach { para ->
                                 val paraAdjusted = if (row.isHeader && !para.isBold) para.copy(isBold = true) else para
                                 WordRichBlockContent(
@@ -663,6 +688,7 @@ fun OfficeChartCard(
                 chart.series.take(4).forEachIndexed { idx, ser ->
                     val swatch = ser.colorRgb?.let(::rgbIntToColor) ?: ChartPalette[idx % ChartPalette.size]
                     Row(
+                        modifier = Modifier.weight(1f, fill = false),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
@@ -695,6 +721,8 @@ fun OfficeOriginalExcelContent(
     showControls: Boolean,
     topClearance: Dp,
     bottomClearance: Dp,
+    zoomState: ReaderZoomState,
+    onZoomInteraction: () -> Unit,
     onToggleUi: () -> Unit
 ) {
     var selectedSheetIdx by remember(workbook) { mutableIntStateOf(0) }
@@ -703,227 +731,318 @@ fun OfficeOriginalExcelContent(
 
     val hScroll = rememberScrollState()
     val totalCols = sheet.maxColumns.coerceAtLeast(1)
-    val colWidths = remember(sheet) {
+    val rawColWidths = remember(sheet) {
         (0 until totalCols).map { idx ->
             val chars = sheet.columnWidthsChars[idx] ?: 11f
-            (chars * 9.5f).coerceIn(78f, 220f).dp
+            (chars * 8.0f).coerceIn(48f, 180f)
         }
     }
     val cellFont = (fontSizeSp - 2f).coerceIn(10f, 18f)
-    val rowHeaderWidth = 44.dp
+    val rowHeaderWidth = 38.dp
+    val maxSheetWidthDp = if (layout.isLandscape) 940.dp else 660.dp
+    val sheetAspect = (layout.widthPt / layout.heightPt.coerceAtLeast(1f)).coerceIn(0.60f, 1.85f)
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .pointerInput(onToggleUi) {
-                detectTapGestures(onTap = { onToggleUi() })
-            }
     ) {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                top = topClearance + 8.dp,
-                bottom = bottomClearance + 56.dp,
-                start = 10.dp,
-                end = 10.dp
-            ),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ZoomableReaderViewport(
+            zoomState = zoomState,
+            onSingleTap = onToggleUi,
+            onUserInteraction = onZoomInteraction,
+            modifier = Modifier.fillMaxSize()
         ) {
-            if (workbook.sheets.size > 1) {
-                item(key = "sheet_tabs") {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.fillMaxWidth()
+            LazyColumn(
+                userScrollEnabled = zoomState.canInnerScroll,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal)),
+                contentPadding = PaddingValues(
+                    top = topClearance + 8.dp,
+                    bottom = bottomClearance + 68.dp,
+                    start = 10.dp,
+                    end = 10.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (workbook.sheets.size > 1) {
+                    item(key = "sheet_tabs") {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = maxSheetWidthDp)
+                        ) {
+                            itemsIndexed(workbook.sheets) { idx, item ->
+                                FilterChip(
+                                    selected = idx == safeIndex,
+                                    onClick = {
+                                        selectedSheetIdx = idx
+                                        onZoomInteraction()
+                                    },
+                                    label = { Text(item.name) },
+                                    modifier = Modifier.testTag("excel_sheet_tab_$idx")
+                                )
+                            }
+                        }
+                    }
+                }
+
+                item(key = "sheet_meta") {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = maxSheetWidthDp)
                     ) {
-                        itemsIndexed(workbook.sheets) { idx, item ->
-                            FilterChip(
-                                selected = idx == safeIndex,
-                                onClick = { selectedSheetIdx = idx },
-                                label = { Text(item.name) },
-                                modifier = Modifier.testTag("excel_sheet_tab_$idx")
+                        Text(
+                            text = "${sheet.name} • ${layout.detectedPaperName} • ${sheet.rows.size} rows × $totalCols cols",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
+                }
+
+                item(key = "excel_grid") {
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = maxSheetWidthDp),
+                        contentAlignment = Alignment.TopCenter
+                    ) {
+                        val cardMaxWidth = minOf(maxWidth, maxSheetWidthDp)
+                        val minSheetHeight = (cardMaxWidth / sheetAspect).coerceIn(220.dp, 780.dp)
+                        val rowHdrW = if (showGridlines) rowHeaderWidth else 0.dp
+                        val availTableW = (cardMaxWidth - rowHdrW - 2.dp).coerceAtLeast(120.dp)
+                        val minReadableColDp = 34f
+                        val canFitAllColumns = (availTableW.value / totalCols) >= minReadableColDp
+                        val fittedColWidths: List<Dp> = remember(rawColWidths, availTableW, canFitAllColumns) {
+                            val totalRaw = rawColWidths.sum().coerceAtLeast(1f)
+                            if (canFitAllColumns) {
+                                val scaled = if (totalRaw <= availTableW.value) {
+                                    val expand = (availTableW.value / totalRaw).coerceIn(1f, 1.4f)
+                                    rawColWidths.map { it * expand }
+                                } else {
+                                    val shrink = availTableW.value / totalRaw
+                                    rawColWidths.map { (it * shrink).coerceAtLeast(minReadableColDp) }
+                                }
+                                val sumScaled = scaled.sum().coerceAtLeast(1f)
+                                if (sumScaled > availTableW.value) {
+                                    val norm = availTableW.value / sumScaled
+                                    scaled.map { (it * norm).dp }
+                                } else {
+                                    scaled.map { it.dp }
+                                }
+                            } else {
+                                rawColWidths.map { it.coerceAtLeast(minReadableColDp).dp }
+                            }
+                        }
+                        val cellHorizontalPad = if (canFitAllColumns && totalCols >= 5) 4.dp else 7.dp
+
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color.White,
+                            border = BorderStroke(1.dp, PaperBorder),
+                            shadowElevation = 2.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .defaultMinSize(minHeight = minSheetHeight)
+                                .testTag("excel_original_grid")
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .then(
+                                        if (canFitAllColumns) {
+                                            Modifier
+                                        } else {
+                                            Modifier.horizontalScroll(hScroll, enabled = zoomState.canInnerScroll)
+                                        }
+                                    )
+                            ) {
+                                if (showGridlines) {
+                                    Row(
+                                        modifier = Modifier.background(Color(0xFFF1F5F9))
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(rowHeaderWidth)
+                                                .height(30.dp)
+                                                .border(0.5.dp, PaperBorder),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text("#", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PaperInkMuted)
+                                        }
+                                        for (c in 0 until totalCols) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(fittedColWidths[c])
+                                                    .height(30.dp)
+                                                    .border(0.5.dp, PaperBorder),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = excelColumnName(c),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = PaperInkMuted,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Clip
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                sheet.rows.forEachIndexed { rIdx, row ->
+                                    val cellsByCol = remember(row) { row.cells.associateBy { it.colIndex } }
+                                    Row(
+                                        modifier = Modifier.background(
+                                            when {
+                                                row.isHeaderLikely -> Color(0xFFECFDF5)
+                                                rIdx % 2 == 1 -> Color(0xFFF8FAFC)
+                                                else -> Color.White
+                                            }
+                                        )
+                                    ) {
+                                        if (showGridlines) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(rowHeaderWidth)
+                                                    .defaultMinSize(minHeight = 32.dp)
+                                                    .background(Color(0xFFF8FAFC))
+                                                    .border(0.5.dp, PaperBorder)
+                                                    .padding(horizontal = 3.dp, vertical = 6.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = row.rowNumber.toString(),
+                                                    fontSize = 11.sp,
+                                                    color = PaperInkMuted,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+
+                                        var col = 0
+                                        while (col < totalCols) {
+                                            val cell = cellsByCol[col]
+                                            val span = (cell?.colSpan ?: 1).coerceIn(1, totalCols - col)
+                                            var widthDp = 0.dp
+                                            for (s in 0 until span) {
+                                                widthDp += fittedColWidths[col + s]
+                                            }
+                                            val bg = cell?.backgroundRgb?.let(::rgbIntToColor)
+                                            val ink = when {
+                                                cell?.textColorRgb != null -> rgbIntToColor(cell.textColorRgb)
+                                                cell?.backgroundRgb != null && isDarkRgb(cell.backgroundRgb) -> Color.White
+                                                else -> PaperInkPrimary
+                                            }
+                                            val align = when (cell?.alignment) {
+                                                DocAlignment.CENTER -> TextAlign.Center
+                                                DocAlignment.RIGHT -> TextAlign.End
+                                                else -> if (cell?.isNumericOrDate == true) TextAlign.End else TextAlign.Start
+                                            }
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .width(widthDp)
+                                                    .defaultMinSize(minHeight = 32.dp)
+                                                    .clipToBounds()
+                                                    .then(if (bg != null) Modifier.background(bg) else Modifier)
+                                                    .then(if (showGridlines) Modifier.border(0.5.dp, PaperBorder) else Modifier)
+                                                    .padding(horizontal = cellHorizontalPad, vertical = 6.dp),
+                                                contentAlignment = Alignment.CenterStart
+                                            ) {
+                                                if (cell != null && cell.text.isNotEmpty()) {
+                                                    Text(
+                                                        text = cell.text,
+                                                        fontSize = cellFont.sp,
+                                                        fontWeight = if (cell.isBold || row.isHeaderLikely) FontWeight.Bold else FontWeight.Normal,
+                                                        fontStyle = if (cell.isItalic) FontStyle.Italic else FontStyle.Normal,
+                                                        color = ink,
+                                                        textAlign = align,
+                                                        softWrap = true,
+                                                        maxLines = 4,
+                                                        overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.fillMaxWidth()
+                                                    )
+                                                }
+                                            }
+                                            col += span
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (sheet.embeddedBlocks.isNotEmpty()) {
+                    item(key = "excel_embedded_header") {
+                        Text(
+                            text = "Charts & Images (${sheet.embeddedBlocks.size})",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = maxSheetWidthDp)
+                                .padding(top = 6.dp)
+                        )
+                    }
+                    itemsIndexed(sheet.embeddedBlocks) { _, block ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .widthIn(max = maxSheetWidthDp)
+                        ) {
+                            WordRichBlockContent(
+                                block = block,
+                                baseFontSizeSp = fontSizeSp,
+                                defaultInkColor = PaperInkPrimary,
+                                accentColor = Color(0xFF16A34A),
+                                borderColor = PaperBorder
                             )
                         }
                     }
                 }
             }
-
-            item(key = "sheet_meta") {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "${sheet.name} • ${sheet.rows.size} rows × $totalCols cols",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                    )
-                }
-            }
-
-            item(key = "excel_grid") {
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, PaperBorder),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .widthIn(max = if (layout.isLandscape) 1080.dp else 720.dp)
-                        .testTag("excel_original_grid")
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .horizontalScroll(hScroll)
-                    ) {
-                        if (showGridlines) {
-                            Row(
-                                modifier = Modifier.background(Color(0xFFF1F5F9))
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .width(rowHeaderWidth)
-                                        .height(30.dp)
-                                        .border(0.5.dp, PaperBorder),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text("#", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = PaperInkMuted)
-                                }
-                                for (c in 0 until totalCols) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(colWidths[c])
-                                            .height(30.dp)
-                                            .border(0.5.dp, PaperBorder),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = excelColumnName(c),
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = PaperInkMuted
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        sheet.rows.forEachIndexed { rIdx, row ->
-                            val cellsByCol = remember(row) { row.cells.associateBy { it.colIndex } }
-                            Row(
-                                modifier = Modifier.background(
-                                    when {
-                                        row.isHeaderLikely -> Color(0xFFECFDF5)
-                                        rIdx % 2 == 1 -> Color(0xFFF8FAFC)
-                                        else -> Color.White
-                                    }
-                                )
-                            ) {
-                                if (showGridlines) {
-                                    Box(
-                                        modifier = Modifier
-                                            .width(rowHeaderWidth)
-                                            .defaultMinSize(minHeight = 32.dp)
-                                            .background(Color(0xFFF8FAFC))
-                                            .border(0.5.dp, PaperBorder)
-                                            .padding(horizontal = 4.dp, vertical = 6.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = row.rowNumber.toString(),
-                                            fontSize = 11.sp,
-                                            color = PaperInkMuted
-                                        )
-                                    }
-                                }
-
-                                var col = 0
-                                while (col < totalCols) {
-                                    val cell = cellsByCol[col]
-                                    val span = (cell?.colSpan ?: 1).coerceIn(1, totalCols - col)
-                                    var widthDp = 0.dp
-                                    for (s in 0 until span) {
-                                        widthDp += colWidths[col + s]
-                                    }
-                                    val bg = cell?.backgroundRgb?.let(::rgbIntToColor)
-                                    val ink = when {
-                                        cell?.textColorRgb != null -> rgbIntToColor(cell.textColorRgb)
-                                        cell?.backgroundRgb != null && isDarkRgb(cell.backgroundRgb) -> Color.White
-                                        else -> PaperInkPrimary
-                                    }
-                                    val align = when (cell?.alignment) {
-                                        DocAlignment.CENTER -> TextAlign.Center
-                                        DocAlignment.RIGHT -> TextAlign.End
-                                        else -> if (cell?.isNumericOrDate == true) TextAlign.End else TextAlign.Start
-                                    }
-
-                                    Box(
-                                        modifier = Modifier
-                                            .width(widthDp)
-                                            .defaultMinSize(minHeight = 32.dp)
-                                            .then(if (bg != null) Modifier.background(bg) else Modifier)
-                                            .then(if (showGridlines) Modifier.border(0.5.dp, PaperBorder) else Modifier)
-                                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                                        contentAlignment = Alignment.CenterStart
-                                    ) {
-                                        if (cell != null && cell.text.isNotEmpty()) {
-                                            Text(
-                                                text = cell.text,
-                                                fontSize = cellFont.sp,
-                                                fontWeight = if (cell.isBold || row.isHeaderLikely) FontWeight.Bold else FontWeight.Normal,
-                                                fontStyle = if (cell.isItalic) FontStyle.Italic else FontStyle.Normal,
-                                                color = ink,
-                                                textAlign = align,
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-                                        }
-                                    }
-                                    col += span
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (sheet.embeddedBlocks.isNotEmpty()) {
-                item(key = "excel_embedded_header") {
-                    Text(
-                        text = "Charts & Images (${sheet.embeddedBlocks.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(top = 6.dp)
-                    )
-                }
-                itemsIndexed(sheet.embeddedBlocks) { _, block ->
-                    WordRichBlockContent(
-                        block = block,
-                        baseFontSizeSp = fontSizeSp,
-                        defaultInkColor = PaperInkPrimary,
-                        accentColor = Color(0xFF16A34A),
-                        borderColor = PaperBorder
-                    )
-                }
-            }
         }
 
-        if (showControls) {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
-                shadowElevation = 4.dp,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-                    .padding(bottom = 14.dp)
-                    .testTag("viewer_page_pill")
+        AnimatedVisibility(
+            visible = showControls,
+            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+                .padding(bottom = 14.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text(
-                    text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.testTag("viewer_page_pill")
+                ) {
+                    Text(
+                        text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
+                }
+                ReaderZoomControlsPill(
+                    zoomState = zoomState,
+                    onUserInteraction = onZoomInteraction
                 )
             }
         }

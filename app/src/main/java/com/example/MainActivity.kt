@@ -339,7 +339,12 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                             },
                             onDeleteDocument = { doc, onDeleted ->
                                 viewModel.deleteDocuments(listOf(doc), onDeleted)
-                            }
+                            },
+                            onSavePageViewMode = viewModel::setPageViewModeForType,
+                            onSaveRenderFormat = viewModel::setRenderFormatForType,
+                            onSaveDocumentOrientation = viewModel::setViewOrientationForType,
+                            onSaveReaderScreenOrientation = viewModel::setReaderScreenOrientation,
+                            onSaveOrgZoomScale = viewModel::setOrgZoomScaleForType
                         )
                     }
                 }
@@ -359,17 +364,25 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onSetAutoHideReaderUi = viewModel::setAutoHideReaderUi,
                         onSetAutoCleanRenderCache = viewModel::setAutoCleanRenderCache,
                         onSetPdfPageViewMode = viewModel::setPdfPageViewMode,
+                        onSetPdfViewOrientation = viewModel::setPdfViewOrientation,
                         onSetPdfInvertInDarkMode = viewModel::setPdfInvertInDarkMode,
                         onSetPdfDoubleTapZoom = viewModel::setPdfDoubleTapZoom,
                         onSetDocxRenderFormat = viewModel::setDocxRenderFormat,
+                        onSetDocxPageViewMode = viewModel::setDocxPageViewMode,
+                        onSetDocxViewOrientation = viewModel::setDocxViewOrientation,
                         onSetDocxFontSizeSp = viewModel::setDocxFontSizeSp,
                         onSetXlsxRenderFormat = viewModel::setXlsxRenderFormat,
+                        onSetXlsxPageViewMode = viewModel::setXlsxPageViewMode,
+                        onSetXlsxViewOrientation = viewModel::setXlsxViewOrientation,
                         onSetShowExcelGridlines = viewModel::setShowExcelGridlines,
                         onSetXlsxFontSizeSp = viewModel::setXlsxFontSizeSp,
                         onSetPptRenderFormat = viewModel::setPptRenderFormat,
+                        onSetPptPageViewMode = viewModel::setPptPageViewMode,
+                        onSetPptViewOrientation = viewModel::setPptViewOrientation,
                         onSetShowPptSpeakerNotes = viewModel::setShowPptSpeakerNotes,
                         onSetTextRenderFormat = viewModel::setTextRenderFormat,
                         onSetTextPageViewMode = viewModel::setTextPageViewMode,
+                        onSetTextViewOrientation = viewModel::setTextViewOrientation,
                         onSetShowLineNumbers = viewModel::setShowLineNumbers,
                         onSetTextWordWrap = viewModel::setTextWordWrap,
                         onSetTextMonospace = viewModel::setTextMonospace,

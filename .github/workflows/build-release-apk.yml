@@ -43,13 +43,21 @@ jobs:
         with:
           gradle-version: "9.3.1"
 
-      - name: Prepare Release Keystore
+      - name: Restore Persistent Fallback Keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.docview-keystore
+          key: docview-fallback-keystore-v1
+
+      - name: Prepare Release Keystore & Version Code
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
+          FALLBACK_CACHE_DIR="$HOME/.docview-keystore"
+          FALLBACK_CACHED_JKS="$FALLBACK_CACHE_DIR/my-upload-key.jks"
           DEBUG_KEYSTORE_FILE="${{ github.workspace }}/debug.keystore"
           DEBUG_B64_FILE="${{ github.workspace }}/debug.keystore.base64"
 
@@ -83,23 +91,32 @@ jobs:
             echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
             echo "Prepared release keystore from debug.keystore.base64."
           else
-            rm -f "$KEYSTORE_FILE"
             FALLBACK_PASS="docview-release-key"
-            keytool -genkeypair -v \
-              -keystore "$KEYSTORE_FILE" \
-              -storetype PKCS12 \
-              -alias upload \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -storepass "$FALLBACK_PASS" \
-              -keypass "$FALLBACK_PASS" \
-              -dname "CN=Vilson Sonkar, O=D0C View, C=IN"
+            mkdir -p "$FALLBACK_CACHE_DIR"
+            if [ ! -f "$FALLBACK_CACHED_JKS" ]; then
+              keytool -genkeypair -v \
+                -keystore "$FALLBACK_CACHED_JKS" \
+                -storetype PKCS12 \
+                -alias upload \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass "$FALLBACK_PASS" \
+                -keypass "$FALLBACK_PASS" \
+                -dname "CN=Vilson Sonkar, O=D0C View, C=IN"
+              echo "Generated persistent fallback PKCS12 release keystore."
+            else
+              echo "Reusing cached fallback PKCS12 release keystore for consistent updates."
+            fi
+            cp "$FALLBACK_CACHED_JKS" "$KEYSTORE_FILE"
             echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
             echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
             echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
-            echo "Generated fallback PKCS12 release keystore."
           fi
+
+          CI_VERSION_CODE=$(( $(date -u +%s) / 60 ))
+          echo "CI_VERSION_CODE=$CI_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "Using monotonic versionCode: $CI_VERSION_CODE"
 
       - name: Clean Up Obsolete Files
         run: |
@@ -109,7 +126,7 @@ jobs:
           fi
 
       - name: Run Unit Tests
-        run: gradle :app:testDebugUnitTest --tests com.example.ExampleUnitTest --no-daemon
+        run: gradle :app:testDebugUnitTest --tests com.example.ExampleUnitTest --no-daemon --no-configuration-cache
 
       - name: Upload Test Report on Failure
         if: failure()
@@ -119,7 +136,7 @@ jobs:
           path: app/build/reports/tests/testDebugUnitTest/
 
       - name: Build Compressed Release APKs (ARMv7 & ARMv8)
-        run: gradle :app:assembleRelease --no-daemon
+        run: gradle :app:assembleRelease --no-daemon --no-configuration-cache
 
       - name: Collect Separate ARMv7, ARMv8 & Universal Release APKs
         run: |

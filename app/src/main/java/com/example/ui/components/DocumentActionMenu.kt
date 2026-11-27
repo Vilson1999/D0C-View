@@ -62,11 +62,8 @@ fun DocumentActionDropdownMenu(
     onSelectDocumentOrientation: ((DocumentViewOrientation) -> Unit)? = null,
     tagPrefix: String = "menu"
 ) {
-    val safeToggleLabel = toggleFormatLabel
-    val safeToggleAction = onToggleFormat
-    val hasToggleFormat = safeToggleLabel != null && safeToggleAction != null
-    val safeOrientationSelect = onSelectDocumentOrientation
-    val hasDocumentView = safeOrientationSelect != null && activeDocumentIsLandscape != null
+    val hasToggleFormat = toggleFormatLabel != null && onToggleFormat != null
+    val hasDocumentView = onSelectDocumentOrientation != null && activeDocumentIsLandscape != null
     val baseIndex = (if (hasToggleFormat) 1 else 0) + (if (hasDocumentView) 2 else 0)
     DropdownMenu(
         expanded = expanded,
@@ -74,21 +71,21 @@ fun DocumentActionDropdownMenu(
         shape = RoundedCornerShape(14.dp),
         containerColor = MaterialTheme.colorScheme.surface
     ) {
-        if (hasToggleFormat) {
+        if (toggleFormatLabel != null && onToggleFormat != null) {
             CompactMenuActionItem(
                 icon = AppIcons.Description,
-                label = safeToggleLabel!!,
+                label = toggleFormatLabel,
                 menuExpanded = expanded,
                 staggerIndex = 0,
                 onClick = {
                     onDismiss()
-                    safeToggleAction!!.invoke()
+                    onToggleFormat.invoke()
                 },
                 testTag = "${tagPrefix}_toggle_format"
             )
             HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
         }
-        if (hasDocumentView) {
+        if (onSelectDocumentOrientation != null && activeDocumentIsLandscape != null) {
             val docViewBaseIdx = if (hasToggleFormat) 1 else 0
             Text(
                 text = stringResource(R.string.action_document_view),
@@ -104,7 +101,7 @@ fun DocumentActionDropdownMenu(
                 selected = activeDocumentIsLandscape == false,
                 onClick = {
                     onDismiss()
-                    safeOrientationSelect!!.invoke(DocumentViewOrientation.PORTRAIT)
+                    onSelectDocumentOrientation.invoke(DocumentViewOrientation.PORTRAIT)
                 },
                 testTag = "${tagPrefix}_doc_view_portrait"
             )
@@ -116,7 +113,7 @@ fun DocumentActionDropdownMenu(
                 selected = activeDocumentIsLandscape == true,
                 onClick = {
                     onDismiss()
-                    safeOrientationSelect!!.invoke(DocumentViewOrientation.LANDSCAPE)
+                    onSelectDocumentOrientation.invoke(DocumentViewOrientation.LANDSCAPE)
                 },
                 testTag = "${tagPrefix}_doc_view_landscape"
             )

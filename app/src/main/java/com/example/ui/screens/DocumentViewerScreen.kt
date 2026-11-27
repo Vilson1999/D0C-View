@@ -36,6 +36,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.displayCutoutPadding
@@ -44,12 +45,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -81,6 +85,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -120,7 +126,11 @@ import com.example.ui.components.DocumentInfoSheet
 import com.example.ui.components.OfficeOriginalExcelContent
 import com.example.ui.components.OfficeOriginalSlideCard
 import com.example.ui.components.OfficeOriginalWordPaperCard
+import com.example.ui.components.ReaderZoomControlsPill
+import com.example.ui.components.ReaderZoomState
 import com.example.ui.components.RenameDocumentDialog
+import com.example.ui.components.ZoomableReaderViewport
+import com.example.ui.components.rememberReaderZoomState
 import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalMaterialUiEnabled
 import kotlin.math.absoluteValue
@@ -134,7 +144,12 @@ fun DocumentViewerScreen(
     isDarkTheme: Boolean,
     onBack: () -> Unit,
     onRenameDocument: (DocumentItem, String, (DocumentItem) -> Unit) -> Unit,
-    onDeleteDocument: (DocumentItem, () -> Unit) -> Unit
+    onDeleteDocument: (DocumentItem, () -> Unit) -> Unit,
+    onSavePageViewMode: (DocType, PageViewMode) -> Unit = { _, _ -> },
+    onSaveRenderFormat: (DocType, OfficeRenderFormat) -> Unit = { _, _ -> },
+    onSaveDocumentOrientation: (DocType, DocumentViewOrientation) -> Unit = { _, _ -> },
+    onSaveReaderScreenOrientation: (DocumentViewOrientation) -> Unit = {},
+    onSaveOrgZoomScale: (DocType, Float) -> Unit = { _, _ -> }
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -143,11 +158,7 @@ fun DocumentViewerScreen(
     var currentDoc by remember(document.id) { mutableStateOf(document) }
     var parsedDoc by remember(document.id) { mutableStateOf<ParsedDocument?>(null) }
 
-    val initialViewMode = when (document.type) {
-        DocType.PDF -> settings.pdfPageViewMode
-        DocType.TEXT -> settings.textPageViewMode
-        else -> settings.defaultPageViewMode
-    }
+    val initialViewMode = settings.pageViewModeFor(currentDoc.type)
     var pageViewMode by remember(document.id, initialViewMode) {
         mutableStateOf(initialViewMode)
     }
@@ -165,13 +176,7 @@ fun DocumentViewerScreen(
         else -> ""
     }
 
-    val defaultFormatForDoc = when (currentDoc.type) {
-        DocType.DOC -> settings.docxRenderFormat
-        DocType.EXCEL -> settings.xlsxRenderFormat
-        DocType.PPT -> settings.pptRenderFormat
-        DocType.TEXT -> settings.textRenderFormat
-        else -> settings.officeRenderFormat
-    }
+    val defaultFormatForDoc = settings.renderFormatFor(currentDoc.type)
 
     var menuExpanded by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
@@ -184,8 +189,9 @@ fun DocumentViewerScreen(
     var activeRenderFormat by remember(document.id, defaultFormatForDoc) {
         mutableStateOf(defaultFormatForDoc)
     }
-    var documentOrientation by remember(document.id) {
-        mutableStateOf(DocumentViewOrientation.AUTO)
+    val savedOrientationForDoc = settings.viewOrientationFor(currentDoc.type)
+    var documentOrientation by remember(document.id, savedOrientationForDoc) {
+        mutableStateOf(savedOrientationForDoc)
     }
 
     val toggleFormatMenuLabel = if (supportsFormatSwitch) {
@@ -200,11 +206,13 @@ fun DocumentViewerScreen(
 
     val onToggleRenderFormat: (() -> Unit)? = if (supportsFormatSwitch) {
         {
-            activeRenderFormat = if (activeRenderFormat == OfficeRenderFormat.PDF) {
+            val nextFormat = if (activeRenderFormat == OfficeRenderFormat.PDF) {
                 OfficeRenderFormat.ORIGINAL
             } else {
                 OfficeRenderFormat.PDF
             }
+            activeRenderFormat = nextFormat
+            onSaveRenderFormat(currentDoc.type, nextFormat)
             uiInteractionNonce++
         }
     } else {
@@ -229,6 +237,15 @@ fun DocumentViewerScreen(
             documentOrientation = documentOrientation
         )
     }
+
+    val orgZoomState = rememberReaderZoomState(
+        key = "$parseKey|${pageViewMode.name}",
+        doubleTapZoom = settings.pdfDoubleTapZoom,
+        initialScale = settings.orgZoomScaleFor(currentDoc.type),
+        onScaleCommitted = { scale ->
+            onSaveOrgZoomScale(currentDoc.type, scale)
+        }
+    )
 
     LaunchedEffect(settings.autoHideReaderUi) {
         if (!settings.autoHideReaderUi) {
@@ -264,6 +281,18 @@ fun DocumentViewerScreen(
     DisposableEffect(parsedDoc) {
         val pdfSession = (parsedDoc as? ParsedDocument.Pdf)?.session
         onDispose { pdfSession?.close() }
+    }
+
+    LaunchedEffect(activity, settings.readerScreenOrientation) {
+        if (activity != null &&
+            !ScreenOrientationPolicy.isSystemAutoRotateEnabled(context.contentResolver) &&
+            settings.readerScreenOrientation != DocumentViewOrientation.AUTO
+        ) {
+            activity.requestedOrientation = ScreenOrientationPolicy.resolveSavedReaderOrientation(
+                savedOrientation = settings.readerScreenOrientation,
+                isSystemAutoRotateEnabled = false
+            )
+        }
     }
 
     DisposableEffect(activity) {
@@ -361,19 +390,26 @@ fun DocumentViewerScreen(
                         showPagePill = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
-                        enableContainerTap = true,
+                        enableContainerTap = false,
                         onToggleUi = toggleReaderUi,
+                        zoomState = orgZoomState,
+                        onZoomInteraction = { uiInteractionNonce++ },
                         keySelector = { it.pageNumber },
                         singleItemContent = { page ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
+                                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                    .clipToBounds()
+                                    .verticalScroll(
+                                        rememberScrollState(),
+                                        enabled = orgZoomState.canInnerScroll
+                                    )
                                     .padding(
                                         start = 16.dp,
                                         end = 16.dp,
                                         top = topBarReserve + 12.dp,
-                                        bottom = navBarReserve + 52.dp
+                                        bottom = navBarReserve + 64.dp
                                     ),
                                 contentAlignment = Alignment.TopCenter
                             ) {
@@ -399,19 +435,26 @@ fun DocumentViewerScreen(
                         showPagePill = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
-                        enableContainerTap = true,
+                        enableContainerTap = false,
                         onToggleUi = toggleReaderUi,
+                        zoomState = orgZoomState,
+                        onZoomInteraction = { uiInteractionNonce++ },
                         keySelector = { it.slideNumber },
                         singleItemContent = { slide ->
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .verticalScroll(rememberScrollState())
+                                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                                    .clipToBounds()
+                                    .verticalScroll(
+                                        rememberScrollState(),
+                                        enabled = orgZoomState.canInnerScroll
+                                    )
                                     .padding(
                                         start = 16.dp,
                                         end = 16.dp,
                                         top = topBarReserve + 12.dp,
-                                        bottom = navBarReserve + 52.dp
+                                        bottom = navBarReserve + 64.dp
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -442,6 +485,8 @@ fun DocumentViewerScreen(
                         showControls = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
+                        zoomState = orgZoomState,
+                        onZoomInteraction = { uiInteractionNonce++ },
                         onToggleUi = toggleReaderUi
                     )
                     is ParsedDocument.PlainText -> PlainTextViewerContent(
@@ -456,6 +501,8 @@ fun DocumentViewerScreen(
                         showPagePill = isReaderUiVisible,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
+                        zoomState = orgZoomState,
+                        onZoomInteraction = { uiInteractionNonce++ },
                         onToggleUi = toggleReaderUi
                     )
                 }
@@ -534,6 +581,12 @@ fun DocumentViewerScreen(
                         )
                         IconButton(
                             onClick = {
+                                val nextScreenOrientation = if (isLandscape) {
+                                    DocumentViewOrientation.PORTRAIT
+                                } else {
+                                    DocumentViewOrientation.LANDSCAPE
+                                }
+                                onSaveReaderScreenOrientation(nextScreenOrientation)
                                 if (activity != null) {
                                     activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
                                 }
@@ -551,11 +604,13 @@ fun DocumentViewerScreen(
 
                         IconButton(
                             onClick = {
-                                pageViewMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
+                                val nextMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
                                     PageViewMode.SINGLE_PAGE
                                 } else {
                                     PageViewMode.CONTINUOUS
                                 }
+                                pageViewMode = nextMode
+                                onSavePageViewMode(currentDoc.type, nextMode)
                                 uiInteractionNonce++
                             },
                             modifier = Modifier.testTag("viewer_page_mode_button")
@@ -645,6 +700,7 @@ fun DocumentViewerScreen(
                                 activeDocumentIsLandscape = activeDocIsLandscape,
                                 onSelectDocumentOrientation = { chosenOrientation ->
                                     documentOrientation = chosenOrientation
+                                    onSaveDocumentOrientation(currentDoc.type, chosenOrientation)
                                     uiInteractionNonce++
                                 },
                                 tagPrefix = "viewer_menu"
@@ -706,11 +762,13 @@ private fun <T> PagedOrContinuousViewer(
     bottomClearance: androidx.compose.ui.unit.Dp,
     enableContainerTap: Boolean,
     onToggleUi: () -> Unit,
+    zoomState: ReaderZoomState? = null,
+    onZoomInteraction: () -> Unit = {},
     keySelector: (T) -> Any,
     singleItemContent: @Composable (T) -> Unit,
     continuousItemContent: @Composable (Int, T) -> Unit
 ) {
-    val containerModifier = if (enableContainerTap) {
+    val containerModifier = if (enableContainerTap && zoomState == null) {
         Modifier
             .fillMaxSize()
             .pointerInput(onToggleUi) {
@@ -732,9 +790,10 @@ private fun <T> PagedOrContinuousViewer(
         if (targetMode == PageViewMode.SINGLE_PAGE) {
             val total = items.size.coerceAtLeast(1)
             val pagerState = rememberPagerState(pageCount = { total })
-            Box(modifier = containerModifier) {
+            val pagerContent: @Composable () -> Unit = {
                 HorizontalPager(
                     state = pagerState,
+                    userScrollEnabled = zoomState?.canInnerScroll ?: true,
                     flingBehavior = PagerDefaults.flingBehavior(
                         state = pagerState,
                         snapAnimationSpec = spring(
@@ -742,12 +801,15 @@ private fun <T> PagedOrContinuousViewer(
                             stiffness = Spring.StiffnessMediumLow
                         )
                     ),
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clipToBounds()
                 ) { idx ->
                     if (idx in items.indices) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
+                                .clipToBounds()
                                 .graphicsLayer {
                                     val offset = ((pagerState.currentPage - idx) +
                                         pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
@@ -761,6 +823,19 @@ private fun <T> PagedOrContinuousViewer(
                         }
                     }
                 }
+            }
+            Box(modifier = containerModifier) {
+                if (zoomState != null) {
+                    ZoomableReaderViewport(
+                        zoomState = zoomState,
+                        onSingleTap = onToggleUi,
+                        onUserInteraction = onZoomInteraction
+                    ) {
+                        pagerContent()
+                    }
+                } else {
+                    pagerContent()
+                }
                 AnimatedVisibility(
                     visible = showPagePill,
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
@@ -769,25 +844,40 @@ private fun <T> PagedOrContinuousViewer(
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(bottom = 14.dp)
-                        .testTag("viewer_page_pill")
                 ) {
-                    PageIndicatorPill(
-                        text = "$unitLabel ${pagerState.currentPage + 1} / $total"
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PageIndicatorPill(
+                            text = "$unitLabel ${pagerState.currentPage + 1} / $total",
+                            modifier = Modifier.testTag("viewer_page_pill")
+                        )
+                        if (zoomState != null) {
+                            ReaderZoomControlsPill(
+                                zoomState = zoomState,
+                                onUserInteraction = onZoomInteraction
+                            )
+                        }
+                    }
                 }
             }
         } else {
             val listState = rememberLazyListState()
             val current by remember { derivedStateOf { listState.firstVisibleItemIndex + 1 } }
-            Box(modifier = containerModifier) {
+            val listContent: @Composable () -> Unit = {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    userScrollEnabled = zoomState?.canInnerScroll ?: true,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                        .clipToBounds(),
                     contentPadding = PaddingValues(
                         start = 14.dp,
                         end = 14.dp,
                         top = topClearance + 10.dp,
-                        bottom = bottomClearance + 52.dp
+                        bottom = bottomClearance + 64.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(7.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -796,6 +886,19 @@ private fun <T> PagedOrContinuousViewer(
                         continuousItemContent(idx, item)
                     }
                 }
+            }
+            Box(modifier = containerModifier) {
+                if (zoomState != null) {
+                    ZoomableReaderViewport(
+                        zoomState = zoomState,
+                        onSingleTap = onToggleUi,
+                        onUserInteraction = onZoomInteraction
+                    ) {
+                        listContent()
+                    }
+                } else {
+                    listContent()
+                }
                 AnimatedVisibility(
                     visible = showPagePill,
                     enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
@@ -804,11 +907,22 @@ private fun <T> PagedOrContinuousViewer(
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
                         .padding(bottom = 14.dp)
-                        .testTag("viewer_page_pill")
                 ) {
-                    PageIndicatorPill(
-                        text = "$unitLabel $current / ${items.size}"
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        PageIndicatorPill(
+                            text = "$unitLabel $current / ${items.size}",
+                            modifier = Modifier.testTag("viewer_page_pill")
+                        )
+                        if (zoomState != null) {
+                            ReaderZoomControlsPill(
+                                zoomState = zoomState,
+                                onUserInteraction = onZoomInteraction
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1017,9 +1131,15 @@ private fun PlainTextViewerContent(
     showPagePill: Boolean,
     topClearance: androidx.compose.ui.unit.Dp,
     bottomClearance: androidx.compose.ui.unit.Dp,
+    zoomState: ReaderZoomState,
+    onZoomInteraction: () -> Unit,
     onToggleUi: () -> Unit
 ) {
-    val wrapModifier = if (wordWrap) Modifier.fillMaxSize() else Modifier.fillMaxSize().horizontalScroll(rememberScrollState())
+    val wrapModifier = if (wordWrap) {
+        Modifier.fillMaxSize()
+    } else {
+        Modifier.fillMaxSize().horizontalScroll(rememberScrollState(), enabled = zoomState.canInnerScroll)
+    }
     val padLeft = (layout.marginLeftPt * 0.32f).coerceIn(10f, 28f).dp
     val padRight = (layout.marginRightPt * 0.32f).coerceIn(10f, 28f).dp
     val padTop = (layout.marginTopPt * 0.30f).coerceIn(12f, 26f).dp
@@ -1044,19 +1164,22 @@ private fun PlainTextViewerContent(
                 showPagePill = showPagePill,
                 topClearance = topClearance,
                 bottomClearance = bottomClearance,
-                enableContainerTap = true,
+                enableContainerTap = false,
                 onToggleUi = onToggleUi,
+                zoomState = zoomState,
+                onZoomInteraction = onZoomInteraction,
                 keySelector = { it.first },
                 singleItemContent = { (pageIdx, pageLines) ->
                     val lineOffset = pageIdx * 42
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
                             .padding(
                                 start = 14.dp,
                                 end = 14.dp,
                                 top = topClearance + 10.dp,
-                                bottom = bottomClearance + 52.dp
+                                bottom = bottomClearance + 64.dp
                             ),
                         contentAlignment = Alignment.TopCenter
                     ) {
@@ -1067,8 +1190,10 @@ private fun PlainTextViewerContent(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .widthIn(max = maxWidthDp)
+                                .clip(RoundedCornerShape(14.dp))
                         ) {
                             LazyColumn(
+                                userScrollEnabled = zoomState.canInnerScroll,
                                 modifier = wrapModifier,
                                 contentPadding = PaddingValues(
                                     start = padLeft,
@@ -1101,46 +1226,61 @@ private fun PlainTextViewerContent(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(onToggleUi) {
-                        detectTapGestures(onTap = { onToggleUi() })
-                    }
+                    .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal))
+                    .clipToBounds()
             ) {
-                LazyColumn(
-                    state = listState,
-                    modifier = wrapModifier
-                        .background(MaterialTheme.colorScheme.surface),
-                    contentPadding = PaddingValues(
-                        start = padLeft,
-                        end = padRight,
-                        top = topClearance + padTop,
-                        bottom = bottomClearance + 52.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                ZoomableReaderViewport(
+                    zoomState = zoomState,
+                    onSingleTap = onToggleUi,
+                    onUserInteraction = onZoomInteraction
                 ) {
-                    itemsIndexed(allLines) { idx, line ->
-                        PlainTextLine(
-                            lineNumber = idx + 1,
-                            line = line,
-                            showLineNumber = showLineNumbers,
-                            wordWrap = wordWrap,
-                            useMonospace = useMonospace,
-                            fontSizeSp = fontSizeSp
-                        )
+                    LazyColumn(
+                        state = listState,
+                        userScrollEnabled = zoomState.canInnerScroll,
+                        modifier = wrapModifier
+                            .background(MaterialTheme.colorScheme.surface),
+                        contentPadding = PaddingValues(
+                            start = padLeft,
+                            end = padRight,
+                            top = topClearance + padTop,
+                            bottom = bottomClearance + 68.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        itemsIndexed(allLines) { idx, line ->
+                            PlainTextLine(
+                                lineNumber = idx + 1,
+                                line = line,
+                                showLineNumber = showLineNumbers,
+                                wordWrap = wordWrap,
+                                useMonospace = useMonospace,
+                                fontSizeSp = fontSizeSp
+                            )
+                        }
                     }
                 }
-                if (pages.size > 1) {
-                    AnimatedVisibility(
-                        visible = showPagePill,
-                        enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                        exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .navigationBarsPadding()
-                            .padding(bottom = 14.dp)
-                            .testTag("viewer_page_pill")
+                AnimatedVisibility(
+                    visible = showPagePill,
+                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .navigationBarsPadding()
+                        .padding(bottom = 14.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        PageIndicatorPill(
-                            text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}"
+                        if (pages.size > 1) {
+                            PageIndicatorPill(
+                                text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}",
+                                modifier = Modifier.testTag("viewer_page_pill")
+                            )
+                        }
+                        ReaderZoomControlsPill(
+                            zoomState = zoomState,
+                            onUserInteraction = onZoomInteraction
                         )
                     }
                 }

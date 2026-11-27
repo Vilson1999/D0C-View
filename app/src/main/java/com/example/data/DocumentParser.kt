@@ -357,10 +357,12 @@ class DocumentParser(private val context: Context) {
     ): ParsedDocument {
         val orientSuffix = orientationSuffix(documentOrientation)
         val fontSizeKey = settings.docxFontSizeSp.toInt().coerceIn(11, 24)
-        val variantTag = "doc_v4_fs$fontSizeKey$orientSuffix"
+        val variantTag = "doc_v5_fs$fontSizeKey$orientSuffix"
+        val origVariantTag = "${variantTag}_orig_a4"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = "doc_v2$orientSuffix"
+        val sumVariant = "doc_v3$orientSuffix"
+        val origSumVariant = "${sumVariant}_orig_a4"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -373,10 +375,10 @@ class DocumentParser(private val context: Context) {
         }
 
         if (accessible && renderFormat == OfficeRenderFormat.ORIGINAL) {
-            (cacheManager.getMemoryParsed(doc, variantTag)
-                ?: cacheManager.loadDiskParsed(doc, variantTag))?.let { cached ->
+            (cacheManager.getMemoryParsed(doc, origVariantTag)
+                ?: cacheManager.loadDiskParsed(doc, origVariantTag))?.let { cached ->
                 if (cached is ParsedDocument.Word) {
-                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, sumVariant) }
+                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, origSumVariant) }
                     return cached
                 }
             }
@@ -401,16 +403,22 @@ class DocumentParser(private val context: Context) {
         }
 
         val detectedLayout = docData.layout
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            val origLayout = OfficeLayoutResolver.withA4Default(detectedLayout, documentOrientation)
+            val origPages = paginateWordBlocks(docData.blocks, origLayout, settings.docxFontSizeSp)
+            val origSummary = buildWordSummary(docData.blocks, detectedLayout, origLayout, origPages.size)
+            cacheManager.saveDiskSummary(doc, origSummary, origSumVariant)
+            return ParsedDocument.Word(pages = origPages, layout = origLayout, summary = origSummary).also {
+                cacheManager.saveDiskParsed(doc, it, origVariantTag)
+            }
+        }
+
         val effectiveLayout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
         val pages = paginateWordBlocks(docData.blocks, effectiveLayout, settings.docxFontSizeSp)
         val summary = buildWordSummary(docData.blocks, detectedLayout, effectiveLayout, pages.size)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
         val wordParsed = ParsedDocument.Word(pages = pages, layout = effectiveLayout, summary = summary)
         cacheManager.saveDiskParsed(doc, wordParsed, variantTag)
-
-        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
-            return wordParsed
-        }
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
@@ -584,10 +592,12 @@ class DocumentParser(private val context: Context) {
     ): ParsedDocument {
         val orientSuffix = orientationSuffix(documentOrientation)
         val notesFlag = if (settings.showPptSpeakerNotes) 1 else 0
-        val variantTag = "ppt_v3_n$notesFlag$orientSuffix"
+        val variantTag = "ppt_v4_n$notesFlag$orientSuffix"
+        val origVariantTag = "${variantTag}_orig_a4"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = "ppt_v2_n$notesFlag$orientSuffix"
+        val sumVariant = "ppt_v3_n$notesFlag$orientSuffix"
+        val origSumVariant = "${sumVariant}_orig_a4"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -600,10 +610,10 @@ class DocumentParser(private val context: Context) {
         }
 
         if (accessible && renderFormat == OfficeRenderFormat.ORIGINAL) {
-            (cacheManager.getMemoryParsed(doc, variantTag)
-                ?: cacheManager.loadDiskParsed(doc, variantTag))?.let { cached ->
+            (cacheManager.getMemoryParsed(doc, origVariantTag)
+                ?: cacheManager.loadDiskParsed(doc, origVariantTag))?.let { cached ->
                 if (cached is ParsedDocument.Slides) {
-                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, sumVariant) }
+                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, origSumVariant) }
                     return cached
                 }
             }
@@ -642,15 +652,20 @@ class DocumentParser(private val context: Context) {
         }
 
         val detectedLayout = deck.layout
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            val origLayout = OfficeLayoutResolver.withA4Default(detectedLayout, documentOrientation)
+            val origSummary = buildSlidesSummary(effectiveSlides, detectedLayout, origLayout)
+            cacheManager.saveDiskSummary(doc, origSummary, origSumVariant)
+            return ParsedDocument.Slides(slides = effectiveSlides, layout = origLayout, summary = origSummary).also {
+                cacheManager.saveDiskParsed(doc, it, origVariantTag)
+            }
+        }
+
         val effectiveLayout = OfficeLayoutResolver.applyOrientation(detectedLayout, documentOrientation)
         val summary = buildSlidesSummary(effectiveSlides, detectedLayout, effectiveLayout)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
         val slidesParsed = ParsedDocument.Slides(slides = effectiveSlides, layout = effectiveLayout, summary = summary)
         cacheManager.saveDiskParsed(doc, slidesParsed, variantTag)
-
-        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
-            return slidesParsed
-        }
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
@@ -805,10 +820,12 @@ class DocumentParser(private val context: Context) {
         val orientSuffix = orientationSuffix(documentOrientation)
         val fontSizeKey = settings.xlsxFontSizeSp.toInt().coerceIn(11, 22)
         val gridFlag = if (settings.showExcelGridlines) 1 else 0
-        val variantTag = "xlsx_v3_fs${fontSizeKey}_gl${gridFlag}$orientSuffix"
+        val variantTag = "xlsx_v4_fs${fontSizeKey}_gl${gridFlag}$orientSuffix"
+        val origVariantTag = "${variantTag}_orig_a4"
         val cachedPdf = cacheManager.getConvertedPdfFile(doc, variantTag)
         val sessionKey = "${DocumentCacheManager.docKey(doc)}_$variantTag"
-        val sumVariant = "xlsx_v2$orientSuffix"
+        val sumVariant = "xlsx_v3$orientSuffix"
+        val origSumVariant = "${sumVariant}_orig_a4"
         val accessible = isSourceAccessible(doc)
 
         if (accessible && renderFormat == OfficeRenderFormat.PDF && cachedPdf.isFile && cachedPdf.length() > 0L) {
@@ -821,10 +838,10 @@ class DocumentParser(private val context: Context) {
         }
 
         if (accessible && renderFormat == OfficeRenderFormat.ORIGINAL) {
-            (cacheManager.getMemoryParsed(doc, variantTag)
-                ?: cacheManager.loadDiskParsed(doc, variantTag))?.let { cached ->
+            (cacheManager.getMemoryParsed(doc, origVariantTag)
+                ?: cacheManager.loadDiskParsed(doc, origVariantTag))?.let { cached ->
                 if (cached is ParsedDocument.Spreadsheet) {
-                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, sumVariant) }
+                    cached.summary?.let { cacheManager.putMemorySummary(doc, it, origSumVariant) }
                     return cached
                 }
             }
@@ -861,6 +878,25 @@ class DocumentParser(private val context: Context) {
         }
 
         val detectedLayout = normalizedWorkbook.layout
+        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+            val origLayout = OfficeLayoutResolver.withA4Default(detectedLayout, documentOrientation)
+            val origWorkbook = normalizedWorkbook.copy(
+                sheets = normalizedWorkbook.sheets.map { sheet ->
+                    sheet.copy(layout = OfficeLayoutResolver.withA4Default(sheet.layout, documentOrientation))
+                },
+                layout = origLayout
+            )
+            val origSummary = buildExcelSummary(origWorkbook, detectedLayout, origLayout)
+            cacheManager.saveDiskSummary(doc, origSummary, origSumVariant)
+            return ParsedDocument.Spreadsheet(
+                workbook = origWorkbook,
+                layout = origLayout,
+                summary = origSummary
+            ).also {
+                cacheManager.saveDiskParsed(doc, it, origVariantTag)
+            }
+        }
+
         val effectiveWorkbook = if (documentOrientation == DocumentViewOrientation.AUTO) {
             normalizedWorkbook
         } else {
@@ -882,10 +918,6 @@ class DocumentParser(private val context: Context) {
             summary = summary
         )
         cacheManager.saveDiskParsed(doc, excelParsed, variantTag)
-
-        if (renderFormat == OfficeRenderFormat.ORIGINAL) {
-            return excelParsed
-        }
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())

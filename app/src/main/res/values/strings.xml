@@ -17,6 +17,9 @@
     <string name="action_document_view">Document view</string>
     <string name="doc_view_portrait">Portrait</string>
     <string name="doc_view_landscape">Landscape</string>
+    <string name="action_zoom_in">Zoom in</string>
+    <string name="action_zoom_out">Zoom out</string>
+    <string name="action_reset_zoom">Reset zoom</string>
     <string name="action_clear_selection">Clear selection</string>
     <string name="action_select_all">Select all</string>
     <string name="grant_storage_title">Enable Full Document Scan</string>

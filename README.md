@@ -8,7 +8,15 @@
 
 <p align="center"><em>An offline document viewer for finding and reading documents stored on your Android device. No internet connection or data collection.</em></p>
 
+## Screenshots
 
+<table>
+  <tr>
+    <td align="center"><img src="public/assets/aistudio/Screenshot_20261125-203849_843cac38.png" alt="D0C View PDF list" width="220"></td>
+    <td align="center"><img src="public/assets/aistudio/Screenshot_20261125-203858_287c2184.png" alt="D0C View DOC list" width="220"></td>
+    <td align="center"><img src="public/assets/aistudio/Screenshot_20261125-203942_19ade660.png" alt="D0C View settings" width="220"></td>
+  </tr>
+</table>
 
 ## App details
 

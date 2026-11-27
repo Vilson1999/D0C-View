@@ -16,8 +16,9 @@ android {
     applicationId = "com.docview.vilson"
     minSdk = 28
     targetSdk = 36
-    val ciRunNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
-    versionCode = 3 + ciRunNumber
+    val ciVersionCode = providers.environmentVariable("CI_VERSION_CODE").orNull?.toIntOrNull()
+    val ciRunNumber = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 0
+    versionCode = ciVersionCode ?: (100 + ciRunNumber)
     versionName = if (ciRunNumber > 0) "1.2.$ciRunNumber" else "1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

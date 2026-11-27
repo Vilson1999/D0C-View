@@ -342,6 +342,7 @@ object OoxmlWorkbookParser {
 
         var rawPaperW = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE.heightPt // 595f short
         var rawPaperH = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE.widthPt  // 842f long
+        var hasExplicitPaperDimensions = false
         var explicitOrientation: Boolean? = null // true = landscape, false = portrait
         var marginLeftPt = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE.marginLeftPt
         var marginRightPt = OfficeLayoutResolver.DEFAULT_EXCEL_A4_LANDSCAPE.marginRightPt
@@ -418,15 +419,16 @@ object OoxmlWorkbookParser {
                                 parser.getAttributeValue(null, "bottom")?.toFloatOrNull()?.let { marginBottomPt = it * 72f }
                             }
                             "pageSetup" -> {
-                                val paperSizeId = parser.getAttributeValue(null, "paperSize")?.toIntOrNull()
-                                if (paperSizeId != null) {
-                                    val (pw, ph) = excelPaperDimensions(paperSizeId)
-                                    rawPaperW = pw
-                                    rawPaperH = ph
+                                val pwAttr = parseDimensionToPt(parser.getAttributeValue(null, "paperWidth"))
+                                val phAttr = parseDimensionToPt(parser.getAttributeValue(null, "paperHeight"))
+                                if (pwAttr != null && pwAttr > 0f && phAttr != null && phAttr > 0f) {
+                                    rawPaperW = pwAttr
+                                    rawPaperH = phAttr
+                                    hasExplicitPaperDimensions = abs(pwAttr - phAttr) > 1f
                                 } else {
-                                    val pw = parseDimensionToPt(parser.getAttributeValue(null, "paperWidth"))
-                                    val ph = parseDimensionToPt(parser.getAttributeValue(null, "paperHeight"))
-                                    if (pw != null && ph != null) {
+                                    val paperSizeId = parser.getAttributeValue(null, "paperSize")?.toIntOrNull()
+                                    if (paperSizeId != null) {
+                                        val (pw, ph) = excelPaperDimensions(paperSizeId)
                                         rawPaperW = pw
                                         rawPaperH = ph
                                     }
@@ -530,7 +532,51 @@ object OoxmlWorkbookParser {
 
         val embeddedBlocks = extractSheetDrawings(sheetPath, parts)
         val effectiveCols = maxColCount.coerceAtLeast(1)
-        val forceLandscape = explicitOrientation ?: (effectiveCols >= 5 || embeddedBlocks.isNotEmpty())
+        val forceLandscape = when {
+            explicitOrientation != null -> explicitOrientation
+            hasExplicitPaperDimensions -> OfficeLayoutResolver.isLandscapeFromDimensions(rawPaperW, rawPaperH)
+            builtRows.isEmpty() && embeddedBlocks.isEmpty() -> false
+            else -> {
+                val estimatedTableWidthPt = (0 until effectiveCols).sumOf { colIdx ->
+                    val explicitChars = colWidths[colIdx]
+                    val maxSampleChars = builtRows.asSequence()
+                        .take(80)
+                        .flatMap { it.cells.asSequence() }
+                        .filter { it.colIndex == colIdx && it.colSpan == 1 }
+                        .maxOfOrNull { it.text.length } ?: 6
+                    val w = if (explicitChars != null && explicitChars > 0f) {
+                        explicitChars * 6.0f + 10f
+                    } else {
+                        maxSampleChars * 5.6f + 14f
+                    }
+                    w.coerceIn(42f, 200f).toDouble()
+                }.toFloat()
+                val maxDrawingWidthPt = embeddedBlocks.mapNotNull { block ->
+                    block.image?.widthPt ?: if (block.chart != null) 340f else null
+                }.maxOrNull() ?: 0f
+                val estimatedContentWidthPt = maxOf(estimatedTableWidthPt, maxDrawingWidthPt)
+
+                val estimatedRowsHeightPt = builtRows.sumOf { row ->
+                    val maxLines = row.cells.maxOfOrNull { cell ->
+                        val text = cell.text
+                        if (text.isEmpty()) 1
+                        else maxOf(text.count { it == '\n' } + 1, (text.length / 26) + 1)
+                    } ?: 1
+                    (18f + (maxLines - 1).coerceAtMost(4) * 12f).toDouble()
+                }.toFloat()
+                val drawingsHeightPt = embeddedBlocks.sumOf { block ->
+                    (block.image?.heightPt ?: if (block.chart != null) 210f else 0f).toDouble()
+                }.toFloat()
+                val estimatedContentHeightPt = (if (builtRows.isNotEmpty()) 36f else 0f) +
+                    estimatedRowsHeightPt +
+                    drawingsHeightPt
+
+                OfficeLayoutResolver.isLandscapeFromDimensions(
+                    lengthPt = estimatedContentWidthPt,
+                    heightPt = estimatedContentHeightPt
+                )
+            }
+        }
         val sheetLayout = OfficeLayoutResolver.buildLayoutFromSizeAndMargins(
             rawWidthPt = rawPaperW,
             rawHeightPt = rawPaperH,

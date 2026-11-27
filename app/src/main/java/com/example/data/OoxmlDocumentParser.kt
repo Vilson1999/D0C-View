@@ -127,6 +127,7 @@ object OoxmlDocumentParser {
         var event = parser.eventType
         while (event != XmlPullParser.END_DOCUMENT) {
             val tag = parser.name ?: ""
+            val localTag = tag.substringAfter(':')
             if (skipDepth >= 0) {
                 if (event == XmlPullParser.END_TAG && parser.depth == skipDepth) {
                     skipDepth = -1
@@ -137,17 +138,17 @@ object OoxmlDocumentParser {
 
             when (event) {
                 XmlPullParser.START_TAG -> {
-                    when (tag) {
-                        "mc:Fallback" -> skipDepth = parser.depth
-                        "w:sectPr" -> inBodySectPr = true
-                        "w:pgSz" -> if (inBodySectPr) applyPgSz(parser, layoutAcc)
-                        "w:pgMar" -> if (inBodySectPr) applyPgMar(parser, layoutAcc)
-                        "w:tbl" -> parseTableElement(parser, parts, rels, styles, inlineBinData)?.let { blocks.add(it) }
-                        "w:p" -> parseParagraphElement(parser, parts, rels, styles, inlineBinData, blocks, layoutAcc)
+                    when (localTag) {
+                        "Fallback" -> if (tag == "mc:Fallback" || tag == "Fallback") skipDepth = parser.depth
+                        "sectPr" -> inBodySectPr = true
+                        "pgSz" -> if (inBodySectPr) applyPgSz(parser, layoutAcc)
+                        "pgMar" -> if (inBodySectPr) applyPgMar(parser, layoutAcc)
+                        "tbl" -> parseTableElement(parser, parts, rels, styles, inlineBinData)?.let { blocks.add(it) }
+                        "p" -> parseParagraphElement(parser, parts, rels, styles, inlineBinData, blocks, layoutAcc)
                     }
                 }
                 XmlPullParser.END_TAG -> {
-                    if (tag == "w:sectPr") inBodySectPr = false
+                    if (localTag == "sectPr") inBodySectPr = false
                 }
             }
             event = parser.next()
@@ -155,27 +156,40 @@ object OoxmlDocumentParser {
         return WordDocumentData(blocks = blocks, layout = layoutAcc.toLayout())
     }
 
+    private fun wordAttr(parser: XmlPullParser, localName: String): String? {
+        parser.getAttributeValue(null, "w:$localName")?.let { return it }
+        parser.getAttributeValue(null, localName)?.let { return it }
+        for (i in 0 until parser.attributeCount) {
+            val attrName = parser.getAttributeName(i) ?: continue
+            if (attrName.substringAfter(':') == localName) {
+                return parser.getAttributeValue(i)
+            }
+        }
+        return null
+    }
+
     private fun applyPgSz(parser: XmlPullParser, layout: MutablePageLayout) {
-        val wTwips = parser.getAttributeValue(null, "w:w")?.toFloatOrNull()
-        val hTwips = parser.getAttributeValue(null, "w:h")?.toFloatOrNull()
-        val orient = parser.getAttributeValue(null, "w:orient")
+        val wTwips = wordAttr(parser, "w")?.toFloatOrNull()
+        val hTwips = wordAttr(parser, "h")?.toFloatOrNull()
+        val orient = wordAttr(parser, "orient")
         if (wTwips != null && wTwips > 0f && hTwips != null && hTwips > 0f) {
             layout.widthPt = wTwips / 20f
             layout.heightPt = hTwips / 20f
             layout.isLandscape = when {
+                OfficeLayoutResolver.isLandscapeFromDimensions(layout.widthPt, layout.heightPt) -> true
                 orient.equals("landscape", ignoreCase = true) -> true
                 orient.equals("portrait", ignoreCase = true) -> false
-                else -> layout.widthPt > layout.heightPt
+                else -> false
             }
             layout.hasSize = true
         }
     }
 
     private fun applyPgMar(parser: XmlPullParser, layout: MutablePageLayout) {
-        val leftTwips = parser.getAttributeValue(null, "w:left")?.toFloatOrNull()
-        val rightTwips = parser.getAttributeValue(null, "w:right")?.toFloatOrNull()
-        val topTwips = parser.getAttributeValue(null, "w:top")?.toFloatOrNull()
-        val bottomTwips = parser.getAttributeValue(null, "w:bottom")?.toFloatOrNull()
+        val leftTwips = wordAttr(parser, "left")?.toFloatOrNull()
+        val rightTwips = wordAttr(parser, "right")?.toFloatOrNull()
+        val topTwips = wordAttr(parser, "top")?.toFloatOrNull()
+        val bottomTwips = wordAttr(parser, "bottom")?.toFloatOrNull()
         if (leftTwips != null || rightTwips != null || topTwips != null || bottomTwips != null) {
             leftTwips?.let { if (it >= 0f) layout.marginLeftPt = it / 20f }
             rightTwips?.let { if (it >= 0f) layout.marginRightPt = it / 20f }
@@ -538,14 +552,14 @@ object OoxmlDocumentParser {
                             val v = parser.getAttributeValue(null, "w:val")
                             if (v != "0" && v != "false") pageBreakBefore = true
                         }
-                        "w:sectPr" -> if (inPPr) {
+                        "w:sectPr", "sectPr" -> if (inPPr) {
                             sectionBreakAfter = true
                             inSectPr = true
                         }
-                        "w:pgSz" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasSize) {
+                        "w:pgSz", "pgSz" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasSize) {
                             applyPgSz(parser, layoutAcc)
                         }
-                        "w:pgMar" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasMargins) {
+                        "w:pgMar", "pgMar" -> if (inSectPr && layoutAcc != null && !layoutAcc.hasMargins) {
                             applyPgMar(parser, layoutAcc)
                         }
                         "w:hyperlink" -> inHyperlink = true
