@@ -94,7 +94,7 @@ fun CategoryPillsRow(
         LazyRow(
             state = rowState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 1.5.dp, bottom = 1.5.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 0.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -177,7 +177,7 @@ private fun CategoryPill(
             shadowElevation = elevation
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 9.6.dp, vertical = 3.36.dp),
+                modifier = Modifier.padding(horizontal = 9.6.dp, vertical = 5.6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
