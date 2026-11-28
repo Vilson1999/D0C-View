@@ -72,6 +72,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -200,60 +201,66 @@ fun SettingsScreen(
                 tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.4.dp) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .statusBarsPadding()
                             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
                             .displayCutoutPadding()
-                            .height(42.dp)
+                            .height(29.4.dp)
                             .padding(horizontal = 4.dp, vertical = 0.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
                             onClick = handleBack,
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(29.4.dp)
                                 .testTag("settings_back_button")
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "Back"
+                                contentDescription = "Back",
+                                modifier = Modifier.size(22.dp)
                             )
                         }
                         val currentFolder = activeFolder
                         if (currentFolder != null) {
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(6.dp),
                                 color = currentFolder.color.copy(alpha = 0.16f),
                                 modifier = Modifier
                                     .padding(start = 4.dp)
-                                    .size(28.dp)
+                                    .size(22.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = folderIconFor(currentFolder),
                                         contentDescription = null,
                                         tint = currentFolder.color,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                 }
                             }
                         }
-                        Column(
-                            modifier = Modifier.padding(start = if (currentFolder != null) 8.dp else 4.dp),
-                            verticalArrangement = Arrangement.Center
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(start = if (currentFolder != null) 8.dp else 4.dp, end = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = currentFolder?.title ?: "Settings",
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 17.sp,
-                                    lineHeight = 20.sp
+                                    fontSize = 26.46.sp,
+                                    lineHeight = 26.46.sp,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
                                 ),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
                             )
+                            Spacer(modifier = Modifier.width(8.dp))
                             Text(
                                 text = if (currentFolder != null) {
                                     "${currentFolder.itemCount} settings"
@@ -262,7 +269,8 @@ fun SettingsScreen(
                                 },
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 11.sp,
-                                    lineHeight = 13.sp
+                                    lineHeight = 13.sp,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
                                 ),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,

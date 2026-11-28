@@ -54,6 +54,7 @@ import com.example.R
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.exp
 import kotlin.math.roundToInt
 
 object ReaderZoomMath {
@@ -96,9 +97,17 @@ object ReaderZoomMath {
         viewportWidthPx: Float,
         viewportHeightPx: Float
     ): Pair<Float, Float> {
-        val rawX = (viewportWidthPx / 2f - tapX) * (targetScale - 1f)
-        val rawY = (viewportHeightPx / 2f - tapY) * (targetScale - 1f)
-        return clampOffset(rawX, rawY, targetScale, viewportWidthPx, viewportHeightPx)
+        return 0f to 0f
+    }
+
+    fun doubleTapDragScale(
+        startScale: Float,
+        totalDeltaYPx: Float,
+        sensitivityPx: Float
+    ): Float {
+        val safeStart = clampScale(startScale)
+        if (sensitivityPx <= 0f || totalDeltaYPx == 0f) return safeStart
+        return clampScale(safeStart * exp(totalDeltaYPx / sensitivityPx))
     }
 
     fun pinchTransformOffset(
@@ -154,6 +163,7 @@ class ReaderZoomState(
         private set
 
     private var multiTouchState by mutableStateOf(false)
+    private var dragZoomState by mutableStateOf(false)
     private var hasUserInteracted = false
 
     val scale: Float get() = scaleAnim.value
@@ -161,7 +171,7 @@ class ReaderZoomState(
     val zoomPercent: Int get() = (scale * 100f).roundToInt()
     val canZoomIn: Boolean get() = scale < ReaderZoomMath.MAX_SCALE - 0.01f
     val canZoomOut: Boolean get() = scale > ReaderZoomMath.MIN_SCALE + 0.01f
-    val canInnerScroll: Boolean get() = !multiTouchState && scale <= 1.02f
+    val canInnerScroll: Boolean get() = !multiTouchState && !dragZoomState && scale <= 1.02f
 
     fun updateViewportSize(widthPx: Int, heightPx: Int) {
         viewportWidthPx = widthPx.toFloat().coerceAtLeast(0f)
@@ -201,6 +211,45 @@ class ReaderZoomState(
         if (multiTouchState != active) {
             multiTouchState = active
         }
+    }
+
+    fun setDragZoomActive(active: Boolean) {
+        if (dragZoomState != active) {
+            dragZoomState = active
+        }
+    }
+
+    suspend fun applyDoubleTapDragZoom(
+        startScale: Float,
+        startOffset: ComposeOffset,
+        totalDeltaY: Float,
+        sensitivityPx: Float
+    ) {
+        hasUserInteracted = true
+        val safeStartScale = ReaderZoomMath.clampScale(startScale)
+        val newScale = ReaderZoomMath.doubleTapDragScale(
+            startScale = safeStartScale,
+            totalDeltaYPx = totalDeltaY,
+            sensitivityPx = sensitivityPx
+        )
+        val (clampedX, clampedY) = if (viewportWidthPx > 0f && viewportHeightPx > 0f) {
+            ReaderZoomMath.pinchTransformOffset(
+                currentOffsetX = startOffset.x,
+                currentOffsetY = startOffset.y,
+                currentScale = safeStartScale,
+                targetScale = newScale,
+                centroidX = viewportWidthPx / 2f,
+                centroidY = viewportHeightPx / 2f,
+                panX = 0f,
+                panY = 0f,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx
+            )
+        } else {
+            0f to 0f
+        }
+        scaleAnim.snapTo(newScale)
+        offsetAnim.snapTo(ComposeOffset(clampedX, clampedY))
     }
 
     suspend fun applyTransform(
@@ -357,37 +406,73 @@ fun ZoomableReaderViewport(
                 zoomState.updateViewportSize(size.width, size.height)
             }
             .pointerInput(zoomState) {
+                val touchSlop = viewConfiguration.touchSlop
+                val doubleTapSlopPx = maxOf(touchSlop * 6f, 48.dp.toPx())
+                val dragZoomSensitivityPx = 180.dp.toPx()
+                var lastTapUpTimeMs = 0L
+                var lastTapUpPos = ComposeOffset.Zero
+                var lastTapWasClean = false
+
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val firstDown = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    val downTimeMs = firstDown.uptimeMillis
+                    val downPos = firstDown.position
+                    val doubleTapDt = downTimeMs - lastTapUpTimeMs
+                    var isDoubleTapCandidate = lastTapWasClean &&
+                        doubleTapDt in 0L..viewConfiguration.doubleTapTimeoutMillis &&
+                        (downPos - lastTapUpPos).getDistance() <= doubleTapSlopPx
+                    lastTapWasClean = false
+
+                    var isDoubleTapDrag = false
+                    var dragStartScale = zoomState.scale
+                    var dragStartOffset = zoomState.offset
+                    var dragStartY = downPos.y
+                    var maxMoveDist = 0f
+                    var sawMultiTouch = false
                     var panAccumulated = ComposeOffset.Zero
                     var pastTouchSlop = false
                     var didTransform = false
-                    val touchSlop = viewConfiguration.touchSlop
 
                     try {
                         while (true) {
                             val event = awaitPointerEvent(PointerEventPass.Initial)
                             val pressedCount = event.changes.count { it.pressed }
                             val isMultiTouch = pressedCount >= 2
+                            if (isMultiTouch) {
+                                sawMultiTouch = true
+                                isDoubleTapCandidate = false
+                                isDoubleTapDrag = false
+                                zoomState.setDragZoomActive(false)
+                            }
                             zoomState.setMultiTouchActive(isMultiTouch)
 
+                            val primaryChange = event.changes.firstOrNull { it.id == firstDown.id }
+                                ?: event.changes.firstOrNull()
+                            if (primaryChange != null) {
+                                val dist = (primaryChange.position - downPos).getDistance()
+                                if (dist > maxMoveDist) maxMoveDist = dist
+                            }
+
                             if (pressedCount == 0) {
+                                val upTimeMs = primaryChange?.uptimeMillis ?: downTimeMs
+                                val upPos = primaryChange?.position ?: downPos
+                                val elapsedMs = upTimeMs - downTimeMs
+                                if (!didTransform && !sawMultiTouch && !isDoubleTapCandidate &&
+                                    maxMoveDist <= touchSlop &&
+                                    elapsedMs <= viewConfiguration.longPressTimeoutMillis
+                                ) {
+                                    lastTapUpTimeMs = upTimeMs
+                                    lastTapUpPos = upPos
+                                    lastTapWasClean = true
+                                }
                                 break
                             }
 
-                            val zoomChange = if (isMultiTouch) event.calculateZoom() else 1f
-                            val panChange = if (isMultiTouch || zoomState.scale > 1.02f) {
-                                event.calculatePan()
-                            } else {
-                                ComposeOffset.Zero
-                            }
-                            val centroid = if (isMultiTouch) {
-                                event.calculateCentroid(useCurrent = false)
-                            } else {
-                                ComposeOffset.Unspecified
-                            }
-
                             if (isMultiTouch) {
+                                val zoomChange = event.calculateZoom()
+                                val panChange = event.calculatePan()
+                                val centroid = event.calculateCentroid(useCurrent = false)
+
                                 if (!pastTouchSlop) {
                                     panAccumulated += panChange
                                     if (abs(1f - zoomChange) > 0.005f || panAccumulated.getDistance() > touchSlop * 0.5f) {
@@ -411,7 +496,40 @@ fun ZoomableReaderViewport(
                                         change.consume()
                                     }
                                 }
+                            } else if (isDoubleTapCandidate) {
+                                val change = primaryChange
+                                if (change != null) {
+                                    if (!isDoubleTapDrag) {
+                                        if ((change.position - downPos).getDistance() > touchSlop) {
+                                            isDoubleTapDrag = true
+                                            didTransform = true
+                                            dragStartScale = zoomState.scale
+                                            dragStartOffset = zoomState.offset
+                                            dragStartY = change.position.y
+                                            zoomState.setDragZoomActive(true)
+                                            currentOnUserInteraction()
+                                            event.changes.forEach { it.consume() }
+                                        }
+                                    } else {
+                                        val totalDy = change.position.y - dragStartY
+                                        currentOnUserInteraction()
+                                        scope.launch {
+                                            zoomState.applyDoubleTapDragZoom(
+                                                startScale = dragStartScale,
+                                                startOffset = dragStartOffset,
+                                                totalDeltaY = totalDy,
+                                                sensitivityPx = dragZoomSensitivityPx
+                                            )
+                                        }
+                                        event.changes.forEach { item ->
+                                            if (item.positionChanged()) {
+                                                item.consume()
+                                            }
+                                        }
+                                    }
+                                }
                             } else if (zoomState.scale > 1.02f) {
+                                val panChange = event.calculatePan()
                                 if (!pastTouchSlop) {
                                     panAccumulated += panChange
                                     if (panAccumulated.getDistance() > touchSlop) {
@@ -450,6 +568,7 @@ fun ZoomableReaderViewport(
                         }
                     } finally {
                         zoomState.setMultiTouchActive(false)
+                        zoomState.setDragZoomActive(false)
                         if (didTransform) {
                             zoomState.notifyScaleCommitted()
                         }

@@ -1383,6 +1383,39 @@ class ExampleUnitTest {
         )
         assertEquals(-250f, pinchX, 0.5f)
         assertEquals(0f, pinchY, 0.5f)
+
+        // Double-tap zoom stays centered even when rotated to landscape and tapped off-center
+        val (dtX, dtY) = com.example.ui.components.ReaderZoomMath.doubleTapTargetOffset(
+            tapX = 1850f,
+            tapY = 720f,
+            targetScale = 2.0f,
+            viewportWidthPx = 2400f,
+            viewportHeightPx = 1080f
+        )
+        assertEquals(0f, dtX, 0.01f)
+        assertEquals(0f, dtY, 0.01f)
+
+        // Double-tap-and-hold vertical drag: move down zooms in, move up zooms out
+        val zoomedIn = com.example.ui.components.ReaderZoomMath.doubleTapDragScale(
+            startScale = 1.0f,
+            totalDeltaYPx = 180f,
+            sensitivityPx = 180f
+        )
+        assertEquals(kotlin.math.E.toFloat(), zoomedIn, 0.01f)
+
+        val zoomedOut = com.example.ui.components.ReaderZoomMath.doubleTapDragScale(
+            startScale = 2.5f,
+            totalDeltaYPx = -180f,
+            sensitivityPx = 180f
+        )
+        assertEquals(1.0f, zoomedOut, 0.01f)
+
+        val maxClamped = com.example.ui.components.ReaderZoomMath.doubleTapDragScale(
+            startScale = 1.0f,
+            totalDeltaYPx = 1000f,
+            sensitivityPx = 180f
+        )
+        assertEquals(com.example.ui.components.ReaderZoomMath.MAX_SCALE, maxClamped, 0.01f)
     }
 
     @Test

@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,7 +96,7 @@ fun CategoryPillsRow(
             state = rowState,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(20.dp),
+                .height(12.dp),
             contentPadding = PaddingValues(horizontal = 10.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
@@ -128,15 +129,15 @@ private fun CategoryPill(
 
     val scale by animateFloatAsState(
         targetValue = when {
-            pressed -> 0.93f
-            selected -> 1.04f
+            pressed -> 0.94f
+            selected -> 1.02f
             else -> 1f
         },
         animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium),
         label = "pillScale"
     )
     val elevation by animateDpAsState(
-        targetValue = if (selected) 3.dp else 0.dp,
+        targetValue = if (selected) 1.5.dp else 0.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pillElevation"
     )
@@ -157,10 +158,10 @@ private fun CategoryPill(
         label = "pillBorder"
     )
 
-    // Compact 20dp row pill
+    // 12.dp pill bar row holding 10.8.dp (10% smaller) document pill
     Box(
         modifier = Modifier
-            .height(20.dp)
+            .height(12.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -177,33 +178,35 @@ private fun CategoryPill(
         Surface(
             shape = CircleShape,
             color = containerColor,
-            border = BorderStroke(0.75.dp, borderColor),
-            shadowElevation = elevation
+            border = BorderStroke(0.5.dp, borderColor),
+            shadowElevation = elevation,
+            modifier = Modifier.height(10.8.dp)
         ) {
             Row(
                 modifier = Modifier
-                    .height(20.dp)
-                    .padding(horizontal = 7.dp),
+                    .height(10.8.dp)
+                    .padding(horizontal = 5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(12.dp)
+                    modifier = Modifier.size(7.dp)
                 )
-                Spacer(modifier = Modifier.width(3.dp))
+                Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 11.sp,
-                        lineHeight = 12.sp
+                        fontSize = 7.5.sp,
+                        lineHeight = 8.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
                     )
                 )
                 if (count > 0) {
-                    Spacer(modifier = Modifier.width(3.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
@@ -220,11 +223,12 @@ private fun CategoryPill(
                                 text = targetCount.toString(),
                                 color = contentColor,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 9.sp,
-                                    lineHeight = 10.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 6.5.sp,
+                                    lineHeight = 7.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
                                 ),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp)
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp)
                             )
                         }
                     }

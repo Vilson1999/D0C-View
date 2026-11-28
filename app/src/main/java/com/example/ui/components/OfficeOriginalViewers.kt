@@ -1042,26 +1042,17 @@ fun OfficeOriginalExcelContent(
                 .navigationBarsPadding()
                 .padding(bottom = 14.dp)
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
+                shadowElevation = 4.dp,
+                modifier = Modifier.testTag("viewer_page_pill")
             ) {
-                Surface(
-                    shape = RoundedCornerShape(50),
-                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
-                    shadowElevation = 4.dp,
-                    modifier = Modifier.testTag("viewer_page_pill")
-                ) {
-                    Text(
-                        text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.inverseOnSurface,
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                    )
-                }
-                ReaderZoomControlsPill(
-                    zoomState = zoomState,
-                    onUserInteraction = onZoomInteraction
+                Text(
+                    text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }
         }

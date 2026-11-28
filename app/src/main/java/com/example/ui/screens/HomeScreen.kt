@@ -107,9 +107,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.model.DocType
@@ -831,7 +833,7 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp)
+                    .height(25.2.dp)
                     .padding(horizontal = 8.dp, vertical = 0.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
@@ -845,16 +847,16 @@ private fun HomeTopBar(
                 )
             }
         } else {
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 25.2.dp) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(42.dp)
+                        .height(25.2.dp)
                         .padding(start = 10.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     DocViewerAppIcon(
-                        size = 28.dp,
+                        size = 22.68.dp,
                         modifier = Modifier
                             .padding(end = 6.dp)
                             .testTag("topbar_app_icon")
@@ -865,7 +867,7 @@ private fun HomeTopBar(
                     IconButton(
                         onClick = onCycleThemeMode,
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(25.2.dp)
                             .testTag("topbar_theme_toggle")
                     ) {
                         AnimatedContent(
@@ -891,44 +893,48 @@ private fun HomeTopBar(
                                     ThemeMode.LIGHT -> AppIcons.LightMode
                                 },
                                 contentDescription = stringResource(R.string.action_toggle_theme),
-                                tint = MaterialTheme.colorScheme.onBackground
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier.size(22.68.dp)
                             )
                         }
                     }
                     IconButton(
                         onClick = onOpenSort,
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(25.2.dp)
                             .testTag("topbar_sort_button")
                     ) {
                         Icon(
                             imageVector = AppIcons.Sort,
                             contentDescription = stringResource(R.string.action_sort),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(22.68.dp)
                         )
                     }
                     IconButton(
                         onClick = onOpenSearch,
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(25.2.dp)
                             .testTag("topbar_search_button")
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Search,
                             contentDescription = stringResource(R.string.action_search),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(22.68.dp)
                         )
                     }
                     IconButton(
                         onClick = onOpenSettings,
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(25.2.dp)
                             .testTag("topbar_settings_button")
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Settings,
                             contentDescription = stringResource(R.string.action_settings),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = MaterialTheme.colorScheme.onBackground,
+                            modifier = Modifier.size(22.68.dp)
                         )
                     }
                 }
@@ -948,28 +954,34 @@ private fun SelectionTopBar(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 25.2.dp) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(42.dp)
+                    .height(25.2.dp)
                     .padding(horizontal = 2.dp, vertical = 0.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
                     onClick = onClear,
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(25.2.dp)
                         .testTag("selection_clear_button")
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.action_clear_selection)
+                        contentDescription = stringResource(R.string.action_clear_selection),
+                        modifier = Modifier.size(22.68.dp)
                     )
                 }
                 Text(
                     text = "$selectedCount selected",
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall.copy(
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                    ),
+                    maxLines = 1,
                     modifier = Modifier
                         .weight(1f)
                         .padding(start = 6.dp)
@@ -977,12 +989,13 @@ private fun SelectionTopBar(
                 IconButton(
                     onClick = onSelectAll,
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(25.2.dp)
                         .testTag("selection_select_all_button")
                 ) {
                     Icon(
                         imageVector = AppIcons.SelectAll,
-                        contentDescription = stringResource(R.string.action_select_all)
+                        contentDescription = stringResource(R.string.action_select_all),
+                        modifier = Modifier.size(22.68.dp)
                     )
                 }
             }

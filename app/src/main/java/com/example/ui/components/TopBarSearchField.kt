@@ -35,9 +35,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
 
 @Composable
@@ -60,27 +62,27 @@ fun TopBarSearchField(
     }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(25.2.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(42.dp)
-                .padding(start = 10.dp, end = 0.dp),
+                .height(25.2.dp)
+                .padding(start = 8.dp, end = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Box(
                 modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.CenterStart
@@ -88,7 +90,11 @@ fun TopBarSearchField(
                 if (query.isEmpty()) {
                     Text(
                         text = placeholder,
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 14.sp,
+                            platformStyle = PlatformTextStyle(includeFontPadding = false)
+                        ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -98,7 +104,10 @@ fun TopBarSearchField(
                     value = query,
                     onValueChange = onQueryChange,
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    textStyle = MaterialTheme.typography.bodySmall.copy(
+                        fontSize = 12.sp,
+                        lineHeight = 14.sp,
+                        platformStyle = PlatformTextStyle(includeFontPadding = false),
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -115,7 +124,7 @@ fun TopBarSearchField(
                         .testTag(inputTestTag)
                 )
             }
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 25.2.dp) {
                 IconButton(
                     onClick = {
                         keyboardController?.hide()
@@ -123,13 +132,14 @@ fun TopBarSearchField(
                         onClose()
                     },
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(25.2.dp)
                         .testTag(closeTestTag)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.action_close_search),
-                        tint = MaterialTheme.colorScheme.onSurface
+                        tint = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.size(22.68.dp)
                     )
                 }
             }

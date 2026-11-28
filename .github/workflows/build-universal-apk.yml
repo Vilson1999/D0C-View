@@ -15,6 +15,10 @@ on:
         description: "Optional release tag (e.g. universal-v1.2.0). Leave empty to auto-tag."
         required: false
         default: ""
+      release_notes:
+        description: "Optional custom update notes (New Features, Improvements, Fixes). Leave empty to use RELEASE_NOTES.md."
+        required: false
+        default: ""
       publish_release:
         description: "Publish a GitHub Release with the Universal APK"
         type: boolean
@@ -145,14 +149,16 @@ jobs:
           path: universal-apk/D0C-View-universal-release.apk
           if-no-files-found: error
 
-      - name: Prepare Universal Release Metadata
+      - name: Prepare Universal Release Metadata & Notes
         id: universal_meta
         if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish_release)
         env:
           INPUT_TAG: ${{ inputs.release_tag }}
+          INPUT_NOTES: ${{ inputs.release_notes }}
           EVENT_REF: ${{ github.ref }}
           EVENT_REF_NAME: ${{ github.ref_name }}
           RUN_NUMBER: ${{ github.run_number }}
+          SHORT_SHA: ${{ github.sha }}
         run: |
           if [[ "$EVENT_REF" == refs/tags/* ]]; then
             TAG="$EVENT_REF_NAME"
@@ -164,6 +170,41 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View Universal $TAG" >> "$GITHUB_OUTPUT"
 
+          BODY_FILE="release-notes-body.md"
+          {
+            echo "## D0C View Universal $TAG"
+            echo ""
+            echo "- **Release Channel:** Universal APK Release"
+            echo "- **App Version:** \`1.2.${RUN_NUMBER}\` (Version Code: \`${CI_VERSION_CODE}\`)"
+            echo "- **Commit:** \`${SHORT_SHA:0:7}\`"
+            echo ""
+            if [ -n "$INPUT_NOTES" ]; then
+              printf '%s\n' "$INPUT_NOTES"
+            elif [ -f RELEASE_NOTES.md ]; then
+              cat RELEASE_NOTES.md
+            else
+              echo "## New Features"
+              echo "- Offline multi-format document viewer (PDF, Word, Excel, PowerPoint, Text)."
+              echo ""
+              echo "## Improvements"
+              echo "- Compressed Universal APK with low-storage lossless caching."
+              echo ""
+              echo "## Fixes"
+              echo "- General stability, inset, and external file opening fixes."
+            fi
+            echo ""
+            echo "## Universal APK Download & Checksum"
+            echo ""
+            echo "| APK File | Target ABI | Size | SHA-256 |"
+            echo "| --- | --- | --- | --- |"
+            for apk in universal-apk/*.apk; do
+              fname=$(basename "$apk")
+              fsize=$(du -h "$apk" | cut -f1)
+              fsha=$(sha256sum "$apk" | awk '{print $1}')
+              echo "| \`$fname\` | Universal (ARMv7 + ARMv8) | $fsize | \`$fsha\` |"
+            done
+          } > "$BODY_FILE"
+
       - name: Publish GitHub Universal APK Release
         if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish_release)
         uses: softprops/action-gh-release@v2
@@ -171,6 +212,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ steps.universal_meta.outputs.tag }}
           name: ${{ steps.universal_meta.outputs.name }}
+          body_path: release-notes-body.md
           target_commitish: ${{ github.sha }}
           draft: false
           prerelease: false
