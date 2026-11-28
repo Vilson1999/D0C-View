@@ -18,12 +18,10 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -35,11 +33,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.R
 
 @Composable
@@ -62,27 +58,27 @@ fun TopBarSearchField(
     }
 
     Surface(
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .height(29.2.dp)
+            .height(48.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(29.2.dp)
-                .padding(start = 6.4.dp, end = 0.dp),
+                .height(48.dp)
+                .padding(start = 12.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(19.2.dp)
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.width(5.dp))
+            Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.CenterStart
@@ -90,11 +86,7 @@ fun TopBarSearchField(
                 if (query.isEmpty()) {
                     Text(
                         text = placeholder,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 13.sp,
-                            lineHeight = 15.sp,
-                            platformStyle = PlatformTextStyle(includeFontPadding = false)
-                        ),
+                        style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -104,10 +96,7 @@ fun TopBarSearchField(
                     value = query,
                     onValueChange = onQueryChange,
                     singleLine = true,
-                    textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 13.sp,
-                        lineHeight = 15.sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = false),
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
                         color = MaterialTheme.colorScheme.onSurface
                     ),
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
@@ -124,24 +113,19 @@ fun TopBarSearchField(
                         .testTag(inputTestTag)
                 )
             }
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.2.dp) {
-                IconButton(
-                    onClick = {
-                        keyboardController?.hide()
-                        focusManager.clearFocus(force = true)
-                        onClose()
-                    },
-                    modifier = Modifier
-                        .size(29.2.dp)
-                        .testTag(closeTestTag)
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.action_close_search),
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(27.2.dp)
-                    )
-                }
+            IconButton(
+                onClick = {
+                    keyboardController?.hide()
+                    focusManager.clearFocus(force = true)
+                    onClose()
+                },
+                modifier = Modifier.testTag(closeTestTag)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.action_close_search),
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

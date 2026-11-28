@@ -65,7 +65,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -75,7 +74,6 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -107,11 +105,9 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.model.DocType
@@ -833,8 +829,8 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(29.2.dp)
-                    .padding(horizontal = 6.4.dp, vertical = 0.dp)
+                    .height(56.dp)
+                    .padding(horizontal = 12.dp, vertical = 4.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
                 TopBarSearchField(
@@ -847,96 +843,82 @@ private fun HomeTopBar(
                 )
             }
         } else {
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.2.dp) {
-                Row(
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(start = 16.dp, end = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                DocViewerAppIcon(
+                    size = 32.dp,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(29.2.dp)
-                        .padding(start = 8.dp, end = 1.6.dp, top = 0.dp, bottom = 0.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    DocViewerAppIcon(
-                        size = 27.2.dp,
-                        modifier = Modifier
-                            .padding(end = 4.8.dp)
-                            .testTag("topbar_app_icon")
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
+                        .padding(end = 8.dp)
+                        .testTag("topbar_app_icon")
+                )
+                Spacer(modifier = Modifier.weight(1f))
 
-                    // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
-                    IconButton(
-                        onClick = onCycleThemeMode,
-                        modifier = Modifier
-                            .size(29.2.dp)
-                            .testTag("topbar_theme_toggle")
-                    ) {
-                        AnimatedContent(
-                            targetState = themeMode,
-                            transitionSpec = {
-                                (scaleIn(
-                                    initialScale = 0.65f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.65f,
-                                        stiffness = Spring.StiffnessMedium
-                                    )
-                                ) + fadeIn(tween(180))).togetherWith(
-                                    scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
-                                        fadeOut(tween(120))
+                // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
+                IconButton(
+                    onClick = onCycleThemeMode,
+                    modifier = Modifier.testTag("topbar_theme_toggle")
+                ) {
+                    AnimatedContent(
+                        targetState = themeMode,
+                        transitionSpec = {
+                            (scaleIn(
+                                initialScale = 0.65f,
+                                animationSpec = spring(
+                                    dampingRatio = 0.65f,
+                                    stiffness = Spring.StiffnessMedium
                                 )
-                            },
-                            label = "themeIconSwitch"
-                        ) { mode ->
-                            Icon(
-                                imageVector = when (mode) {
-                                    ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
-                                    ThemeMode.DARK -> AppIcons.DarkMode
-                                    ThemeMode.LIGHT -> AppIcons.LightMode
-                                },
-                                contentDescription = stringResource(R.string.action_toggle_theme),
-                                tint = MaterialTheme.colorScheme.onBackground,
-                                modifier = Modifier.size(27.2.dp)
+                            ) + fadeIn(tween(180))).togetherWith(
+                                scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
+                                    fadeOut(tween(120))
                             )
-                        }
-                    }
-                    IconButton(
-                        onClick = onOpenSort,
-                        modifier = Modifier
-                            .size(29.2.dp)
-                            .testTag("topbar_sort_button")
-                    ) {
+                        },
+                        label = "themeIconSwitch"
+                    ) { mode ->
                         Icon(
-                            imageVector = AppIcons.Sort,
-                            contentDescription = stringResource(R.string.action_sort),
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(27.2.dp)
+                            imageVector = when (mode) {
+                                ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
+                                ThemeMode.DARK -> AppIcons.DarkMode
+                                ThemeMode.LIGHT -> AppIcons.LightMode
+                            },
+                            contentDescription = stringResource(R.string.action_toggle_theme),
+                            tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
-                    IconButton(
-                        onClick = onOpenSearch,
-                        modifier = Modifier
-                            .size(29.2.dp)
-                            .testTag("topbar_search_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Search,
-                            contentDescription = stringResource(R.string.action_search),
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(27.2.dp)
-                        )
-                    }
-                    IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier
-                            .size(29.2.dp)
-                            .testTag("topbar_settings_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Settings,
-                            contentDescription = stringResource(R.string.action_settings),
-                            tint = MaterialTheme.colorScheme.onBackground,
-                            modifier = Modifier.size(27.2.dp)
-                        )
-                    }
+                }
+                IconButton(
+                    onClick = onOpenSort,
+                    modifier = Modifier.testTag("topbar_sort_button")
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Sort,
+                        contentDescription = stringResource(R.string.action_sort),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(
+                    onClick = onOpenSearch,
+                    modifier = Modifier.testTag("topbar_search_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Search,
+                        contentDescription = stringResource(R.string.action_search),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
+                }
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier.testTag("topbar_settings_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Settings,
+                        contentDescription = stringResource(R.string.action_settings),
+                        tint = MaterialTheme.colorScheme.onBackground
+                    )
                 }
             }
         }
@@ -954,50 +936,38 @@ private fun SelectionTopBar(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.2.dp) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(29.2.dp)
-                    .padding(horizontal = 1.6.dp, vertical = 0.dp),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(
+                onClick = onClear,
+                modifier = Modifier.testTag("selection_clear_button")
             ) {
-                IconButton(
-                    onClick = onClear,
-                    modifier = Modifier
-                        .size(29.2.dp)
-                        .testTag("selection_clear_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Close,
-                        contentDescription = stringResource(R.string.action_clear_selection),
-                        modifier = Modifier.size(27.2.dp)
-                    )
-                }
-                Text(
-                    text = "$selectedCount selected",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontSize = 14.sp,
-                        lineHeight = 16.sp,
-                        platformStyle = PlatformTextStyle(includeFontPadding = false)
-                    ),
-                    maxLines = 1,
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(start = 6.dp)
+                Icon(
+                    imageVector = Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.action_clear_selection)
                 )
-                IconButton(
-                    onClick = onSelectAll,
-                    modifier = Modifier
-                        .size(29.2.dp)
-                        .testTag("selection_select_all_button")
-                ) {
-                    Icon(
-                        imageVector = AppIcons.SelectAll,
-                        contentDescription = stringResource(R.string.action_select_all),
-                        modifier = Modifier.size(27.2.dp)
-                    )
-                }
+            }
+            Text(
+                text = "$selectedCount selected",
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 4.dp)
+            )
+            IconButton(
+                onClick = onSelectAll,
+                modifier = Modifier.testTag("selection_select_all_button")
+            ) {
+                Icon(
+                    imageVector = AppIcons.SelectAll,
+                    contentDescription = stringResource(R.string.action_select_all)
+                )
             }
         }
     }
