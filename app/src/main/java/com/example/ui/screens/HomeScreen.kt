@@ -105,6 +105,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -436,81 +437,63 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
+            Surface(
+                color = topBarColor,
+                tonalElevation = 0.dp,
+                shadowElevation = 0.dp,
+                modifier = Modifier.fillMaxWidth()
             ) {
-                Surface(
-                    color = topBarColor,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 0.dp,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(
-                                WindowInsets.statusBars.union(
-                                    WindowInsets.displayCutout.only(
-                                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                                    )
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(
+                            WindowInsets.statusBars.union(
+                                WindowInsets.displayCutout.only(
+                                    WindowInsetsSides.Top + WindowInsetsSides.Horizontal
                                 )
                             )
-                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                    ) {
-                        AnimatedContent(
-                            targetState = uiState.isSelectionMode,
-                            transitionSpec = {
-                                (slideInVertically(
-                                    initialOffsetY = { -it / 3 },
-                                    animationSpec = tween(220, easing = FastOutSlowInEasing)
-                                ) + fadeIn(tween(200))).togetherWith(
-                                    slideOutVertically(
-                                        targetOffsetY = { -it / 3 },
-                                        animationSpec = tween(160)
-                                    ) + fadeOut(tween(150))
-                                )
-                            },
-                            label = "homeTopBarModeSwitch"
-                        ) { selectionMode ->
-                            if (selectionMode) {
-                                SelectionTopBar(
-                                    selectedCount = uiState.selectedDocIds.size,
-                                    onClear = onClearSelection,
-                                    onSelectAll = onSelectAll
-                                )
-                            } else {
-                                HomeTopBar(
-                                    themeMode = uiState.settings.themeMode,
-                                    iconTint = topBarContentColor,
-                                    isSearchActive = uiState.isSearchActive,
-                                    searchQuery = uiState.searchQuery,
-                                    onSearchQueryChange = onSearchQueryChange,
-                                    onCycleThemeMode = onCycleThemeMode,
-                                    onOpenSort = { showSortSheet = true },
-                                    onOpenSearch = onToggleSearch,
-                                    onCloseSearch = onCloseSearch,
-                                    onSearchBarBoundsChange = { searchBarBounds = it },
-                                    onOpenSettings = onOpenSettings
-                                )
-                            }
+                        )
+                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                ) {
+                    AnimatedContent(
+                        targetState = uiState.isSelectionMode,
+                        transitionSpec = {
+                            (slideInVertically(
+                                initialOffsetY = { -it / 3 },
+                                animationSpec = tween(220, easing = FastOutSlowInEasing)
+                            ) + fadeIn(tween(200))).togetherWith(
+                                slideOutVertically(
+                                    targetOffsetY = { -it / 3 },
+                                    animationSpec = tween(160)
+                                ) + fadeOut(tween(150))
+                            )
+                        },
+                        label = "homeTopBarModeSwitch"
+                    ) { selectionMode ->
+                        if (selectionMode) {
+                            SelectionTopBar(
+                                selectedCount = uiState.selectedDocIds.size,
+                                onClear = onClearSelection,
+                                onSelectAll = onSelectAll
+                            )
+                        } else {
+                            HomeTopBar(
+                                themeMode = uiState.settings.themeMode,
+                                selectedCategoryLabel = if (visibleTypes.isNotEmpty()) uiState.selectedCategory.label else "",
+                                iconTint = topBarContentColor,
+                                isSearchActive = uiState.isSearchActive,
+                                searchQuery = uiState.searchQuery,
+                                onSearchQueryChange = onSearchQueryChange,
+                                onCycleThemeMode = onCycleThemeMode,
+                                onOpenSort = { showSortSheet = true },
+                                onOpenSearch = onToggleSearch,
+                                onCloseSearch = onCloseSearch,
+                                onSearchBarBoundsChange = { searchBarBounds = it },
+                                onOpenSettings = onOpenSettings
+                            )
                         }
                     }
                 }
-
-                // Category Pills Row (PDF, DOC, EXCEL, PPT, TEXT) — hides when scrolling up
-                CategoryPillsRow(
-                    selectedType = uiState.selectedCategory,
-                    visibleTypes = visibleTypes,
-                    counts = counts,
-                    visible = pillsVisible,
-                    isDarkTheme = isDarkTheme,
-                    onSelectType = onSelectCategory,
-                    modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                )
             }
         },
         bottomBar = {
@@ -561,6 +544,7 @@ fun HomeScreen(
             }
         }
     ) { innerPadding ->
+        val showPermissionBanner = !uiState.hasFullStorageAccess && permissionDialogDismissed && !uiState.isSelectionMode
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -576,7 +560,7 @@ fun HomeScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 AnimatedVisibility(
-                    visible = !uiState.hasFullStorageAccess && permissionDialogDismissed && !uiState.isSelectionMode,
+                    visible = showPermissionBanner,
                     enter = expandVertically() + fadeIn(),
                     exit = shrinkVertically() + fadeOut()
                 ) {
@@ -586,7 +570,12 @@ fun HomeScreen(
                         onGrantClick = onRequestStorageAccess,
                         modifier = Modifier
                             .widthIn(max = 720.dp)
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .padding(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = if (visibleTypes.isNotEmpty() && pillsVisible) 50.dp else 4.dp,
+                                bottom = 4.dp
+                            )
                     )
                 }
 
@@ -624,7 +613,9 @@ fun HomeScreen(
                             isRefreshing = uiState.isPullRefreshing,
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             color = pageType.pillColor,
-                            modifier = Modifier.align(Alignment.TopCenter)
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = if (pillsVisible) 44.dp else 0.dp)
                         )
                     },
                     modifier = Modifier
@@ -710,7 +701,7 @@ fun HomeScreen(
                                     contentPadding = PaddingValues(
                                         start = 16.dp,
                                         end = 16.dp,
-                                        top = 0.dp,
+                                        top = if (showPermissionBanner) 8.dp else 50.dp,
                                         bottom = 10.dp
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -766,6 +757,16 @@ fun HomeScreen(
             }
             }
             }
+            // Category Pills Row (PDF, DOC, EXCEL, PPT, TEXT) floating with transparent padding
+            CategoryPillsRow(
+                selectedType = uiState.selectedCategory,
+                visibleTypes = visibleTypes,
+                counts = counts,
+                visible = pillsVisible,
+                isDarkTheme = isDarkTheme,
+                onSelectType = onSelectCategory,
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
         }
     }
 
@@ -820,6 +821,7 @@ fun HomeScreen(
 @Composable
 private fun HomeTopBar(
     themeMode: ThemeMode,
+    selectedCategoryLabel: String,
     iconTint: Color,
     isSearchActive: Boolean,
     searchQuery: String,
@@ -886,6 +888,29 @@ private fun HomeTopBar(
                             .padding(end = 8.dp)
                             .testTag("topbar_app_icon")
                     )
+                    if (selectedCategoryLabel.isNotEmpty()) {
+                        AnimatedContent(
+                            targetState = selectedCategoryLabel,
+                            transitionSpec = {
+                                fadeIn(tween(180)).togetherWith(fadeOut(tween(140)))
+                            },
+                            label = "topbarCategoryLabel"
+                        ) { label ->
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontFamily = FontFamily.SansSerif,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 22.sp,
+                                    lineHeight = 24.sp,
+                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
+                                ),
+                                color = iconTint,
+                                maxLines = 1,
+                                modifier = Modifier.testTag("topbar_category_label")
+                            )
+                        }
+                    }
                     Spacer(modifier = Modifier.weight(1f))
 
                     // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings

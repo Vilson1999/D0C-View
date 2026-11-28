@@ -16,7 +16,7 @@ on:
         required: false
         default: ""
       release_notes:
-        description: "Optional custom update notes (New Features, Improvements, Fixes). Leave empty to use RELEASE_NOTES.md."
+        description: "Optional custom update notes (New Features, Improvements, Fixes) for this release only."
         required: false
         default: ""
       publish_release:
@@ -36,6 +36,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21 (Temurin)
         uses: actions/setup-java@v4
@@ -170,40 +172,19 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View Universal $TAG" >> "$GITHUB_OUTPUT"
 
-          BODY_FILE="release-notes-body.md"
-          {
-            echo "## D0C View Universal $TAG"
-            echo ""
-            echo "- **Release Channel:** Universal APK Release"
-            echo "- **App Version:** \`1.2.${RUN_NUMBER}\` (Version Code: \`${CI_VERSION_CODE}\`)"
-            echo "- **Commit:** \`${SHORT_SHA:0:7}\`"
-            echo ""
-            if [ -n "$INPUT_NOTES" ]; then
-              printf '%s\n' "$INPUT_NOTES"
-            elif [ -f RELEASE_NOTES.md ]; then
-              cat RELEASE_NOTES.md
-            else
-              echo "## New Features"
-              echo "- Offline multi-format document viewer (PDF, Word, Excel, PowerPoint, Text)."
-              echo ""
-              echo "## Improvements"
-              echo "- Compressed Universal APK with low-storage lossless caching."
-              echo ""
-              echo "## Fixes"
-              echo "- General stability, inset, and external file opening fixes."
-            fi
-            echo ""
-            echo "## Universal APK Download & Checksum"
-            echo ""
-            echo "| APK File | Target ABI | Size | SHA-256 |"
-            echo "| --- | --- | --- | --- |"
-            for apk in universal-apk/*.apk; do
-              fname=$(basename "$apk")
-              fsize=$(du -h "$apk" | cut -f1)
-              fsha=$(sha256sum "$apk" | awk '{print $1}')
-              echo "| \`$fname\` | Universal (ARMv7 + ARMv8) | $fsize | \`$fsha\` |"
-            done
-          } > "$BODY_FILE"
+          TAG="$TAG" \
+          RELEASE_TITLE="D0C View Universal $TAG" \
+          CHANNEL="universal" \
+          CHANNEL_LABEL="Universal APK Release" \
+          APP_VERSION="1.2.${RUN_NUMBER}" \
+          VERSION_CODE="${CI_VERSION_CODE}" \
+          SHORT_SHA="${SHORT_SHA}" \
+          INPUT_NOTES="${INPUT_NOTES}" \
+          APK_DIR="universal-apk" \
+          OUTPUT_FILE="release-notes-body.md" \
+          DOWNLOADS_HEADING="Universal APK Download & Checksum" \
+          SHOW_ABI_TIP="false" \
+          python3 .github/scripts/generate_release_notes.py
 
       - name: Publish GitHub Universal APK Release
         if: github.event_name != 'pull_request' && (github.event_name != 'workflow_dispatch' || inputs.publish_release)
@@ -217,6 +198,6 @@ jobs:
           draft: false
           prerelease: false
           make_latest: false
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             universal-apk/D0C-View-universal-release.apk

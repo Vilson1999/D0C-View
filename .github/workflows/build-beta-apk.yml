@@ -17,7 +17,7 @@ on:
         required: false
         default: ""
       release_notes:
-        description: "Optional custom update notes (New Features, Improvements, Fixes). Leave empty to use RELEASE_NOTES.md."
+        description: "Optional custom update notes (New Features, Improvements, Fixes) for this release only."
         required: false
         default: ""
 
@@ -32,6 +32,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 21 (Temurin)
         uses: actions/setup-java@v4
@@ -168,46 +170,19 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View Beta $TAG" >> "$GITHUB_OUTPUT"
 
-          BODY_FILE="release-notes-body.md"
-          {
-            echo "## D0C View Beta $TAG"
-            echo ""
-            echo "- **Release Channel:** Beta Pre-Release"
-            echo "- **App Version:** \`1.2.${RUN_NUMBER}\` (Version Code: \`${CI_VERSION_CODE}\`)"
-            echo "- **Commit:** \`${SHORT_SHA:0:7}\`"
-            echo ""
-            if [ -n "$INPUT_NOTES" ]; then
-              printf '%s\n' "$INPUT_NOTES"
-            elif [ -f RELEASE_NOTES.md ]; then
-              cat RELEASE_NOTES.md
-            else
-              echo "## New Features"
-              echo "- Offline multi-format document viewer (PDF, Word, Excel, PowerPoint, Text)."
-              echo ""
-              echo "## Improvements"
-              echo "- Compressed ARMv7, ARMv8, and Universal APKs with low-storage lossless caching."
-              echo ""
-              echo "## Fixes"
-              echo "- General stability, inset, and external file opening fixes."
-            fi
-            echo ""
-            echo "## Beta APK Downloads & Checksums"
-            echo ""
-            echo "| APK File | Target ABI | Size | SHA-256 |"
-            echo "| --- | --- | --- | --- |"
-            for apk in beta-apks/*.apk; do
-              fname=$(basename "$apk")
-              fsize=$(du -h "$apk" | cut -f1)
-              fsha=$(sha256sum "$apk" | awk '{print $1}')
-              case "$fname" in
-                *armeabi-v7a*) abi="ARMv7 (32-bit devices)" ;;
-                *arm64-v8a*) abi="ARMv8 (64-bit modern devices, recommended)" ;;
-                *universal*) abi="Universal (All supported ABIs)" ;;
-                *) abi="Android APK" ;;
-              esac
-              echo "| \`$fname\` | $abi | $fsize | \`$fsha\` |"
-            done
-          } > "$BODY_FILE"
+          TAG="$TAG" \
+          RELEASE_TITLE="D0C View Beta $TAG" \
+          CHANNEL="beta" \
+          CHANNEL_LABEL="Beta Pre-Release" \
+          APP_VERSION="1.2.${RUN_NUMBER}" \
+          VERSION_CODE="${CI_VERSION_CODE}" \
+          SHORT_SHA="${SHORT_SHA}" \
+          INPUT_NOTES="${INPUT_NOTES}" \
+          APK_DIR="beta-apks" \
+          OUTPUT_FILE="release-notes-body.md" \
+          DOWNLOADS_HEADING="Beta APK Downloads & Checksums" \
+          SHOW_ABI_TIP="false" \
+          python3 .github/scripts/generate_release_notes.py
 
       - name: Publish GitHub Beta Pre-Release
         if: github.event_name != 'pull_request'
@@ -221,7 +196,7 @@ jobs:
           draft: false
           prerelease: true
           make_latest: false
-          generate_release_notes: true
+          generate_release_notes: false
           files: |
             beta-apks/D0C-View-armeabi-v7a-beta.apk
             beta-apks/D0C-View-arm64-v8a-beta.apk

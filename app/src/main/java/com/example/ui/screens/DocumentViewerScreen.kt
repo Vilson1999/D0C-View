@@ -88,6 +88,8 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
@@ -129,9 +131,9 @@ import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.ZoomableReaderViewport
 import com.example.ui.components.rememberReaderZoomState
 import com.example.ui.theme.JetBrainsMonoFontFamily
-import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
+import com.example.ui.theme.SystemBarContrastPolicy
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
 
@@ -308,11 +310,17 @@ fun DocumentViewerScreen(
 
     BackHandler { onBack() }
 
-    val topBarColor = if (LocalMaterialUiEnabled.current) {
-        MaterialTheme.colorScheme.surfaceContainerLow
-    } else {
-        MaterialTheme.colorScheme.surface
+    val topBarColor = remember(currentDoc.type, isDarkTheme) {
+        val base = currentDoc.type.pillColor
+        if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.10f)
     }
+    val topBarContentColor = if (SystemBarContrastPolicy.shouldUseDarkIcons(topBarColor.luminance())) {
+        MaterialTheme.colorScheme.onBackground
+    } else {
+        Color.White
+    }
+    val pagePillColor = topBarColor.copy(alpha = 0.50f)
+    val pagePillContentColor = MaterialTheme.colorScheme.onBackground
     val statusBarColor by animateColorAsState(
         targetValue = if (isReaderUiVisible) topBarColor else MaterialTheme.colorScheme.background,
         animationSpec = tween(220),
@@ -410,6 +418,8 @@ fun DocumentViewerScreen(
                         mode = pageViewMode,
                         invertInDark = settings.pdfInvertInDarkMode && isDarkTheme,
                         showPagePill = isReaderUiVisible,
+                        pagePillColor = pagePillColor,
+                        pagePillContentColor = pagePillContentColor,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
                         zoomState = readerZoomState,
@@ -421,6 +431,8 @@ fun DocumentViewerScreen(
                         mode = pageViewMode,
                         unitLabel = "Page",
                         showPagePill = isReaderUiVisible,
+                        pagePillColor = pagePillColor,
+                        pagePillContentColor = pagePillContentColor,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
                         enableContainerTap = false,
@@ -466,6 +478,8 @@ fun DocumentViewerScreen(
                         mode = pageViewMode,
                         unitLabel = "Slide",
                         showPagePill = isReaderUiVisible,
+                        pagePillColor = pagePillColor,
+                        pagePillContentColor = pagePillContentColor,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
                         enableContainerTap = false,
@@ -520,7 +534,9 @@ fun DocumentViewerScreen(
                         bottomClearance = navBarReserve,
                         zoomState = readerZoomState,
                         onZoomInteraction = { uiInteractionNonce++ },
-                        onToggleUi = toggleReaderUi
+                        onToggleUi = toggleReaderUi,
+                        pillColor = pagePillColor,
+                        pillContentColor = pagePillContentColor
                     )
                     is ParsedDocument.PlainText -> PlainTextViewerContent(
                         fullText = doc.fullText,
@@ -532,6 +548,8 @@ fun DocumentViewerScreen(
                         useMonospace = settings.textMonospace,
                         fontSizeSp = settings.textFontSizeSp,
                         showPagePill = isReaderUiVisible,
+                        pagePillColor = pagePillColor,
+                        pagePillContentColor = pagePillContentColor,
                         topClearance = topBarReserve,
                         bottomClearance = navBarReserve,
                         zoomState = readerZoomState,
@@ -582,7 +600,7 @@ fun DocumentViewerScreen(
                             Text(
                                 text = currentDoc.name,
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                                color = MaterialTheme.colorScheme.onSurface,
+                                color = topBarContentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 textAlign = TextAlign.Start,
@@ -621,7 +639,7 @@ fun DocumentViewerScreen(
                                 Icon(
                                     imageVector = AppIcons.screenRotation(),
                                     contentDescription = stringResource(R.string.action_rotate_screen),
-                                    tint = MaterialTheme.colorScheme.onSurface,
+                                    tint = topBarContentColor,
                                     modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
                                 )
                             }
@@ -664,7 +682,7 @@ fun DocumentViewerScreen(
                                             AppIcons.viewStream()
                                         },
                                         contentDescription = stringResource(R.string.action_page_view_mode),
-                                        tint = MaterialTheme.colorScheme.onSurface
+                                        tint = topBarContentColor
                                     )
                                 }
                             }
@@ -690,7 +708,7 @@ fun DocumentViewerScreen(
                                     Icon(
                                         imageVector = AppIcons.moreVert(),
                                         contentDescription = stringResource(R.string.action_more_options),
-                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        tint = topBarContentColor,
                                         modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
                                     )
                                 }
@@ -788,6 +806,8 @@ private fun <T> PagedOrContinuousViewer(
     mode: PageViewMode,
     unitLabel: String,
     showPagePill: Boolean,
+    pagePillColor: Color,
+    pagePillContentColor: Color,
     topClearance: androidx.compose.ui.unit.Dp,
     bottomClearance: androidx.compose.ui.unit.Dp,
     enableContainerTap: Boolean,
@@ -877,6 +897,8 @@ private fun <T> PagedOrContinuousViewer(
                 ) {
                     PageIndicatorPill(
                         text = "$unitLabel ${pagerState.currentPage + 1} / $total",
+                        pillColor = pagePillColor,
+                        contentColor = pagePillContentColor,
                         modifier = Modifier.testTag("viewer_page_pill")
                     )
                 }
@@ -934,6 +956,8 @@ private fun <T> PagedOrContinuousViewer(
                 ) {
                     PageIndicatorPill(
                         text = "$unitLabel $current / ${items.size}",
+                        pillColor = pagePillColor,
+                        contentColor = pagePillContentColor,
                         modifier = Modifier.testTag("viewer_page_pill")
                     )
                 }
@@ -948,6 +972,8 @@ private fun PdfViewerContent(
     mode: PageViewMode,
     invertInDark: Boolean,
     showPagePill: Boolean,
+    pagePillColor: Color,
+    pagePillContentColor: Color,
     topClearance: Dp,
     bottomClearance: Dp,
     zoomState: ReaderZoomState,
@@ -966,6 +992,8 @@ private fun PdfViewerContent(
             mode = mode,
             unitLabel = "Page",
             showPagePill = showPagePill,
+            pagePillColor = pagePillColor,
+            pagePillContentColor = pagePillContentColor,
             topClearance = topClearance,
             bottomClearance = bottomClearance,
             enableContainerTap = false,
@@ -1131,6 +1159,8 @@ private fun PlainTextViewerContent(
     useMonospace: Boolean,
     fontSizeSp: Float,
     showPagePill: Boolean,
+    pagePillColor: Color,
+    pagePillContentColor: Color,
     topClearance: Dp,
     bottomClearance: Dp,
     zoomState: ReaderZoomState,
@@ -1165,6 +1195,8 @@ private fun PlainTextViewerContent(
                 mode = PageViewMode.SINGLE_PAGE,
                 unitLabel = "Page",
                 showPagePill = showPagePill,
+                pagePillColor = pagePillColor,
+                pagePillContentColor = pagePillContentColor,
                 topClearance = topClearance,
                 bottomClearance = bottomClearance,
                 enableContainerTap = false,
@@ -1287,6 +1319,8 @@ private fun PlainTextViewerContent(
                 ) {
                     PageIndicatorPill(
                         text = "Page ${currentPage.coerceAtMost(pages.size)} / ${pages.size}",
+                        pillColor = pagePillColor,
+                        contentColor = pagePillContentColor,
                         modifier = Modifier.testTag("viewer_page_pill")
                     )
                 }
@@ -1334,11 +1368,17 @@ private fun PlainTextLine(
 }
 
 @Composable
-private fun PageIndicatorPill(text: String, modifier: Modifier = Modifier) {
+private fun PageIndicatorPill(
+    text: String,
+    pillColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
     Surface(
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.85f),
-        shadowElevation = 4.dp,
+        color = pillColor,
+        border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.75f)),
+        shadowElevation = 0.dp,
         modifier = modifier
     ) {
         AnimatedContent(
@@ -1352,8 +1392,8 @@ private fun PageIndicatorPill(text: String, modifier: Modifier = Modifier) {
         ) { currentText ->
             Text(
                 text = currentText,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.inverseOnSurface,
+                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                color = contentColor,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
             )
         }

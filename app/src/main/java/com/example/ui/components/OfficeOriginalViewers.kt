@@ -730,7 +730,9 @@ fun OfficeOriginalExcelContent(
     bottomClearance: Dp,
     zoomState: ReaderZoomState,
     onZoomInteraction: () -> Unit,
-    onToggleUi: () -> Unit
+    onToggleUi: () -> Unit,
+    pillColor: Color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.50f),
+    pillContentColor: Color = MaterialTheme.colorScheme.onBackground
 ) {
     var selectedSheetIdx by remember(workbook) { mutableIntStateOf(0) }
     val safeIndex = selectedSheetIdx.coerceIn(0, workbook.sheets.lastIndex.coerceAtLeast(0))
@@ -1044,14 +1046,15 @@ fun OfficeOriginalExcelContent(
         ) {
             Surface(
                 shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
-                shadowElevation = 4.dp,
+                color = pillColor,
+                border = BorderStroke(0.8.dp, pillColor.copy(alpha = 0.75f)),
+                shadowElevation = 0.dp,
                 modifier = Modifier.testTag("viewer_page_pill")
             ) {
                 Text(
                     text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
+                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                    color = pillContentColor,
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                 )
             }

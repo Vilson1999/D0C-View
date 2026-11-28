@@ -212,8 +212,8 @@ fun SettingsScreen(
                                 )
                             )
                             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                            .height(29.4.dp)
-                            .padding(horizontal = 4.dp, vertical = 0.dp),
+                            .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 10.dp)
+                            .height(29.4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(
