@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -48,6 +49,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -56,6 +58,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,6 +75,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.BuildConfig
 import com.example.R
 import com.example.model.AppSettings
@@ -196,59 +200,75 @@ fun SettingsScreen(
                 tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                        .displayCutoutPadding()
-                        .padding(horizontal = 4.dp, vertical = 0.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = handleBack,
-                        modifier = Modifier.testTag("settings_back_button")
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                            .displayCutoutPadding()
+                            .height(42.dp)
+                            .padding(horizontal = 4.dp, vertical = 0.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                    val currentFolder = activeFolder
-                    if (currentFolder != null) {
-                        Surface(
-                            shape = RoundedCornerShape(10.dp),
-                            color = currentFolder.color.copy(alpha = 0.16f),
+                        IconButton(
+                            onClick = handleBack,
                             modifier = Modifier
-                                .padding(start = 4.dp)
-                                .size(34.dp)
+                                .size(42.dp)
+                                .testTag("settings_back_button")
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = folderIconFor(currentFolder),
-                                    contentDescription = null,
-                                    tint = currentFolder.color,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "Back"
+                            )
+                        }
+                        val currentFolder = activeFolder
+                        if (currentFolder != null) {
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = currentFolder.color.copy(alpha = 0.16f),
+                                modifier = Modifier
+                                    .padding(start = 4.dp)
+                                    .size(28.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = folderIconFor(currentFolder),
+                                        contentDescription = null,
+                                        tint = currentFolder.color,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
                         }
-                    }
-                    Column(modifier = Modifier.padding(start = if (currentFolder != null) 10.dp else 6.dp)) {
-                        Text(
-                            text = currentFolder?.title ?: "Settings",
-                            style = MaterialTheme.typography.titleLarge,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (currentFolder != null) {
-                                "${currentFolder.itemCount} settings"
-                            } else {
-                                "Select a folder"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Column(
+                            modifier = Modifier.padding(start = if (currentFolder != null) 8.dp else 4.dp),
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Text(
+                                text = currentFolder?.title ?: "Settings",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontSize = 17.sp,
+                                    lineHeight = 20.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = if (currentFolder != null) {
+                                    "${currentFolder.itemCount} settings"
+                                } else {
+                                    "Select a folder"
+                                },
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
+                                    lineHeight = 13.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
             }

@@ -65,11 +65,13 @@ import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -570,124 +572,131 @@ fun DocumentViewerScreen(
                             detectTapGestures { uiInteractionNonce++ }
                         }
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .displayCutoutPadding()
-                            .height(43.dp)
-                            .padding(start = 8.dp, end = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = currentDoc.name,
-                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Start,
+                    CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+                        Row(
                             modifier = Modifier
-                                .weight(1f)
-                                .testTag("viewer_doc_title")
-                        )
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        val rotateRotation by animateFloatAsState(
-                            targetValue = if (isLandscape) 90f else 0f,
-                            animationSpec = spring(
-                                dampingRatio = 0.78f,
-                                stiffness = Spring.StiffnessMedium
-                            ),
-                            label = "viewerRotateIconAngle"
-                        )
-                        IconButton(
-                            onClick = {
-                                val nextScreenOrientation = if (isLandscape) {
-                                    DocumentViewOrientation.PORTRAIT
-                                } else {
-                                    DocumentViewOrientation.LANDSCAPE
-                                }
-                                onSaveReaderScreenOrientation(nextScreenOrientation)
-                                if (activity != null) {
-                                    activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
-                                }
-                                uiInteractionNonce++
-                            },
-                            modifier = Modifier.testTag("viewer_rotate_button")
+                                .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .displayCutoutPadding()
+                                .height(42.dp)
+                                .padding(start = 8.dp, end = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = AppIcons.ScreenRotation,
-                                contentDescription = stringResource(R.string.action_rotate_screen),
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
+                            Text(
+                                text = currentDoc.name,
+                                style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                textAlign = TextAlign.Start,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("viewer_doc_title")
                             )
-                        }
 
-                        IconButton(
-                            onClick = {
-                                val nextMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
-                                    PageViewMode.SINGLE_PAGE
-                                } else {
-                                    PageViewMode.CONTINUOUS
-                                }
-                                pageViewMode = nextMode
-                                onSavePageViewMode(currentDoc.type, nextMode)
-                                uiInteractionNonce++
-                            },
-                            modifier = Modifier.testTag("viewer_page_mode_button")
-                        ) {
-                            AnimatedContent(
-                                targetState = pageViewMode,
-                                transitionSpec = {
-                                    (scaleIn(
-                                        initialScale = 0.7f,
-                                        animationSpec = spring(
-                                            dampingRatio = 0.7f,
-                                            stiffness = Spring.StiffnessMedium
-                                        )
-                                    ) + fadeIn(tween(180))).togetherWith(
-                                        scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
-                                            fadeOut(tween(120))
-                                    )
-                                },
-                                label = "pageModeIconSwitch"
-                            ) { currentMode ->
-                                Icon(
-                                    imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
-                                        AppIcons.ViewCarousel
-                                    } else {
-                                        AppIcons.ViewStream
-                                    },
-                                    contentDescription = stringResource(R.string.action_page_view_mode),
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                        }
+                            Spacer(modifier = Modifier.width(4.dp))
 
-                        Box {
-                            val menuIconRotation by animateFloatAsState(
-                                targetValue = if (menuExpanded) 90f else 0f,
+                            val rotateRotation by animateFloatAsState(
+                                targetValue = if (isLandscape) 90f else 0f,
                                 animationSpec = spring(
-                                    dampingRatio = 0.75f,
+                                    dampingRatio = 0.78f,
                                     stiffness = Spring.StiffnessMedium
                                 ),
-                                label = "viewerMenuButtonRotation"
+                                label = "viewerRotateIconAngle"
                             )
                             IconButton(
                                 onClick = {
-                                    menuExpanded = true
+                                    val nextScreenOrientation = if (isLandscape) {
+                                        DocumentViewOrientation.PORTRAIT
+                                    } else {
+                                        DocumentViewOrientation.LANDSCAPE
+                                    }
+                                    onSaveReaderScreenOrientation(nextScreenOrientation)
+                                    if (activity != null) {
+                                        activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
+                                    }
                                     uiInteractionNonce++
                                 },
-                                modifier = Modifier.testTag("viewer_more_button")
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .testTag("viewer_rotate_button")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Rounded.MoreVert,
-                                    contentDescription = stringResource(R.string.action_more_options),
+                                    imageVector = AppIcons.ScreenRotation,
+                                    contentDescription = stringResource(R.string.action_rotate_screen),
                                     tint = MaterialTheme.colorScheme.onSurface,
-                                    modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
+                                    modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
                                 )
                             }
+
+                            IconButton(
+                                onClick = {
+                                    val nextMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
+                                        PageViewMode.SINGLE_PAGE
+                                    } else {
+                                        PageViewMode.CONTINUOUS
+                                    }
+                                    pageViewMode = nextMode
+                                    onSavePageViewMode(currentDoc.type, nextMode)
+                                    uiInteractionNonce++
+                                },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .testTag("viewer_page_mode_button")
+                            ) {
+                                AnimatedContent(
+                                    targetState = pageViewMode,
+                                    transitionSpec = {
+                                        (scaleIn(
+                                            initialScale = 0.7f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.7f,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        ) + fadeIn(tween(180))).togetherWith(
+                                            scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
+                                                fadeOut(tween(120))
+                                        )
+                                    },
+                                    label = "pageModeIconSwitch"
+                                ) { currentMode ->
+                                    Icon(
+                                        imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
+                                            AppIcons.ViewCarousel
+                                        } else {
+                                            AppIcons.ViewStream
+                                        },
+                                        contentDescription = stringResource(R.string.action_page_view_mode),
+                                        tint = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Box {
+                                val menuIconRotation by animateFloatAsState(
+                                    targetValue = if (menuExpanded) 90f else 0f,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.75f,
+                                        stiffness = Spring.StiffnessMedium
+                                    ),
+                                    label = "viewerMenuButtonRotation"
+                                )
+                                IconButton(
+                                    onClick = {
+                                        menuExpanded = true
+                                        uiInteractionNonce++
+                                    },
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .testTag("viewer_more_button")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.MoreVert,
+                                        contentDescription = stringResource(R.string.action_more_options),
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
+                                    )
+                                }
 
                             val activeDocIsLandscape = when (documentOrientation) {
                                 DocumentViewOrientation.PORTRAIT -> false
@@ -729,6 +738,7 @@ fun DocumentViewerScreen(
                             )
                         }
                     }
+                }
                 }
             }
             NavigationBarSideBackdrop(color = bottomBarColor)

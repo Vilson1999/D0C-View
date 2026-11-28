@@ -93,7 +93,9 @@ fun CategoryPillsRow(
 
         LazyRow(
             state = rowState,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(20.dp),
             contentPadding = PaddingValues(horizontal = 10.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
@@ -155,10 +157,10 @@ private fun CategoryPill(
         label = "pillBorder"
     )
 
-    // Outer 48dp touch target box around compact sleek pill
+    // Compact 20dp row pill
     Box(
         modifier = Modifier
-            .height(48.dp)
+            .height(20.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -175,30 +177,33 @@ private fun CategoryPill(
         Surface(
             shape = CircleShape,
             color = containerColor,
-            border = BorderStroke(1.dp, borderColor),
+            border = BorderStroke(0.75.dp, borderColor),
             shadowElevation = elevation
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .height(20.dp)
+                    .padding(horizontal = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
-                    style = MaterialTheme.typography.labelMedium.copy(
+                    style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 12.sp
+                        fontSize = 11.sp,
+                        lineHeight = 12.sp
                     )
                 )
                 if (count > 0) {
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
@@ -215,10 +220,11 @@ private fun CategoryPill(
                                 text = targetCount.toString(),
                                 color = contentColor,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 10.sp,
+                                    fontSize = 9.sp,
+                                    lineHeight = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 0.dp)
                             )
                         }
                     }

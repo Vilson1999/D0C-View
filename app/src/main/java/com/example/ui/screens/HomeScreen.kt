@@ -65,6 +65,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalMinimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -74,6 +75,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -829,6 +831,7 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(42.dp)
                     .padding(horizontal = 8.dp, vertical = 0.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
@@ -842,81 +845,92 @@ private fun HomeTopBar(
                 )
             }
         } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(start = 10.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                DocViewerAppIcon(
-                    size = 30.dp,
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+                Row(
                     modifier = Modifier
-                        .padding(end = 6.dp)
-                        .testTag("topbar_app_icon")
-                )
-                Spacer(modifier = Modifier.weight(1f))
-
-                // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
-                IconButton(
-                    onClick = onCycleThemeMode,
-                    modifier = Modifier.testTag("topbar_theme_toggle")
+                        .fillMaxWidth()
+                        .height(42.dp)
+                        .padding(start = 10.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    AnimatedContent(
-                        targetState = themeMode,
-                        transitionSpec = {
-                            (scaleIn(
-                                initialScale = 0.65f,
-                                animationSpec = spring(
-                                    dampingRatio = 0.65f,
-                                    stiffness = Spring.StiffnessMedium
+                    DocViewerAppIcon(
+                        size = 28.dp,
+                        modifier = Modifier
+                            .padding(end = 6.dp)
+                            .testTag("topbar_app_icon")
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
+                    IconButton(
+                        onClick = onCycleThemeMode,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("topbar_theme_toggle")
+                    ) {
+                        AnimatedContent(
+                            targetState = themeMode,
+                            transitionSpec = {
+                                (scaleIn(
+                                    initialScale = 0.65f,
+                                    animationSpec = spring(
+                                        dampingRatio = 0.65f,
+                                        stiffness = Spring.StiffnessMedium
+                                    )
+                                ) + fadeIn(tween(180))).togetherWith(
+                                    scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
+                                        fadeOut(tween(120))
                                 )
-                            ) + fadeIn(tween(180))).togetherWith(
-                                scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
-                                    fadeOut(tween(120))
-                            )
-                        },
-                        label = "themeIconSwitch"
-                    ) { mode ->
-                        Icon(
-                            imageVector = when (mode) {
-                                ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
-                                ThemeMode.DARK -> AppIcons.DarkMode
-                                ThemeMode.LIGHT -> AppIcons.LightMode
                             },
-                            contentDescription = stringResource(R.string.action_toggle_theme),
+                            label = "themeIconSwitch"
+                        ) { mode ->
+                            Icon(
+                                imageVector = when (mode) {
+                                    ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
+                                    ThemeMode.DARK -> AppIcons.DarkMode
+                                    ThemeMode.LIGHT -> AppIcons.LightMode
+                                },
+                                contentDescription = stringResource(R.string.action_toggle_theme),
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                    IconButton(
+                        onClick = onOpenSort,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("topbar_sort_button")
+                    ) {
+                        Icon(
+                            imageVector = AppIcons.Sort,
+                            contentDescription = stringResource(R.string.action_sort),
                             tint = MaterialTheme.colorScheme.onBackground
                         )
                     }
-                }
-                IconButton(
-                    onClick = onOpenSort,
-                    modifier = Modifier.testTag("topbar_sort_button")
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Sort,
-                        contentDescription = stringResource(R.string.action_sort),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                IconButton(
-                    onClick = onOpenSearch,
-                    modifier = Modifier.testTag("topbar_search_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Search,
-                        contentDescription = stringResource(R.string.action_search),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
-                }
-                IconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier.testTag("topbar_settings_button")
-                ) {
-                    Icon(
-                        imageVector = Icons.Rounded.Settings,
-                        contentDescription = stringResource(R.string.action_settings),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
+                    IconButton(
+                        onClick = onOpenSearch,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("topbar_search_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Search,
+                            contentDescription = stringResource(R.string.action_search),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    IconButton(
+                        onClick = onOpenSettings,
+                        modifier = Modifier
+                            .size(42.dp)
+                            .testTag("topbar_settings_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Settings,
+                            contentDescription = stringResource(R.string.action_settings),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 }
             }
         }
@@ -934,36 +948,43 @@ private fun SelectionTopBar(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp, vertical = 0.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(
-                onClick = onClear,
-                modifier = Modifier.testTag("selection_clear_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Close,
-                    contentDescription = stringResource(R.string.action_clear_selection)
-                )
-            }
-            Text(
-                text = "$selectedCount selected",
-                style = MaterialTheme.typography.titleMedium,
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
+            Row(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 6.dp)
-            )
-            IconButton(
-                onClick = onSelectAll,
-                modifier = Modifier.testTag("selection_select_all_button")
+                    .fillMaxWidth()
+                    .height(42.dp)
+                    .padding(horizontal = 2.dp, vertical = 0.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = AppIcons.SelectAll,
-                    contentDescription = stringResource(R.string.action_select_all)
+                IconButton(
+                    onClick = onClear,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .testTag("selection_clear_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = stringResource(R.string.action_clear_selection)
+                    )
+                }
+                Text(
+                    text = "$selectedCount selected",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 6.dp)
                 )
+                IconButton(
+                    onClick = onSelectAll,
+                    modifier = Modifier
+                        .size(42.dp)
+                        .testTag("selection_select_all_button")
+                ) {
+                    Icon(
+                        imageVector = AppIcons.SelectAll,
+                        contentDescription = stringResource(R.string.action_select_all)
+                    )
+                }
             }
         }
     }
