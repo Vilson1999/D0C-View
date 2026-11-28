@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -95,7 +96,7 @@ fun CategoryPillsRow(
         LazyRow(
             state = rowState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 0.dp, bottom = 0.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 7.dp, bottom = 7.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -185,13 +186,14 @@ private fun CategoryPill(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(AppIcons.scaledSize(14.72.dp))
+                    modifier = Modifier.size(AppIcons.scaledSize(16.192.dp))
                 )
                 Spacer(modifier = Modifier.width(4.8.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
                     style = MaterialTheme.typography.labelLarge.copy(
+                        fontFamily = FontFamily.SansSerif,
                         fontWeight = FontWeight.Bold,
                         fontSize = 10.4.sp,
                         lineHeight = 14.4.sp

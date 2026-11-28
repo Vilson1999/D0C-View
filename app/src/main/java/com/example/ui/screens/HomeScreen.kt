@@ -869,7 +869,7 @@ private fun HomeTopBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 0.dp),
+                        .padding(start = 16.dp, end = 4.dp, top = 5.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     DocViewerAppIcon(
@@ -1028,7 +1028,7 @@ private fun SelectionBottomToolbar(
                         )
                     )
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                    .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 0.dp),
+                    .padding(start = 8.dp, end = 8.dp, top = 1.dp, bottom = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1098,7 +1098,7 @@ private fun BottomToolbarAction(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(AppIcons.scaledSize(16.dp))
+            modifier = Modifier.size(AppIcons.scaledSize(19.2.dp))
         )
         Text(
             text = label,
