@@ -184,14 +184,14 @@ private fun CategoryPill(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(12.8.dp)
+                    modifier = Modifier.size(14.72.dp)
                 )
                 Spacer(modifier = Modifier.width(4.8.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
                     style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 10.4.sp,
                         lineHeight = 14.4.sp
                     )

@@ -678,7 +678,7 @@ fun HomeScreen(
                                         start = 16.dp,
                                         end = 16.dp,
                                         top = 0.dp,
-                                        bottom = if (uiState.isSelectionMode) 20.dp else 28.dp
+                                        bottom = 10.dp
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
@@ -1001,8 +1001,8 @@ private fun SelectionBottomToolbar(
                     )
                 )
                 .displayCutoutPadding()
-                .padding(horizontal = 8.dp, vertical = 2.dp),
-            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
+                .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 0.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomToolbarAction(
