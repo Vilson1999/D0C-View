@@ -393,11 +393,12 @@ def sha256_file(path: Path) -> str:
 
 
 def abi_description(filename: str) -> str:
-    if "armeabi-v7a" in filename:
+    low = filename.lower()
+    if "armeabi-v7a" in low or "armv7" in low:
         return "ARMv7 (32-bit devices)"
-    if "arm64-v8a" in filename:
+    if "arm64-v8a" in low or "armv8" in low:
         return "ARMv8 (64-bit modern devices, recommended)"
-    if "universal" in filename:
+    if "universal" in low:
         return "Universal (ARMv7 + ARMv8)"
     return "Android APK"
 
@@ -459,7 +460,7 @@ def main() -> int:
             lines.extend(
                 [
                     "",
-                    "> **Which APK should I install?** Choose **arm64-v8a** for most modern Android phones, **armeabi-v7a** for older 32-bit devices, or **universal** if unsure.",
+                    "> **Which APK should I install?** Choose **Armv8** for most modern Android phones, **Armv7** for older 32-bit devices, or **Universal** if unsure.",
                 ]
             )
 

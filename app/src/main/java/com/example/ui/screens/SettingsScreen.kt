@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
@@ -67,6 +68,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -86,14 +89,17 @@ import com.example.model.ThemeMode
 import com.example.model.formatFileSize
 import com.example.ui.components.AppIcons
 import com.example.ui.components.DocViewerAppIcon
+import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.docTypeIcon
 import com.example.ui.theme.DocPillColor
 import com.example.ui.theme.ExcelPillColor
+import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.PdfPillColor
 import com.example.ui.theme.PptPillColor
 import com.example.ui.theme.SyncSystemBarsAppearance
+import com.example.ui.theme.SystemBarContrastPolicy
 import com.example.ui.theme.TextPillColor
 import kotlin.math.roundToInt
 
@@ -109,7 +115,7 @@ private enum class SettingsFolderId(
     PPT("PPT", "folder_ppt", PptPillColor, 4),
     TEXT("TEXT", "folder_text", TextPillColor, 7),
     DOC_VISIBILITY("Home Screen Documents", "folder_doc_visibility", PdfPillColor, DocType.entries.size),
-    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 4),
+    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 6),
     STORAGE("Storage & Scanning", "folder_storage", PptPillColor, 5),
     CACHE("Cache & Optimization", "folder_compression", TextPillColor, 2)
 }
@@ -117,6 +123,7 @@ private enum class SettingsFolderId(
 @Composable
 fun SettingsScreen(
     settings: AppSettings,
+    isDarkTheme: Boolean,
     hasReadPermission: Boolean,
     hasWritePermission: Boolean,
     hasFullStorageAccess: Boolean,
@@ -126,6 +133,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onSetUseMaterialUi: (Boolean) -> Unit,
     onSetUseMaterialIcons: (Boolean) -> Unit,
+    onSetUsePillTopBar: (Boolean) -> Unit,
+    onSetUseColorfulTopBar: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -171,11 +180,44 @@ fun SettingsScreen(
 ) {
     var activeFolder by rememberSaveable { mutableStateOf<SettingsFolderId?>(null) }
 
-    val topBarColor = MaterialTheme.colorScheme.background
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
+    val usePillTopBar = settings.usePillTopBar
+    val useColorfulTopBar = settings.useColorfulTopBar
+    val topBarAccentColor = activeFolder?.color ?: MaterialTheme.colorScheme.primary
+    val targetTopBarColor = if (useColorfulTopBar) {
+        val base = activeFolder?.color ?: MaterialTheme.colorScheme.primary
+        if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+    } else {
+        if (usePillTopBar) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background
+    }
+    val topBarColor by animateColorAsState(
+        targetValue = targetTopBarColor,
+        animationSpec = tween(220),
+        label = "settingsTopBarColor"
+    )
+    val topBarContentColor by animateColorAsState(
+        targetValue = if (useColorfulTopBar) {
+            if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                Color.White
+            }
+        } else {
+            MaterialTheme.colorScheme.onBackground
+        },
+        animationSpec = tween(220),
+        label = "settingsTopBarContentColor"
+    )
+    val subtitleColor = if (useColorfulTopBar) {
+        topBarContentColor.copy(alpha = 0.78f)
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    val statusBarColor = if (usePillTopBar) MaterialTheme.colorScheme.background else topBarColor
     val bottomBarColor = MaterialTheme.colorScheme.background
     if (syncSystemBars) {
         SyncSystemBarsAppearance(
-            statusBarColor = topBarColor,
+            statusBarColor = statusBarColor,
             navigationBarColor = bottomBarColor
         )
     }
@@ -196,53 +238,187 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Surface(
-                color = topBarColor,
+                color = if (usePillTopBar) MaterialTheme.colorScheme.background else topBarColor,
                 tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.4.dp) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .windowInsetsPadding(
-                                WindowInsets.statusBars.union(
-                                    WindowInsets.displayCutout.only(
-                                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
-                                    )
-                                )
+                val insetsModifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(
+                        WindowInsets.statusBars.union(
+                            WindowInsets.displayCutout.only(
+                                WindowInsetsSides.Top + WindowInsetsSides.Horizontal
                             )
-                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                            .padding(start = 4.dp, end = 4.dp, top = 2.dp, bottom = 10.dp)
-                            .height(29.4.dp),
+                        )
+                    )
+                    .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+
+                if (usePillTopBar) {
+                    Box(
+                        modifier = insetsModifier
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = topBarColor,
+                            contentColor = topBarContentColor,
+                            border = if (!useColorfulTopBar) {
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            } else {
+                                null
+                            },
+                            shadowElevation = 4.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_topbar_pill")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .padding(start = 8.dp, end = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TopBarActionButton(
+                                    onClick = handleBack,
+                                    accentColor = topBarAccentColor,
+                                    plainTint = topBarContentColor,
+                                    buttonSize = 36.dp,
+                                    cornerRadius = 10.dp,
+                                    modifier = Modifier.testTag("settings_back_button")
+                                ) { iconTint ->
+                                    Icon(
+                                        imageVector = AppIcons.arrowBack(),
+                                        contentDescription = "Back",
+                                        tint = iconTint,
+                                        modifier = Modifier.size(AppIcons.scaledSize(22.dp))
+                                    )
+                                }
+                                val currentFolder = activeFolder
+                                if (currentFolder != null) {
+                                    val badgeColors = AppIcons.styledColors(currentFolder.color)
+                                    Surface(
+                                        shape = if (materialIconsEnabled) RoundedCornerShape(8.dp) else CircleShape,
+                                        color = if (materialIconsEnabled) {
+                                            badgeColors.background
+                                        } else if (useColorfulTopBar) {
+                                            topBarContentColor.copy(alpha = 0.16f)
+                                        } else {
+                                            currentFolder.color.copy(alpha = 0.16f)
+                                        },
+                                        border = if (materialIconsEnabled) {
+                                            BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
+                                        } else {
+                                            null
+                                        },
+                                        modifier = Modifier
+                                            .padding(start = 8.dp)
+                                            .size(28.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Icon(
+                                                imageVector = folderIconFor(currentFolder),
+                                                contentDescription = null,
+                                                tint = if (materialIconsEnabled) {
+                                                    badgeColors.icon
+                                                } else if (useColorfulTopBar) {
+                                                    topBarContentColor
+                                                } else {
+                                                    currentFolder.color
+                                                },
+                                                modifier = Modifier.size(AppIcons.scaledSize(15.dp))
+                                            )
+                                        }
+                                    }
+                                }
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(start = 10.dp, end = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = currentFolder?.title ?: "Settings",
+                                        style = MaterialTheme.typography.titleLarge.copy(
+                                            fontSize = 20.sp,
+                                            lineHeight = 24.sp
+                                        ),
+                                        color = topBarContentColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = if (currentFolder != null) {
+                                            "${currentFolder.itemCount} settings"
+                                        } else {
+                                            "Select a folder"
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = subtitleColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Row(
+                        modifier = insetsModifier
+                            .height(64.dp)
+                            .padding(horizontal = 8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButton(
+                        TopBarActionButton(
                             onClick = handleBack,
-                            modifier = Modifier
-                                .size(29.4.dp)
-                                .testTag("settings_back_button")
-                        ) {
+                            accentColor = topBarAccentColor,
+                            plainTint = topBarContentColor,
+                            buttonSize = if (materialIconsEnabled) 38.dp else 44.dp,
+                            cornerRadius = 10.dp,
+                            modifier = Modifier.testTag("settings_back_button")
+                        ) { iconTint ->
                             Icon(
                                 imageVector = AppIcons.arrowBack(),
                                 contentDescription = "Back",
-                                modifier = Modifier.size(AppIcons.scaledSize(22.dp))
+                                tint = iconTint,
+                                modifier = Modifier.size(AppIcons.scaledSize(24.dp))
                             )
                         }
                         val currentFolder = activeFolder
                         if (currentFolder != null) {
+                            val badgeColors = AppIcons.styledColors(currentFolder.color)
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = currentFolder.color.copy(alpha = 0.16f),
+                                shape = RoundedCornerShape(if (materialIconsEnabled) 8.dp else 7.dp),
+                                color = if (materialIconsEnabled) {
+                                    badgeColors.background
+                                } else if (useColorfulTopBar) {
+                                    topBarContentColor.copy(alpha = 0.16f)
+                                } else {
+                                    currentFolder.color.copy(alpha = 0.16f)
+                                },
+                                border = if (materialIconsEnabled) {
+                                    BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
+                                } else {
+                                    null
+                                },
                                 modifier = Modifier
-                                    .padding(start = 4.dp)
-                                    .size(22.dp)
+                                    .padding(start = 8.dp)
+                                    .size(28.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = folderIconFor(currentFolder),
                                         contentDescription = null,
-                                        tint = currentFolder.color,
-                                        modifier = Modifier.size(AppIcons.scaledSize(13.dp))
+                                        tint = if (materialIconsEnabled) {
+                                            badgeColors.icon
+                                        } else if (useColorfulTopBar) {
+                                            topBarContentColor
+                                        } else {
+                                            currentFolder.color
+                                        },
+                                        modifier = Modifier.size(AppIcons.scaledSize(15.dp))
                                     )
                                 }
                             }
@@ -250,16 +426,13 @@ fun SettingsScreen(
                         Row(
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(start = if (currentFolder != null) 8.dp else 4.dp, end = 6.dp),
+                                .padding(start = 10.dp, end = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = currentFolder?.title ?: "Settings",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontSize = 26.46.sp,
-                                    lineHeight = 26.46.sp,
-                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
-                                ),
+                                style = MaterialTheme.typography.titleLarge,
+                                color = topBarContentColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
@@ -271,12 +444,8 @@ fun SettingsScreen(
                                 } else {
                                     "Select a folder"
                                 },
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 11.sp,
-                                    lineHeight = 13.sp,
-                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
-                                ),
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.labelMedium,
+                                color = subtitleColor,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
@@ -346,6 +515,8 @@ fun SettingsScreen(
                     cacheSizeBytes = cacheSizeBytes,
                     onSetUseMaterialUi = onSetUseMaterialUi,
                     onSetUseMaterialIcons = onSetUseMaterialIcons,
+                    onSetUsePillTopBar = onSetUsePillTopBar,
+                    onSetUseColorfulTopBar = onSetUseColorfulTopBar,
                     onSetThemeMode = onSetThemeMode,
                     onSetDocTypeVisible = onSetDocTypeVisible,
                     onSetScanDotFolders = onSetScanDotFolders,
@@ -414,9 +585,9 @@ private fun SettingsFoldersOverview(
     val writeStatusLabel = if (hasWritePermission) "Write: OK" else "Write: Off"
     val appearanceSummary = buildString {
         append(settings.themeMode.label.removeSuffix(" Mode"))
+        append(if (settings.usePillTopBar) " • Pill Topbar" else " • Flat Topbar")
+        if (settings.useColorfulTopBar) append(" • Colourfull")
         append(if (settings.useMaterialUi) " • Material UI" else " • Classic UI")
-        append(if (settings.useMaterialIcons) " • Material Icons" else " • Classic Icons")
-        if (settings.autoHideReaderUi) append(" • Auto-hide")
     }
 
     LazyColumn(
@@ -657,6 +828,8 @@ private fun SettingsFolderDetailScreen(
     cacheSizeBytes: Long,
     onSetUseMaterialUi: (Boolean) -> Unit,
     onSetUseMaterialIcons: (Boolean) -> Unit,
+    onSetUsePillTopBar: (Boolean) -> Unit,
+    onSetUseColorfulTopBar: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -974,6 +1147,22 @@ private fun SettingsFolderDetailScreen(
                                 checked = settings.useMaterialIcons,
                                 onCheckedChange = onSetUseMaterialIcons,
                                 modifier = Modifier.testTag("toggle_material_icons")
+                            )
+                            HorizontalDivider()
+                            SettingsSwitchRow(
+                                title = "Pill topbar",
+                                subtitle = "Use pill-shaped topbar across home, reader screen, settings, and selection menu",
+                                checked = settings.usePillTopBar,
+                                onCheckedChange = onSetUsePillTopBar,
+                                modifier = Modifier.testTag("toggle_pill_topbar")
+                            )
+                            HorizontalDivider()
+                            SettingsSwitchRow(
+                                title = "Colourfull Topbar",
+                                subtitle = "Use dynamic color on topbar, or turn off for default dark/light color",
+                                checked = settings.useColorfulTopBar,
+                                onCheckedChange = onSetUseColorfulTopBar,
+                                modifier = Modifier.testTag("toggle_colorful_topbar")
                             )
                             HorizontalDivider()
                             OptionChipsFlowRow(

@@ -22,6 +22,8 @@ data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val useMaterialUi: Boolean = true,
     val useMaterialIcons: Boolean = true,
+    val usePillTopBar: Boolean = true,
+    val useColorfulTopBar: Boolean = true,
     val scanDotFolders: Boolean = true,
     val showDotFolderBadge: Boolean = true,
     val defaultPageViewMode: PageViewMode = PageViewMode.SINGLE_PAGE,

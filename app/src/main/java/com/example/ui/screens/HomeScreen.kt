@@ -54,6 +54,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -126,7 +127,9 @@ import com.example.ui.components.EmptyDocumentsIllustration
 import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.SortOptionsSheet
 import com.example.ui.components.StoragePermissionDialog
+import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.TopBarSearchField
+import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
@@ -201,16 +204,30 @@ fun HomeScreen(
     var searchBarBounds by remember { mutableStateOf<Rect?>(null) }
 
     val materialUi = LocalMaterialUiEnabled.current
-    val targetTopBarColor = when {
-        uiState.isSelectionMode -> {
-            val base = MaterialTheme.colorScheme.primaryContainer
-            if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+    val usePillTopBar = uiState.settings.usePillTopBar
+    val useColorfulTopBar = uiState.settings.useColorfulTopBar
+    val homeAccentColor = if (visibleTypes.isNotEmpty()) {
+        uiState.selectedCategory.pillColor
+    } else {
+        MaterialTheme.colorScheme.primary
+    }
+    val targetTopBarColor = if (useColorfulTopBar) {
+        when {
+            uiState.isSelectionMode -> {
+                val base = MaterialTheme.colorScheme.primaryContainer
+                if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+            }
+            visibleTypes.isNotEmpty() -> {
+                val base = uiState.selectedCategory.pillColor
+                if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+            }
+            else -> {
+                val base = MaterialTheme.colorScheme.primary
+                if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+            }
         }
-        visibleTypes.isNotEmpty() -> {
-            val base = uiState.selectedCategory.pillColor
-            if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
-        }
-        else -> MaterialTheme.colorScheme.background
+    } else {
+        if (usePillTopBar) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background
     }
     val topBarColor by animateColorAsState(
         targetValue = targetTopBarColor,
@@ -218,18 +235,30 @@ fun HomeScreen(
         label = "homeTopBarColor"
     )
     val topBarContentColor by animateColorAsState(
-        targetValue = when {
-            uiState.isSelectionMode -> MaterialTheme.colorScheme.onPrimaryContainer
-            visibleTypes.isNotEmpty() -> if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
-                MaterialTheme.colorScheme.onBackground
-            } else {
-                Color.White
+        targetValue = if (useColorfulTopBar) {
+            when {
+                uiState.isSelectionMode -> {
+                    if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
+                        MaterialTheme.colorScheme.onPrimaryContainer
+                    } else {
+                        Color.White
+                    }
+                }
+                else -> {
+                    if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
+                        MaterialTheme.colorScheme.onBackground
+                    } else {
+                        Color.White
+                    }
+                }
             }
-            else -> MaterialTheme.colorScheme.onBackground
+        } else {
+            MaterialTheme.colorScheme.onBackground
         },
         animationSpec = tween(220),
         label = "homeTopBarContentColor"
     )
+    val statusBarColor = if (usePillTopBar) MaterialTheme.colorScheme.background else topBarColor
     val selectionBottomBarColor = if (materialUi) {
         MaterialTheme.colorScheme.surfaceContainerHigh
     } else {
@@ -246,7 +275,7 @@ fun HomeScreen(
     )
     if (syncSystemBars && !suppressPermissionDialog) {
         SyncSystemBarsAppearance(
-            statusBarColor = topBarColor,
+            statusBarColor = statusBarColor,
             navigationBarColor = bottomBarColor
         )
     }
@@ -438,7 +467,7 @@ fun HomeScreen(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             Surface(
-                color = topBarColor,
+                color = if (usePillTopBar) MaterialTheme.colorScheme.background else topBarColor,
                 tonalElevation = 0.dp,
                 shadowElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
@@ -473,6 +502,11 @@ fun HomeScreen(
                         if (selectionMode) {
                             SelectionTopBar(
                                 selectedCount = uiState.selectedDocIds.size,
+                                usePillTopBar = usePillTopBar,
+                                pillColor = topBarColor,
+                                accentColor = MaterialTheme.colorScheme.primary,
+                                contentColor = topBarContentColor,
+                                showPillBorder = !useColorfulTopBar,
                                 onClear = onClearSelection,
                                 onSelectAll = onSelectAll
                             )
@@ -480,7 +514,11 @@ fun HomeScreen(
                             HomeTopBar(
                                 themeMode = uiState.settings.themeMode,
                                 selectedCategoryLabel = if (visibleTypes.isNotEmpty()) uiState.selectedCategory.label else "",
+                                usePillTopBar = usePillTopBar,
+                                pillColor = topBarColor,
+                                accentColor = homeAccentColor,
                                 iconTint = topBarContentColor,
+                                showPillBorder = !useColorfulTopBar,
                                 isSearchActive = uiState.isSearchActive,
                                 searchQuery = uiState.searchQuery,
                                 onSearchQueryChange = onSearchQueryChange,
@@ -822,7 +860,11 @@ fun HomeScreen(
 private fun HomeTopBar(
     themeMode: ThemeMode,
     selectedCategoryLabel: String,
+    usePillTopBar: Boolean,
+    pillColor: Color,
+    accentColor: Color,
     iconTint: Color,
+    showPillBorder: Boolean,
     isSearchActive: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
@@ -833,6 +875,7 @@ private fun HomeTopBar(
     onSearchBarBoundsChange: (Rect) -> Unit,
     onOpenSettings: () -> Unit
 ) {
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
     AnimatedContent(
         targetState = isSearchActive,
         transitionSpec = {
@@ -871,119 +914,178 @@ private fun HomeTopBar(
                     onQueryChange = onSearchQueryChange,
                     onClose = onCloseSearch,
                     inputTestTag = "search_input",
-                    closeTestTag = "topbar_search_close_button"
+                    closeTestTag = "topbar_search_close_button",
+                    shape = if (usePillTopBar) CircleShape else RoundedCornerShape(14.dp),
+                    accentColor = accentColor
                 )
             }
         } else {
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 34.dp) {
-                Row(
+            val rowContent: @Composable (Modifier) -> Unit = { rowModifier ->
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 34.dp) {
+                    Row(
+                        modifier = rowModifier,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        DocViewerAppIcon(
+                            size = 32.dp,
+                            modifier = Modifier
+                                .padding(end = 8.dp)
+                                .testTag("topbar_app_icon")
+                        )
+                        if (selectedCategoryLabel.isNotEmpty()) {
+                            AnimatedContent(
+                                targetState = selectedCategoryLabel,
+                                transitionSpec = {
+                                    fadeIn(tween(180)).togetherWith(fadeOut(tween(140)))
+                                },
+                                label = "topbarCategoryLabel"
+                            ) { label ->
+                                Text(
+                                    text = label,
+                                    style = MaterialTheme.typography.titleLarge.copy(
+                                        fontFamily = FontFamily.SansSerif,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 22.sp,
+                                        lineHeight = 24.sp,
+                                        platformStyle = PlatformTextStyle(includeFontPadding = false)
+                                    ),
+                                    color = iconTint,
+                                    maxLines = 1,
+                                    modifier = Modifier.testTag("topbar_category_label")
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.weight(1f))
+
+                        // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(if (materialIconsEnabled) 5.dp else 0.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            TopBarActionButton(
+                                onClick = onCycleThemeMode,
+                                accentColor = accentColor,
+                                plainTint = iconTint,
+                                buttonSize = 34.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("topbar_theme_toggle")
+                            ) { tint ->
+                                AnimatedContent(
+                                    targetState = themeMode,
+                                    transitionSpec = {
+                                        (scaleIn(
+                                            initialScale = 0.65f,
+                                            animationSpec = spring(
+                                                dampingRatio = 0.65f,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        ) + fadeIn(tween(180))).togetherWith(
+                                            scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
+                                                fadeOut(tween(120))
+                                        )
+                                    },
+                                    label = "themeIconSwitch"
+                                ) { mode ->
+                                    Icon(
+                                        imageVector = when (mode) {
+                                            ThemeMode.SYSTEM -> AppIcons.brightnessAuto()
+                                            ThemeMode.DARK -> AppIcons.darkMode()
+                                            ThemeMode.LIGHT -> AppIcons.lightMode()
+                                        },
+                                        contentDescription = stringResource(R.string.action_toggle_theme),
+                                        tint = tint
+                                    )
+                                }
+                            }
+                            TopBarActionButton(
+                                onClick = onOpenSort,
+                                accentColor = accentColor,
+                                plainTint = iconTint,
+                                buttonSize = 34.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("topbar_sort_button")
+                            ) { tint ->
+                                Icon(
+                                    imageVector = AppIcons.sort(),
+                                    contentDescription = stringResource(R.string.action_sort),
+                                    tint = tint
+                                )
+                            }
+                            TopBarActionButton(
+                                onClick = onOpenSearch,
+                                accentColor = accentColor,
+                                plainTint = iconTint,
+                                buttonSize = 34.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("topbar_search_button")
+                            ) { tint ->
+                                Icon(
+                                    imageVector = AppIcons.search(),
+                                    contentDescription = stringResource(R.string.action_search),
+                                    tint = tint
+                                )
+                            }
+                            TopBarActionButton(
+                                onClick = onOpenSettings,
+                                accentColor = accentColor,
+                                plainTint = iconTint,
+                                buttonSize = 34.dp,
+                                cornerRadius = 10.dp,
+                                modifier = Modifier.testTag("topbar_settings_button")
+                            ) { tint ->
+                                Icon(
+                                    imageVector = AppIcons.settings(),
+                                    contentDescription = stringResource(R.string.action_settings),
+                                    tint = tint
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (usePillTopBar) {
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 4.dp)
                 ) {
-                    DocViewerAppIcon(
-                        size = 32.dp,
+                    Surface(
+                        shape = CircleShape,
+                        color = pillColor,
+                        border = if (showPillBorder) {
+                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        } else {
+                            null
+                        },
+                        shadowElevation = 4.dp,
                         modifier = Modifier
-                            .padding(end = 8.dp)
-                            .testTag("topbar_app_icon")
-                    )
-                    if (selectedCategoryLabel.isNotEmpty()) {
-                        AnimatedContent(
-                            targetState = selectedCategoryLabel,
-                            transitionSpec = {
-                                fadeIn(tween(180)).togetherWith(fadeOut(tween(140)))
-                            },
-                            label = "topbarCategoryLabel"
-                        ) { label ->
-                            Text(
-                                text = label,
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontFamily = FontFamily.SansSerif,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp,
-                                    lineHeight = 24.sp,
-                                    platformStyle = PlatformTextStyle(includeFontPadding = false)
-                                ),
-                                color = iconTint,
-                                maxLines = 1,
-                                modifier = Modifier.testTag("topbar_category_label")
-                            )
-                        }
-                    }
-                    Spacer(modifier = Modifier.weight(1f))
-
-                    // Right side: Theme (Auto/Dark/Light), Sort, Search, Settings
-                    IconButton(
-                        onClick = onCycleThemeMode,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("topbar_theme_toggle")
+                            .fillMaxWidth()
+                            .testTag("home_topbar_pill")
                     ) {
-                        AnimatedContent(
-                            targetState = themeMode,
-                            transitionSpec = {
-                                (scaleIn(
-                                    initialScale = 0.65f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.65f,
-                                        stiffness = Spring.StiffnessMedium
-                                    )
-                                ) + fadeIn(tween(180))).togetherWith(
-                                    scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
-                                        fadeOut(tween(120))
+                        rowContent(
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 10.dp,
+                                    end = if (materialIconsEnabled) 8.dp else 6.dp,
+                                    top = 4.dp,
+                                    bottom = 4.dp
                                 )
-                            },
-                            label = "themeIconSwitch"
-                        ) { mode ->
-                            Icon(
-                                imageVector = when (mode) {
-                                    ThemeMode.SYSTEM -> AppIcons.brightnessAuto()
-                                    ThemeMode.DARK -> AppIcons.darkMode()
-                                    ThemeMode.LIGHT -> AppIcons.lightMode()
-                                },
-                                contentDescription = stringResource(R.string.action_toggle_theme),
-                                tint = iconTint
-                            )
-                        }
-                    }
-                    IconButton(
-                        onClick = onOpenSort,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("topbar_sort_button")
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.sort(),
-                            contentDescription = stringResource(R.string.action_sort),
-                            tint = iconTint
-                        )
-                    }
-                    IconButton(
-                        onClick = onOpenSearch,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("topbar_search_button")
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.search(),
-                            contentDescription = stringResource(R.string.action_search),
-                            tint = iconTint
-                        )
-                    }
-                    IconButton(
-                        onClick = onOpenSettings,
-                        modifier = Modifier
-                            .size(34.dp)
-                            .testTag("topbar_settings_button")
-                    ) {
-                        Icon(
-                            imageVector = AppIcons.settings(),
-                            contentDescription = stringResource(R.string.action_settings),
-                            tint = iconTint
                         )
                     }
                 }
+            } else {
+                rowContent(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = 16.dp,
+                            end = if (materialIconsEnabled) 10.dp else 4.dp,
+                            top = 2.dp,
+                            bottom = 4.dp
+                        )
+                )
             }
         }
     }
@@ -992,47 +1094,101 @@ private fun HomeTopBar(
 @Composable
 private fun SelectionTopBar(
     selectedCount: Int,
+    usePillTopBar: Boolean,
+    pillColor: Color,
+    accentColor: Color,
+    contentColor: Color,
+    showPillBorder: Boolean,
     onClear: () -> Unit,
     onSelectAll: () -> Unit
 ) {
-    Surface(
-        color = Color.Transparent,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        modifier = Modifier.fillMaxWidth()
-    ) {
+    val rowContent: @Composable (Modifier) -> Unit = { rowModifier ->
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(56.dp)
-                .padding(horizontal = 4.dp),
+            modifier = rowModifier,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(
+            TopBarActionButton(
                 onClick = onClear,
+                accentColor = accentColor,
+                plainTint = contentColor,
+                buttonSize = 34.dp,
+                cornerRadius = 10.dp,
                 modifier = Modifier.testTag("selection_clear_button")
-            ) {
+            ) { tint ->
                 Icon(
                     imageVector = AppIcons.close(),
-                    contentDescription = stringResource(R.string.action_clear_selection)
+                    contentDescription = stringResource(R.string.action_clear_selection),
+                    tint = tint
                 )
             }
             Text(
                 text = "$selectedCount selected",
                 style = MaterialTheme.typography.titleMedium,
+                color = contentColor,
                 maxLines = 1,
                 modifier = Modifier
                     .weight(1f)
-                    .padding(start = 4.dp)
+                    .padding(start = 10.dp)
             )
-            IconButton(
+            TopBarActionButton(
                 onClick = onSelectAll,
+                accentColor = accentColor,
+                plainTint = contentColor,
+                buttonSize = 34.dp,
+                cornerRadius = 10.dp,
                 modifier = Modifier.testTag("selection_select_all_button")
-            ) {
+            ) { tint ->
                 Icon(
                     imageVector = AppIcons.selectAll(),
-                    contentDescription = stringResource(R.string.action_select_all)
+                    contentDescription = stringResource(R.string.action_select_all),
+                    tint = tint
                 )
             }
+        }
+    }
+
+    if (usePillTopBar) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 12.dp, end = 12.dp, top = 2.dp, bottom = 4.dp)
+        ) {
+            Surface(
+                shape = CircleShape,
+                color = pillColor,
+                contentColor = contentColor,
+                border = if (showPillBorder) {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                } else {
+                    null
+                },
+                shadowElevation = 4.dp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("selection_topbar_pill")
+            ) {
+                CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 36.dp) {
+                    rowContent(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .padding(horizontal = 6.dp)
+                    )
+                }
+            }
+        }
+    } else {
+        Surface(
+            color = Color.Transparent,
+            contentColor = contentColor,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            rowContent(
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .padding(horizontal = 4.dp)
+            )
         }
     }
 }
@@ -1045,6 +1201,7 @@ private fun SelectionBottomToolbar(
     onPrint: () -> Unit,
     onInfo: () -> Unit
 ) {
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
     Surface(
         color = containerColor,
         tonalElevation = 0.dp,
@@ -1061,13 +1218,22 @@ private fun SelectionBottomToolbar(
                         )
                     )
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                    .padding(start = 8.dp, end = 8.dp, top = 3.dp, bottom = 0.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
+                    .padding(
+                        start = 8.dp,
+                        end = 8.dp,
+                        top = if (materialIconsEnabled) 6.dp else 3.dp,
+                        bottom = if (materialIconsEnabled) 6.dp else 0.dp
+                    ),
+                horizontalArrangement = Arrangement.spacedBy(
+                    if (materialIconsEnabled) 18.dp else 24.dp,
+                    Alignment.CenterHorizontally
+                ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BottomToolbarAction(
                     icon = AppIcons.share(),
                     label = stringResource(R.string.action_share),
+                    accentColor = MaterialTheme.colorScheme.primary,
                     onClick = onShare,
                     modifier = Modifier.testTag("bottom_share_button")
                 )
@@ -1075,18 +1241,21 @@ private fun SelectionBottomToolbar(
                     icon = AppIcons.delete(),
                     label = stringResource(R.string.action_delete),
                     tint = MaterialTheme.colorScheme.error,
+                    accentColor = MaterialTheme.colorScheme.error,
                     onClick = onDelete,
                     modifier = Modifier.testTag("bottom_delete_button")
                 )
                 BottomToolbarAction(
                     icon = AppIcons.print(),
                     label = stringResource(R.string.action_print),
+                    accentColor = MaterialTheme.colorScheme.primary,
                     onClick = onPrint,
                     modifier = Modifier.testTag("bottom_print_button")
                 )
                 BottomToolbarAction(
                     icon = AppIcons.info(),
                     label = stringResource(R.string.action_info),
+                    accentColor = MaterialTheme.colorScheme.primary,
                     onClick = onInfo,
                     modifier = Modifier.testTag("bottom_info_button")
                 )
@@ -1101,8 +1270,10 @@ private fun BottomToolbarAction(
     label: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface
+    tint: Color = MaterialTheme.colorScheme.onSurface,
+    accentColor: Color = MaterialTheme.colorScheme.primary
 ) {
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -1110,38 +1281,62 @@ private fun BottomToolbarAction(
         animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
         label = "bottomToolbarActionScale"
     )
-    Column(
-        modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
+    if (materialIconsEnabled) {
+        val styled = AppIcons.styledColors(accentColor)
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = styled.background,
+            contentColor = styled.icon,
+            border = BorderStroke(0.8.dp, styled.icon.copy(alpha = 0.16f)),
+            modifier = modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .size(44.dp)
+                .clip(RoundedCornerShape(12.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = androidx.compose.material3.ripple(),
+                    onClick = onClick
+                )
+        ) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = styled.icon,
+                    modifier = Modifier.size(AppIcons.scaledSize(22.dp))
+                )
             }
-            .clip(RoundedCornerShape(10.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = androidx.compose.material3.ripple(),
-                onClick = onClick
+        }
+    } else {
+        Box(
+            modifier = modifier
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                }
+                .clip(RoundedCornerShape(10.dp))
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = androidx.compose.material3.ripple(),
+                    onClick = onClick
+                )
+                .defaultMinSize(minWidth = 52.dp, minHeight = 40.dp)
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = tint,
+                modifier = Modifier.size(AppIcons.scaledSize(23.04.dp))
             )
-            .defaultMinSize(minWidth = 57.6.dp, minHeight = 36.dp)
-            .padding(horizontal = 12.dp, vertical = 0.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically)
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = tint,
-            modifier = Modifier.size(AppIcons.scaledSize(23.04.dp))
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
-                lineHeight = 13.2.sp,
-                platformStyle = PlatformTextStyle(includeFontPadding = false)
-            ),
-            color = tint
-        )
+        }
     }
 }
 

@@ -60,6 +60,10 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          INPUT_TAG: ${{ inputs.release_tag }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
           FALLBACK_CACHE_DIR="$HOME/.docview-keystore"
@@ -124,6 +128,19 @@ jobs:
           echo "CI_VERSION_CODE=$CI_VERSION_CODE" >> "$GITHUB_ENV"
           echo "Using monotonic versionCode: $CI_VERSION_CODE"
 
+          if [[ "$EVENT_REF" == refs/tags/v* ]]; then
+            RELEASE_TAG="$EVENT_REF_NAME"
+          elif [ -n "$INPUT_TAG" ]; then
+            RELEASE_TAG="$INPUT_TAG"
+          else
+            RELEASE_TAG="v1.2.${RUN_NUMBER}"
+          fi
+          APP_VERSION="${RELEASE_TAG#v}"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "CI_VERSION_NAME=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "Using release tag $RELEASE_TAG (versionName: $APP_VERSION)"
+
       - name: Clean Up Obsolete Files
         run: |
           if [ -f app/src/main/java/com/example/ui/screens/ScannedDocumentsScreen.kt ] && ! grep -q "ScannedDocumentsScreen" app/src/main/java/com/example/MainActivity.kt; then
@@ -147,9 +164,9 @@ jobs:
       - name: Collect Separate ARMv7, ARMv8 & Universal Release APKs
         run: |
           mkdir -p release-apks
-          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk release-apks/D0C-View-armeabi-v7a-release.apk
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk release-apks/D0C-View-arm64-v8a-release.apk
-          cp app/build/outputs/apk/release/app-universal-release.apk release-apks/D0C-View-universal-release.apk
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk "release-apks/D0C View-Armv7-${APP_VERSION}.apk"
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "release-apks/D0C View-Armv8-${APP_VERSION}.apk"
+          cp app/build/outputs/apk/release/app-universal-release.apk "release-apks/D0C View-Universal-${APP_VERSION}.apk"
           ls -lh release-apks/
 
       - name: Upload Separate APKs as Workflow Artifacts
@@ -163,20 +180,10 @@ jobs:
         id: release_meta
         if: github.event_name != 'pull_request'
         env:
-          INPUT_TAG: ${{ inputs.release_tag }}
           INPUT_NOTES: ${{ inputs.release_notes }}
-          EVENT_REF: ${{ github.ref }}
-          EVENT_REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
           SHORT_SHA: ${{ github.sha }}
         run: |
-          if [[ "$EVENT_REF" == refs/tags/v* ]]; then
-            TAG="$EVENT_REF_NAME"
-          elif [ -n "$INPUT_TAG" ]; then
-            TAG="$INPUT_TAG"
-          else
-            TAG="v1.2.${RUN_NUMBER}"
-          fi
+          TAG="${RELEASE_TAG}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View $TAG" >> "$GITHUB_OUTPUT"
 
@@ -184,7 +191,7 @@ jobs:
           RELEASE_TITLE="D0C View $TAG" \
           CHANNEL="stable" \
           CHANNEL_LABEL="Stable Release" \
-          APP_VERSION="1.2.${RUN_NUMBER}" \
+          APP_VERSION="${APP_VERSION}" \
           VERSION_CODE="${CI_VERSION_CODE}" \
           SHORT_SHA="${SHORT_SHA}" \
           INPUT_NOTES="${INPUT_NOTES}" \
@@ -208,6 +215,6 @@ jobs:
           make_latest: true
           generate_release_notes: false
           files: |
-            release-apks/D0C-View-armeabi-v7a-release.apk
-            release-apks/D0C-View-arm64-v8a-release.apk
-            release-apks/D0C-View-universal-release.apk
+            release-apks/D0C View-Armv7-${{ env.APP_VERSION }}.apk
+            release-apks/D0C View-Armv8-${{ env.APP_VERSION }}.apk
+            release-apks/D0C View-Universal-${{ env.APP_VERSION }}.apk

@@ -431,6 +431,7 @@ private fun DocVaultApp(
                 composable(ROUTE_SETTINGS) {
                     SettingsScreen(
                         settings = uiState.settings,
+                        isDarkTheme = isDarkTheme,
                         hasReadPermission = uiState.hasDocumentReadPermission,
                         hasWritePermission = uiState.hasDocumentWritePermission,
                         hasFullStorageAccess = uiState.hasFullStorageAccess,
@@ -440,6 +441,8 @@ private fun DocVaultApp(
                         onBack = { navController.popBackStack() },
                         onSetUseMaterialUi = viewModel::setUseMaterialUi,
                         onSetUseMaterialIcons = viewModel::setUseMaterialIcons,
+                        onSetUsePillTopBar = viewModel::setUsePillTopBar,
+                        onSetUseColorfulTopBar = viewModel::setUseColorfulTopBar,
                         onSetThemeMode = viewModel::setThemeMode,
                         onSetDocTypeVisible = viewModel::setDocTypeVisible,
                         onSetScanDotFolders = viewModel::setScanDotFolders,

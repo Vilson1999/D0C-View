@@ -18,8 +18,9 @@ android {
     targetSdk = 36
     val ciVersionCode = providers.environmentVariable("CI_VERSION_CODE").orNull?.toIntOrNull()
     val ciRunNumber = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 0
+    val ciVersionName = providers.environmentVariable("CI_VERSION_NAME").orNull?.takeIf { it.isNotBlank() }
     versionCode = ciVersionCode ?: (100 + ciRunNumber)
-    versionName = if (ciRunNumber > 0) "1.2.$ciRunNumber" else "1.2"
+    versionName = ciVersionName ?: if (ciRunNumber > 0) "1.2.$ciRunNumber" else "1.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }

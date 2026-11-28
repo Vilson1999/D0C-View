@@ -128,9 +128,11 @@ import com.example.ui.components.OfficeOriginalWordPaperCard
 import com.example.ui.components.ReaderZoomMath
 import com.example.ui.components.ReaderZoomState
 import com.example.ui.components.RenameDocumentDialog
+import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.ZoomableReaderViewport
 import com.example.ui.components.rememberReaderZoomState
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
 import com.example.ui.theme.SystemBarContrastPolicy
@@ -310,19 +312,33 @@ fun DocumentViewerScreen(
 
     BackHandler { onBack() }
 
-    val topBarColor = remember(currentDoc.type, isDarkTheme) {
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
+    val usePillTopBar = settings.usePillTopBar
+    val useColorfulTopBar = settings.useColorfulTopBar
+    val viewerAccentColor = currentDoc.type.pillColor
+    val topBarColor = if (useColorfulTopBar) {
         val base = currentDoc.type.pillColor
         if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.10f)
-    }
-    val topBarContentColor = if (SystemBarContrastPolicy.shouldUseDarkIcons(topBarColor.luminance())) {
-        MaterialTheme.colorScheme.onBackground
     } else {
-        Color.White
+        if (usePillTopBar) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background
     }
-    val pagePillColor = topBarColor.copy(alpha = 0.50f)
+    val topBarContentColor = if (useColorfulTopBar) {
+        if (SystemBarContrastPolicy.shouldUseDarkIcons(topBarColor.luminance())) {
+            MaterialTheme.colorScheme.onBackground
+        } else {
+            Color.White
+        }
+    } else {
+        MaterialTheme.colorScheme.onBackground
+    }
+    val pagePillColor = if (useColorfulTopBar) {
+        topBarColor.copy(alpha = 0.50f)
+    } else {
+        MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.85f)
+    }
     val pagePillContentColor = MaterialTheme.colorScheme.onBackground
     val statusBarColor by animateColorAsState(
-        targetValue = if (isReaderUiVisible) topBarColor else MaterialTheme.colorScheme.background,
+        targetValue = if (!usePillTopBar && isReaderUiVisible) topBarColor else MaterialTheme.colorScheme.background,
         animationSpec = tween(220),
         label = "viewerStatusBarColor"
     )
@@ -334,7 +350,7 @@ fun DocumentViewerScreen(
         )
     }
 
-    val topBarReserve = 43.dp
+    val topBarReserve = if (usePillTopBar) 56.dp else 43.dp
     val navBarReserve = 0.dp
 
     Scaffold(
@@ -576,25 +592,10 @@ fun DocumentViewerScreen(
                     .align(Alignment.TopCenter)
                     .testTag("viewer_topbar")
             ) {
-                Surface(
-                    color = topBarColor,
-                    tonalElevation = 0.dp,
-                    shadowElevation = 4.dp,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                        .pointerInput(Unit) {
-                            detectTapGestures { uiInteractionNonce++ }
-                        }
-                ) {
+                val topBarRowContent: @Composable (Modifier) -> Unit = { rowModifier ->
                     CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 42.dp) {
                         Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .windowInsetsPadding(WindowInsets.statusBars)
-                                .displayCutoutPadding()
-                                .height(42.dp)
-                                .padding(start = 8.dp, end = 2.dp),
+                            modifier = rowModifier,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -619,99 +620,110 @@ fun DocumentViewerScreen(
                                 ),
                                 label = "viewerRotateIconAngle"
                             )
-                            IconButton(
-                                onClick = {
-                                    val nextScreenOrientation = if (isLandscape) {
-                                        DocumentViewOrientation.PORTRAIT
-                                    } else {
-                                        DocumentViewOrientation.LANDSCAPE
-                                    }
-                                    onSaveReaderScreenOrientation(nextScreenOrientation)
-                                    if (activity != null) {
-                                        activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
-                                    }
-                                    uiInteractionNonce++
-                                },
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .testTag("viewer_rotate_button")
+                            val actionButtonSize = if (materialIconsEnabled) 34.dp else 42.dp
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(if (materialIconsEnabled) 5.dp else 0.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Icon(
-                                    imageVector = AppIcons.screenRotation(),
-                                    contentDescription = stringResource(R.string.action_rotate_screen),
-                                    tint = topBarContentColor,
-                                    modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    val nextMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
-                                        PageViewMode.SINGLE_PAGE
-                                    } else {
-                                        PageViewMode.CONTINUOUS
-                                    }
-                                    pageViewMode = nextMode
-                                    onSavePageViewMode(currentDoc.type, nextMode)
-                                    uiInteractionNonce++
-                                },
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .testTag("viewer_page_mode_button")
-                            ) {
-                                AnimatedContent(
-                                    targetState = pageViewMode,
-                                    transitionSpec = {
-                                        (scaleIn(
-                                            initialScale = 0.7f,
-                                            animationSpec = spring(
-                                                dampingRatio = 0.7f,
-                                                stiffness = Spring.StiffnessMedium
-                                            )
-                                        ) + fadeIn(tween(180))).togetherWith(
-                                            scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
-                                                fadeOut(tween(120))
-                                        )
-                                    },
-                                    label = "pageModeIconSwitch"
-                                ) { currentMode ->
-                                    Icon(
-                                        imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
-                                            AppIcons.viewCarousel()
-                                        } else {
-                                            AppIcons.viewStream()
-                                        },
-                                        contentDescription = stringResource(R.string.action_page_view_mode),
-                                        tint = topBarContentColor
-                                    )
-                                }
-                            }
-
-                            Box {
-                                val menuIconRotation by animateFloatAsState(
-                                    targetValue = if (menuExpanded) 90f else 0f,
-                                    animationSpec = spring(
-                                        dampingRatio = 0.75f,
-                                        stiffness = Spring.StiffnessMedium
-                                    ),
-                                    label = "viewerMenuButtonRotation"
-                                )
-                                IconButton(
+                                TopBarActionButton(
                                     onClick = {
-                                        menuExpanded = true
+                                        val nextScreenOrientation = if (isLandscape) {
+                                            DocumentViewOrientation.PORTRAIT
+                                        } else {
+                                            DocumentViewOrientation.LANDSCAPE
+                                        }
+                                        onSaveReaderScreenOrientation(nextScreenOrientation)
+                                        if (activity != null) {
+                                            activity.requestedOrientation = ScreenOrientationPolicy.nextManualOrientation(isLandscape)
+                                        }
                                         uiInteractionNonce++
                                     },
-                                    modifier = Modifier
-                                        .size(42.dp)
-                                        .testTag("viewer_more_button")
-                                ) {
+                                    accentColor = viewerAccentColor,
+                                    plainTint = topBarContentColor,
+                                    buttonSize = actionButtonSize,
+                                    cornerRadius = 10.dp,
+                                    modifier = Modifier.testTag("viewer_rotate_button")
+                                ) { tint ->
                                     Icon(
-                                        imageVector = AppIcons.moreVert(),
-                                        contentDescription = stringResource(R.string.action_more_options),
-                                        tint = topBarContentColor,
-                                        modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
+                                        imageVector = AppIcons.screenRotation(),
+                                        contentDescription = stringResource(R.string.action_rotate_screen),
+                                        tint = tint,
+                                        modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
                                     )
                                 }
+
+                                TopBarActionButton(
+                                    onClick = {
+                                        val nextMode = if (pageViewMode == PageViewMode.CONTINUOUS) {
+                                            PageViewMode.SINGLE_PAGE
+                                        } else {
+                                            PageViewMode.CONTINUOUS
+                                        }
+                                        pageViewMode = nextMode
+                                        onSavePageViewMode(currentDoc.type, nextMode)
+                                        uiInteractionNonce++
+                                    },
+                                    accentColor = viewerAccentColor,
+                                    plainTint = topBarContentColor,
+                                    buttonSize = actionButtonSize,
+                                    cornerRadius = 10.dp,
+                                    modifier = Modifier.testTag("viewer_page_mode_button")
+                                ) { tint ->
+                                    AnimatedContent(
+                                        targetState = pageViewMode,
+                                        transitionSpec = {
+                                            (scaleIn(
+                                                initialScale = 0.7f,
+                                                animationSpec = spring(
+                                                    dampingRatio = 0.7f,
+                                                    stiffness = Spring.StiffnessMedium
+                                                )
+                                            ) + fadeIn(tween(180))).togetherWith(
+                                                scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
+                                                    fadeOut(tween(120))
+                                            )
+                                        },
+                                        label = "pageModeIconSwitch"
+                                    ) { currentMode ->
+                                        Icon(
+                                            imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
+                                                AppIcons.viewCarousel()
+                                            } else {
+                                                AppIcons.viewStream()
+                                            },
+                                            contentDescription = stringResource(R.string.action_page_view_mode),
+                                            tint = tint
+                                        )
+                                    }
+                                }
+
+                                Box {
+                                    val menuIconRotation by animateFloatAsState(
+                                        targetValue = if (menuExpanded) 90f else 0f,
+                                        animationSpec = spring(
+                                            dampingRatio = 0.75f,
+                                            stiffness = Spring.StiffnessMedium
+                                        ),
+                                        label = "viewerMenuButtonRotation"
+                                    )
+                                    TopBarActionButton(
+                                        onClick = {
+                                            menuExpanded = true
+                                            uiInteractionNonce++
+                                        },
+                                        accentColor = viewerAccentColor,
+                                        plainTint = topBarContentColor,
+                                        buttonSize = actionButtonSize,
+                                        cornerRadius = 10.dp,
+                                        modifier = Modifier.testTag("viewer_more_button")
+                                    ) { tint ->
+                                        Icon(
+                                            imageVector = AppIcons.moreVert(),
+                                            contentDescription = stringResource(R.string.action_more_options),
+                                            tint = tint,
+                                            modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }
+                                        )
+                                    }
 
                             val activeDocIsLandscape = when (documentOrientation) {
                                 DocumentViewOrientation.PORTRAIT -> false
@@ -751,9 +763,73 @@ fun DocumentViewerScreen(
                                 },
                                 tagPrefix = "viewer_menu"
                             )
+                            }
                         }
                     }
                 }
+                }
+
+                if (usePillTopBar) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                            .displayCutoutPadding()
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = topBarColor,
+                            tonalElevation = 0.dp,
+                            border = if (!useColorfulTopBar) {
+                                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            } else {
+                                null
+                            },
+                            shadowElevation = 6.dp,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .pointerInput(Unit) {
+                                    detectTapGestures { uiInteractionNonce++ }
+                                }
+                                .testTag("viewer_topbar_pill")
+                        ) {
+                            topBarRowContent(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp)
+                                    .padding(
+                                        start = 14.dp,
+                                        end = if (materialIconsEnabled) 8.dp else 4.dp
+                                    )
+                            )
+                        }
+                    }
+                } else {
+                    Surface(
+                        color = topBarColor,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 4.dp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                            .pointerInput(Unit) {
+                                detectTapGestures { uiInteractionNonce++ }
+                            }
+                    ) {
+                        topBarRowContent(
+                            Modifier
+                                .fillMaxWidth()
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .displayCutoutPadding()
+                                .height(42.dp)
+                                .padding(
+                                    start = 8.dp,
+                                    end = if (materialIconsEnabled) 6.dp else 2.dp
+                                )
+                        )
+                    }
                 }
             }
             NavigationBarSideBackdrop(color = bottomBarColor)

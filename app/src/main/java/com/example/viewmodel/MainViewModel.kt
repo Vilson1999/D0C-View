@@ -512,6 +512,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setUseMaterialIcons(enabled) }
     }
 
+    fun setUsePillTopBar(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setUsePillTopBar(enabled) }
+    }
+
+    fun setUseColorfulTopBar(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setUseColorfulTopBar(enabled) }
+    }
+
     fun setSortOption(option: SortOption) {
         viewModelScope.launch { settingsRepo.setSortOption(option) }
     }

@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -34,6 +36,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.ui.theme.LocalMaterialIconsEnabled
 
 @Composable
 fun TopBarSearchField(
@@ -43,11 +46,14 @@ fun TopBarSearchField(
     onClose: () -> Unit,
     inputTestTag: String,
     closeTestTag: String,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    accentColor: Color = MaterialTheme.colorScheme.primary
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
     val focusManager = LocalFocusManager.current
+    val materialIconsEnabled = LocalMaterialIconsEnabled.current
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -55,7 +61,7 @@ fun TopBarSearchField(
     }
 
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
@@ -66,15 +72,37 @@ fun TopBarSearchField(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(48.dp)
-                .padding(start = 12.dp, end = 4.dp),
+                .padding(
+                    start = if (materialIconsEnabled) 8.dp else 12.dp,
+                    end = if (materialIconsEnabled) 7.dp else 4.dp
+                ),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = AppIcons.search(),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(AppIcons.scaledSize(20.dp))
-            )
+            if (materialIconsEnabled) {
+                val searchColors = AppIcons.styledColors(accentColor)
+                Surface(
+                    shape = RoundedCornerShape(9.dp),
+                    color = searchColors.background,
+                    border = BorderStroke(0.8.dp, searchColors.icon.copy(alpha = 0.18f)),
+                    modifier = Modifier.size(30.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = AppIcons.search(),
+                            contentDescription = null,
+                            tint = searchColors.icon,
+                            modifier = Modifier.size(AppIcons.scaledSize(18.dp))
+                        )
+                    }
+                }
+            } else {
+                Icon(
+                    imageVector = AppIcons.search(),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(AppIcons.scaledSize(20.dp))
+                )
+            }
             Spacer(modifier = Modifier.width(8.dp))
             Box(
                 modifier = Modifier.weight(1f),
@@ -110,18 +138,22 @@ fun TopBarSearchField(
                         .testTag(inputTestTag)
                 )
             }
-            IconButton(
+            TopBarActionButton(
                 onClick = {
                     keyboardController?.hide()
                     focusManager.clearFocus(force = true)
                     onClose()
                 },
+                accentColor = accentColor,
+                plainTint = MaterialTheme.colorScheme.onSurface,
+                buttonSize = 34.dp,
+                cornerRadius = 10.dp,
                 modifier = Modifier.testTag(closeTestTag)
-            ) {
+            ) { tint ->
                 Icon(
                     imageVector = AppIcons.close(),
                     contentDescription = stringResource(R.string.action_close_search),
-                    tint = MaterialTheme.colorScheme.onSurface
+                    tint = tint
                 )
             }
         }

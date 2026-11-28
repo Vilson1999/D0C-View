@@ -57,6 +57,10 @@ jobs:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
           SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          INPUT_TAG: ${{ inputs.beta_tag }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
         run: |
           KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
           FALLBACK_CACHE_DIR="$HOME/.docview-keystore"
@@ -121,6 +125,20 @@ jobs:
           echo "CI_VERSION_CODE=$CI_VERSION_CODE" >> "$GITHUB_ENV"
           echo "Using monotonic versionCode: $CI_VERSION_CODE"
 
+          if [[ "$EVENT_REF" == refs/tags/* ]]; then
+            RELEASE_TAG="$EVENT_REF_NAME"
+          elif [ -n "$INPUT_TAG" ]; then
+            RELEASE_TAG="$INPUT_TAG"
+          else
+            RELEASE_TAG="v1.2.${RUN_NUMBER}-beta"
+          fi
+          APP_VERSION="${RELEASE_TAG#beta-}"
+          APP_VERSION="${APP_VERSION#v}"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+          echo "APP_VERSION=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "CI_VERSION_NAME=$APP_VERSION" >> "$GITHUB_ENV"
+          echo "Using beta tag $RELEASE_TAG (versionName: $APP_VERSION)"
+
       - name: Run Unit Tests
         run: gradle :app:testDebugUnitTest --tests com.example.ExampleUnitTest --no-daemon --no-configuration-cache
 
@@ -137,9 +155,9 @@ jobs:
       - name: Collect Separate ARMv7, ARMv8 & Universal Beta APKs
         run: |
           mkdir -p beta-apks
-          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk beta-apks/D0C-View-armeabi-v7a-beta.apk
-          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk beta-apks/D0C-View-arm64-v8a-beta.apk
-          cp app/build/outputs/apk/release/app-universal-release.apk beta-apks/D0C-View-universal-beta.apk
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk "beta-apks/D0C View-Armv7-${APP_VERSION}.apk"
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk "beta-apks/D0C View-Armv8-${APP_VERSION}.apk"
+          cp app/build/outputs/apk/release/app-universal-release.apk "beta-apks/D0C View-Universal-${APP_VERSION}.apk"
           ls -lh beta-apks/
 
       - name: Upload Beta APKs as Workflow Artifacts
@@ -153,20 +171,10 @@ jobs:
         id: beta_meta
         if: github.event_name != 'pull_request'
         env:
-          INPUT_TAG: ${{ inputs.beta_tag }}
           INPUT_NOTES: ${{ inputs.release_notes }}
-          EVENT_REF: ${{ github.ref }}
-          EVENT_REF_NAME: ${{ github.ref_name }}
-          RUN_NUMBER: ${{ github.run_number }}
           SHORT_SHA: ${{ github.sha }}
         run: |
-          if [[ "$EVENT_REF" == refs/tags/* ]]; then
-            TAG="$EVENT_REF_NAME"
-          elif [ -n "$INPUT_TAG" ]; then
-            TAG="$INPUT_TAG"
-          else
-            TAG="v1.2.${RUN_NUMBER}-beta"
-          fi
+          TAG="${RELEASE_TAG}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "name=D0C View Beta $TAG" >> "$GITHUB_OUTPUT"
 
@@ -174,7 +182,7 @@ jobs:
           RELEASE_TITLE="D0C View Beta $TAG" \
           CHANNEL="beta" \
           CHANNEL_LABEL="Beta Pre-Release" \
-          APP_VERSION="1.2.${RUN_NUMBER}" \
+          APP_VERSION="${APP_VERSION}" \
           VERSION_CODE="${CI_VERSION_CODE}" \
           SHORT_SHA="${SHORT_SHA}" \
           INPUT_NOTES="${INPUT_NOTES}" \
@@ -198,6 +206,6 @@ jobs:
           make_latest: false
           generate_release_notes: false
           files: |
-            beta-apks/D0C-View-armeabi-v7a-beta.apk
-            beta-apks/D0C-View-arm64-v8a-beta.apk
-            beta-apks/D0C-View-universal-beta.apk
+            beta-apks/D0C View-Armv7-${{ env.APP_VERSION }}.apk
+            beta-apks/D0C View-Armv8-${{ env.APP_VERSION }}.apk
+            beta-apks/D0C View-Universal-${{ env.APP_VERSION }}.apk

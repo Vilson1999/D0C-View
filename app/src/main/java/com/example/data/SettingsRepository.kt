@@ -28,6 +28,8 @@ class SettingsRepository(private val context: Context) {
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val USE_MATERIAL_UI = booleanPreferencesKey("use_material_ui")
         val USE_MATERIAL_ICONS = booleanPreferencesKey("use_material_icons")
+        val USE_PILL_TOP_BAR = booleanPreferencesKey("use_pill_top_bar")
+        val USE_COLORFUL_TOP_BAR = booleanPreferencesKey("use_colorful_top_bar")
         val SCAN_DOT_FOLDERS = booleanPreferencesKey("scan_dot_folders")
         val SHOW_DOT_FOLDER_BADGE = booleanPreferencesKey("show_dot_folder_badge")
         val DEFAULT_PAGE_VIEW_MODE = stringPreferencesKey("default_page_view_mode")
@@ -90,6 +92,8 @@ class SettingsRepository(private val context: Context) {
                 ?: ThemeMode.SYSTEM,
             useMaterialUi = prefs[Keys.USE_MATERIAL_UI] ?: true,
             useMaterialIcons = prefs[Keys.USE_MATERIAL_ICONS] ?: true,
+            usePillTopBar = prefs[Keys.USE_PILL_TOP_BAR] ?: true,
+            useColorfulTopBar = prefs[Keys.USE_COLORFUL_TOP_BAR] ?: true,
             scanDotFolders = prefs[Keys.SCAN_DOT_FOLDERS] ?: true,
             showDotFolderBadge = prefs[Keys.SHOW_DOT_FOLDER_BADGE] ?: true,
             defaultPageViewMode = defaultPageMode,
@@ -157,6 +161,14 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setUseMaterialIcons(enabled: Boolean) {
         context.dataStore.edit { it[Keys.USE_MATERIAL_ICONS] = enabled }
+    }
+
+    suspend fun setUsePillTopBar(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_PILL_TOP_BAR] = enabled }
+    }
+
+    suspend fun setUseColorfulTopBar(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_COLORFUL_TOP_BAR] = enabled }
     }
 
     suspend fun setScanDotFolders(enabled: Boolean) {

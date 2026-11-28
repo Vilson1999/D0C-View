@@ -36,6 +36,7 @@ import com.example.model.ScreenOrientationPolicy
 import com.example.model.SortOption
 import com.example.service.BackgroundLifecyclePolicy
 import com.example.ui.theme.SystemBarContrastPolicy
+import androidx.compose.ui.graphics.luminance
 import com.example.viewmodel.DocumentQueryProcessor
 import com.example.viewmodel.HomeUiState
 import org.junit.Assert.assertEquals
@@ -102,6 +103,8 @@ class ExampleUnitTest {
         assertEquals(OfficeRenderFormat.PDF, defaults.textRenderFormat)
         assertTrue(defaults.useMaterialUi)
         assertTrue(defaults.useMaterialIcons)
+        assertTrue(defaults.usePillTopBar)
+        assertTrue(defaults.useColorfulTopBar)
         assertTrue(defaults.showPptSpeakerNotes)
         assertTrue(defaults.textWordWrap)
         assertTrue(defaults.textMonospace)
@@ -1792,6 +1795,30 @@ class ExampleUnitTest {
             assertEquals(plainDoc, DocumentCacheManager.loadParsedFromFile(cacheFile))
         } finally {
             tempDir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun appIcons_styledColorsAlwaysProvidesLightBackgroundAndDarkIcon() {
+        val sampleAccents = listOf(
+            androidx.compose.ui.graphics.Color(0xFFDC2626), // PDF Red
+            androidx.compose.ui.graphics.Color(0xFF2563EB), // DOC Blue
+            androidx.compose.ui.graphics.Color(0xFF16A34A), // Excel Green
+            androidx.compose.ui.graphics.Color(0xFFEA580C), // PPT Orange
+            androidx.compose.ui.graphics.Color(0xFF64748B), // Text Slate
+            androidx.compose.ui.graphics.Color(0xFF00796B), // Classic Teal
+            androidx.compose.ui.graphics.Color(0xFF93C5FD)  // Dark M3 light primary
+        )
+        sampleAccents.forEach { accent ->
+            val styled = com.example.ui.components.AppIcons.styledColors(accent)
+            assertTrue(
+                "Expected light background for $accent, got luminance=${styled.background.luminance()}",
+                styled.background.luminance() >= 0.70f
+            )
+            assertTrue(
+                "Expected dark icon for $accent, got luminance=${styled.icon.luminance()}",
+                styled.icon.luminance() <= 0.15f
+            )
         }
     }
 }
