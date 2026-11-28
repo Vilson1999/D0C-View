@@ -1180,4 +1180,18 @@ object AppIcons {
             }
         }
     }
+
+    val ChevronRight: ImageVector by lazy {
+        materialIcon(name = "ChevronRight", autoMirror = true) {
+            materialPath {
+                moveTo(10f, 6f)
+                lineTo(8.59f, 7.41f)
+                lineTo(13.17f, 12f)
+                lineToRelative(-4.58f, 4.59f)
+                lineTo(10f, 18f)
+                lineToRelative(6f, -6f)
+                close()
+            }
+        }
+    }
 }

@@ -7,7 +7,10 @@ import android.os.Build
 import android.util.LruCache
 import com.example.model.DocType
 import com.example.model.DocumentItem
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
@@ -17,6 +20,39 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.security.MessageDigest
+import java.util.Collections
+import java.util.zip.GZIPInputStream
+import java.util.zip.GZIPOutputStream
+
+enum class LosslessBitmapFormat(
+    val extension: String,
+    val qualityParam: Int
+) {
+    WEBP_LOSSLESS(extension = "webp", qualityParam = 75),
+    PNG(extension = "png", qualityParam = 100)
+}
+
+object PdfBitmapCachePolicy {
+    const val MAX_DISK_CACHED_PAGE_INDEX = 0
+
+    fun selectLosslessFormat(sdkInt: Int): LosslessBitmapFormat {
+        return if (sdkInt >= Build.VERSION_CODES.R) {
+            LosslessBitmapFormat.WEBP_LOSSLESS
+        } else {
+            LosslessBitmapFormat.PNG
+        }
+    }
+
+    fun shouldPersistPageToDisk(pageIndex: Int): Boolean {
+        return pageIndex in 0..MAX_DISK_CACHED_PAGE_INDEX
+    }
+
+    fun computeMemoryCacheBytes(maxHeapBytes: Long): Int {
+        return (maxHeapBytes / 5L)
+            .coerceIn(32L * 1024L * 1024L, 96L * 1024L * 1024L)
+            .toInt()
+    }
+}
 
 class DocumentCacheManager(private val context: Context) {
 
@@ -107,10 +143,23 @@ class DocumentCacheManager(private val context: Context) {
 
     fun getCachedPdfPageBitmap(docKey: String, pageIndex: Int, widthPx: Int): Bitmap? {
         getMemoryPdfPageBitmap(docKey, pageIndex, widthPx)?.let { return it }
+        if (!PdfBitmapCachePolicy.shouldPersistPageToDisk(pageIndex)) return null
         val memKey = "${docKey}_${pageIndex}_${widthPx}"
-        val file = pdfPageFile(docKey, pageIndex, widthPx)
-        if (!file.exists() || !file.isFile) return null
-        val decoded = runCatching { BitmapFactory.decodeFile(file.absolutePath) }.getOrNull()
+        val activeFormat = PdfBitmapCachePolicy.selectLosslessFormat(Build.VERSION.SDK_INT)
+        val candidates = if (activeFormat == LosslessBitmapFormat.WEBP_LOSSLESS) {
+            listOf(
+                pdfPageFile(docKey, pageIndex, widthPx, LosslessBitmapFormat.WEBP_LOSSLESS),
+                pdfPageFile(docKey, pageIndex, widthPx, LosslessBitmapFormat.PNG)
+            )
+        } else {
+            listOf(pdfPageFile(docKey, pageIndex, widthPx, LosslessBitmapFormat.PNG))
+        }
+        val file = candidates.firstOrNull { it.exists() && it.isFile } ?: return null
+        val opts = BitmapFactory.Options().apply {
+            inScaled = false
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val decoded = runCatching { BitmapFactory.decodeFile(file.absolutePath, opts) }.getOrNull()
         if (decoded != null) {
             file.setLastModified(System.currentTimeMillis())
             memoryBitmapCache.put(memKey, decoded)
@@ -120,26 +169,68 @@ class DocumentCacheManager(private val context: Context) {
         return decoded
     }
 
-    fun putCachedPdfPageBitmap(docKey: String, pageIndex: Int, widthPx: Int, bitmap: Bitmap) {
+    fun putCachedPdfPageBitmap(
+        docKey: String,
+        pageIndex: Int,
+        widthPx: Int,
+        bitmap: Bitmap,
+        persistSync: Boolean = false
+    ) {
         val memKey = "${docKey}_${pageIndex}_${widthPx}"
         memoryBitmapCache.put(memKey, bitmap)
+        if (!PdfBitmapCachePolicy.shouldPersistPageToDisk(pageIndex)) return
+
+        val writeAction = {
+            if (!bitmap.isRecycled && inFlightDiskBitmapWrites.add(memKey)) {
+                try {
+                    writeLosslessPdfPageBitmap(docKey, pageIndex, widthPx, bitmap)
+                } finally {
+                    inFlightDiskBitmapWrites.remove(memKey)
+                }
+            }
+        }
+        if (persistSync) {
+            writeAction()
+        } else {
+            diskWriteScope.launch { writeAction() }
+        }
+    }
+
+    private fun writeLosslessPdfPageBitmap(
+        docKey: String,
+        pageIndex: Int,
+        widthPx: Int,
+        bitmap: Bitmap
+    ) {
         if (!pdfPagesDir.exists()) pdfPagesDir.mkdirs()
-        val target = pdfPageFile(docKey, pageIndex, widthPx)
+        val format = PdfBitmapCachePolicy.selectLosslessFormat(Build.VERSION.SDK_INT)
+        val target = pdfPageFile(docKey, pageIndex, widthPx, format)
         val tmp = File(pdfPagesDir, "${target.name}.tmp")
         runCatching {
-            val format = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                Bitmap.CompressFormat.WEBP_LOSSY
-            } else {
-                @Suppress("DEPRECATION")
-                Bitmap.CompressFormat.WEBP
-            }
-            FileOutputStream(tmp).use { out ->
-                bitmap.compress(format, 85, out)
+            BufferedOutputStream(FileOutputStream(tmp)).use { out ->
+                bitmap.compress(toAndroidCompressFormat(format), format.qualityParam, out)
+                out.flush()
             }
             if (target.exists()) target.delete()
             tmp.renameTo(target)
+            if (format == LosslessBitmapFormat.WEBP_LOSSLESS) {
+                val legacyPng = pdfPageFile(docKey, pageIndex, widthPx, LosslessBitmapFormat.PNG)
+                if (legacyPng.exists()) legacyPng.delete()
+            }
         }.onFailure {
             runCatching { tmp.delete() }
+        }
+    }
+
+    private fun toAndroidCompressFormat(format: LosslessBitmapFormat): Bitmap.CompressFormat {
+        return when (format) {
+            LosslessBitmapFormat.WEBP_LOSSLESS ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    Bitmap.CompressFormat.WEBP_LOSSLESS
+                } else {
+                    Bitmap.CompressFormat.PNG
+                }
+            LosslessBitmapFormat.PNG -> Bitmap.CompressFormat.PNG
         }
     }
 
@@ -203,8 +294,13 @@ class DocumentCacheManager(private val context: Context) {
         return "${docKey(doc)}_$safeVariant"
     }
 
-    private fun pdfPageFile(docKey: String, pageIndex: Int, widthPx: Int): File {
-        return File(pdfPagesDir, "${docKey}_p${pageIndex}_w${widthPx}.webp")
+    private fun pdfPageFile(
+        docKey: String,
+        pageIndex: Int,
+        widthPx: Int,
+        format: LosslessBitmapFormat = PdfBitmapCachePolicy.selectLosslessFormat(Build.VERSION.SDK_INT)
+    ): File {
+        return File(pdfPagesDir, "${docKey}_p${pageIndex}_w${widthPx}.${format.extension}")
     }
 
     companion object {
@@ -215,22 +311,26 @@ class DocumentCacheManager(private val context: Context) {
         const val CONVERTED_PDFS_DIR = "converted_pdfs"
         const val SUMMARIES_DIR = "doc_summaries"
         private const val DEFAULT_VARIANT = "default"
-        private const val CACHE_SCHEMA_VERSION = 3
+        private const val CACHE_SCHEMA_VERSION = 4
         private const val SUMMARY_SCHEMA_VERSION = 1
         private const val KIND_WORD = 1
         private const val KIND_SLIDES = 2
         private const val KIND_SPREADSHEET = 3
         private const val KIND_TEXT = 4
-        private const val MAX_SINGLE_PARSED_CACHE_BYTES = 6L * 1024L * 1024L
+        private const val MAX_SINGLE_PARSED_CACHE_BYTES = 3L * 1024L * 1024L
         private const val MAX_RECENT_DOCS = 12
-        private const val AUTO_PRUNE_MAX_BYTES = 24L * 1024L * 1024L
-        private const val STANDARD_MAX_BYTES = 48L * 1024L * 1024L
-        private const val DEFAULT_MAX_AGE_MS = 10L * 24L * 60L * 60L * 1000L
+        private const val AUTO_PRUNE_MAX_BYTES = 16L * 1024L * 1024L
+        private const val STANDARD_MAX_BYTES = 32L * 1024L * 1024L
+        private const val DEFAULT_MAX_AGE_MS = 7L * 24L * 60L * 60L * 1000L
 
         private val recentsLock = Any()
-        private val memoryParsedCache = object : LruCache<String, ParsedDocument>(10) {}
-        private val memorySummaryCache = object : LruCache<String, OfficeContentSummary>(32) {}
-        private val memoryBitmapCache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
+        private val diskWriteScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val inFlightDiskBitmapWrites: MutableSet<String> = Collections.synchronizedSet(HashSet())
+        private val memoryParsedCache = object : LruCache<String, ParsedDocument>(12) {}
+        private val memorySummaryCache = object : LruCache<String, OfficeContentSummary>(40) {}
+        private val memoryBitmapCache = object : LruCache<String, Bitmap>(
+            PdfBitmapCachePolicy.computeMemoryCacheBytes(Runtime.getRuntime().maxMemory())
+        ) {
             override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
         }
 
@@ -370,7 +470,11 @@ class DocumentCacheManager(private val context: Context) {
             file.parentFile?.let { if (!it.exists()) it.mkdirs() }
             val tmp = File(file.parentFile, "${file.name}.tmp")
             return runCatching {
-                DataOutputStream(BufferedOutputStream(FileOutputStream(tmp))).use { out ->
+                DataOutputStream(
+                    BufferedOutputStream(
+                        GZIPOutputStream(BufferedOutputStream(FileOutputStream(tmp)))
+                    )
+                ).use { out ->
                     out.writeByte(CACHE_SCHEMA_VERSION)
                     when (parsed) {
                         is ParsedDocument.Word -> {
@@ -430,8 +534,15 @@ class DocumentCacheManager(private val context: Context) {
         internal fun loadParsedFromFile(file: File): ParsedDocument? {
             if (!file.exists() || !file.isFile) return null
             return runCatching {
-                DataInputStream(BufferedInputStream(FileInputStream(file))).use { input ->
-                    if (input.readByte().toInt() != CACHE_SCHEMA_VERSION) return null
+                DataInputStream(
+                    BufferedInputStream(
+                        GZIPInputStream(BufferedInputStream(FileInputStream(file)))
+                    )
+                ).use { input ->
+                    if (input.readByte().toInt() != CACHE_SCHEMA_VERSION) {
+                        runCatching { file.delete() }
+                        return null
+                    }
                     val parsed: ParsedDocument = when (input.readByte().toInt()) {
                         KIND_WORD -> {
                             val layout = readLayout(input)

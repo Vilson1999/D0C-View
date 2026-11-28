@@ -6,9 +6,12 @@ import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculateCentroid
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -26,9 +29,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,6 +44,7 @@ import androidx.compose.ui.geometry.Offset as ComposeOffset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -47,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.example.R
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 object ReaderZoomMath {
@@ -93,6 +100,43 @@ object ReaderZoomMath {
         val rawY = (viewportHeightPx / 2f - tapY) * (targetScale - 1f)
         return clampOffset(rawX, rawY, targetScale, viewportWidthPx, viewportHeightPx)
     }
+
+    fun pinchTransformOffset(
+        currentOffsetX: Float,
+        currentOffsetY: Float,
+        currentScale: Float,
+        targetScale: Float,
+        centroidX: Float,
+        centroidY: Float,
+        panX: Float,
+        panY: Float,
+        viewportWidthPx: Float,
+        viewportHeightPx: Float
+    ): Pair<Float, Float> {
+        val safeCurrent = currentScale.coerceAtLeast(1f)
+        val scaleFactor = targetScale / safeCurrent
+        val centerX = viewportWidthPx / 2f
+        val centerY = viewportHeightPx / 2f
+        val rawX = (centroidX - centerX) * (1f - scaleFactor) + currentOffsetX * scaleFactor + panX
+        val rawY = (centroidY - centerY) * (1f - scaleFactor) + currentOffsetY * scaleFactor + panY
+        return clampOffset(rawX, rawY, targetScale, viewportWidthPx, viewportHeightPx)
+    }
+
+    fun fitPageSize(
+        maxWidth: Float,
+        maxHeight: Float,
+        aspectRatio: Float
+    ): Pair<Float, Float> {
+        val safeW = maxWidth.coerceAtLeast(1f)
+        val safeH = maxHeight.coerceAtLeast(1f)
+        val safeAspect = aspectRatio.coerceIn(0.25f, 4f)
+        val widthBoundHeight = safeW / safeAspect
+        return if (widthBoundHeight <= safeH) {
+            safeW to widthBoundHeight
+        } else {
+            (safeH * safeAspect) to safeH
+        }
+    }
 }
 
 @Stable
@@ -104,9 +148,9 @@ class ReaderZoomState(
     private val scaleAnim = Animatable(ReaderZoomMath.clampScale(initialScale))
     private val offsetAnim = Animatable(ComposeOffset.Zero, ComposeOffset.VectorConverter)
 
-    var viewportWidthPx: Float = 0f
+    var viewportWidthPx: Float by mutableFloatStateOf(0f)
         private set
-    var viewportHeightPx: Float = 0f
+    var viewportHeightPx: Float by mutableFloatStateOf(0f)
         private set
 
     private var multiTouchState by mutableStateOf(false)
@@ -124,13 +168,26 @@ class ReaderZoomState(
         viewportHeightPx = heightPx.toFloat().coerceAtLeast(0f)
     }
 
+    suspend fun reclampOffsetToViewport() {
+        val (clampedX, clampedY) = ReaderZoomMath.clampOffset(
+            offsetX = offsetAnim.value.x,
+            offsetY = offsetAnim.value.y,
+            scale = scaleAnim.value,
+            viewportWidthPx = viewportWidthPx,
+            viewportHeightPx = viewportHeightPx
+        )
+        if (abs(clampedX - offsetAnim.value.x) > 0.5f || abs(clampedY - offsetAnim.value.y) > 0.5f) {
+            offsetAnim.snapTo(ComposeOffset(clampedX, clampedY))
+        }
+    }
+
     fun updateOnScaleCommitted(callback: (Float) -> Unit) {
         onScaleCommitted = callback
     }
 
     suspend fun syncInitialScaleIfUntouched(initialScale: Float) {
         val target = ReaderZoomMath.clampScale(initialScale)
-        if (!hasUserInteracted && kotlin.math.abs(scaleAnim.value - target) > 0.01f) {
+        if (!hasUserInteracted && abs(scaleAnim.value - target) > 0.01f) {
             scaleAnim.snapTo(target)
             offsetAnim.snapTo(ComposeOffset.Zero)
         }
@@ -146,16 +203,53 @@ class ReaderZoomState(
         }
     }
 
-    suspend fun applyTransform(zoomChange: Float, panChange: ComposeOffset) {
+    suspend fun applyTransform(
+        zoomChange: Float,
+        panChange: ComposeOffset,
+        centroid: ComposeOffset? = null,
+        onHorizontalOverflowPan: ((Float) -> Float)? = null,
+        onVerticalOverflowPan: ((Float) -> Float)? = null
+    ) {
         hasUserInteracted = true
-        val newScale = ReaderZoomMath.clampScale(scaleAnim.value * zoomChange)
-        val (clampedX, clampedY) = ReaderZoomMath.clampOffset(
-            offsetX = offsetAnim.value.x + panChange.x,
-            offsetY = offsetAnim.value.y + panChange.y,
-            scale = newScale,
-            viewportWidthPx = viewportWidthPx,
-            viewportHeightPx = viewportHeightPx
-        )
+        val oldScale = scaleAnim.value
+        val newScale = ReaderZoomMath.clampScale(oldScale * zoomChange)
+        val isSingleFingerPan = zoomChange == 1f && newScale > 1.02f
+
+        val (clampedX, clampedY) = if (centroid != null && zoomChange != 1f && viewportWidthPx > 0f && viewportHeightPx > 0f) {
+            ReaderZoomMath.pinchTransformOffset(
+                currentOffsetX = offsetAnim.value.x,
+                currentOffsetY = offsetAnim.value.y,
+                currentScale = oldScale,
+                targetScale = newScale,
+                centroidX = centroid.x,
+                centroidY = centroid.y,
+                panX = panChange.x,
+                panY = panChange.y,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx
+            )
+        } else {
+            val desiredX = offsetAnim.value.x + panChange.x
+            val desiredY = offsetAnim.value.y + panChange.y
+            val (cx, cy) = ReaderZoomMath.clampOffset(
+                offsetX = desiredX,
+                offsetY = desiredY,
+                scale = newScale,
+                viewportWidthPx = viewportWidthPx,
+                viewportHeightPx = viewportHeightPx
+            )
+            if (isSingleFingerPan) {
+                val overflowX = desiredX - cx
+                val overflowY = desiredY - cy
+                if (abs(overflowX) > 0.5f) {
+                    onHorizontalOverflowPan?.invoke(overflowX)
+                }
+                if (abs(overflowY) > 0.5f) {
+                    onVerticalOverflowPan?.invoke(overflowY)
+                }
+            }
+            cx to cy
+        }
         scaleAnim.snapTo(newScale)
         offsetAnim.snapTo(ComposeOffset(clampedX, clampedY))
     }
@@ -241,24 +335,18 @@ fun ZoomableReaderViewport(
     onSingleTap: () -> Unit,
     onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier,
+    onVerticalOverflowPan: ((Float) -> Float)? = null,
+    onHorizontalOverflowPan: ((Float) -> Float)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
     val scope = rememberCoroutineScope()
-    val transformState = rememberTransformableState { zoomChange, panChange, _ ->
-        if (zoomChange != 1f || panChange != ComposeOffset.Zero) {
-            onUserInteraction()
-            scope.launch {
-                zoomState.applyTransform(zoomChange = zoomChange, panChange = panChange)
-            }
-        }
-    }
-    var wasTransforming by remember(zoomState) { mutableStateOf(false) }
-    LaunchedEffect(transformState.isTransformInProgress, zoomState) {
-        val inProgress = transformState.isTransformInProgress
-        if (wasTransforming && !inProgress) {
-            zoomState.notifyScaleCommitted()
-        }
-        wasTransforming = inProgress
+    val currentOnSingleTap by rememberUpdatedState(onSingleTap)
+    val currentOnUserInteraction by rememberUpdatedState(onUserInteraction)
+    val currentOnVerticalOverflowPan by rememberUpdatedState(onVerticalOverflowPan)
+    val currentOnHorizontalOverflowPan by rememberUpdatedState(onHorizontalOverflowPan)
+
+    LaunchedEffect(zoomState, zoomState.viewportWidthPx, zoomState.viewportHeightPx) {
+        zoomState.reclampOffsetToViewport()
     }
 
     Box(
@@ -269,28 +357,116 @@ fun ZoomableReaderViewport(
                 zoomState.updateViewportSize(size.width, size.height)
             }
             .pointerInput(zoomState) {
-                awaitPointerEventScope {
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        zoomState.setMultiTouchActive(event.changes.count { it.pressed } >= 2)
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+                    var panAccumulated = ComposeOffset.Zero
+                    var pastTouchSlop = false
+                    var didTransform = false
+                    val touchSlop = viewConfiguration.touchSlop
+
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val pressedCount = event.changes.count { it.pressed }
+                            val isMultiTouch = pressedCount >= 2
+                            zoomState.setMultiTouchActive(isMultiTouch)
+
+                            if (pressedCount == 0) {
+                                break
+                            }
+
+                            val zoomChange = if (isMultiTouch) event.calculateZoom() else 1f
+                            val panChange = if (isMultiTouch || zoomState.scale > 1.02f) {
+                                event.calculatePan()
+                            } else {
+                                ComposeOffset.Zero
+                            }
+                            val centroid = if (isMultiTouch) {
+                                event.calculateCentroid(useCurrent = false)
+                            } else {
+                                ComposeOffset.Unspecified
+                            }
+
+                            if (isMultiTouch) {
+                                if (!pastTouchSlop) {
+                                    panAccumulated += panChange
+                                    if (abs(1f - zoomChange) > 0.005f || panAccumulated.getDistance() > touchSlop * 0.5f) {
+                                        pastTouchSlop = true
+                                    }
+                                }
+                                if (pastTouchSlop && (zoomChange != 1f || panChange != ComposeOffset.Zero)) {
+                                    didTransform = true
+                                    currentOnUserInteraction()
+                                    val validCentroid = if (centroid != ComposeOffset.Unspecified) centroid else null
+                                    scope.launch {
+                                        zoomState.applyTransform(
+                                            zoomChange = zoomChange,
+                                            panChange = panChange,
+                                            centroid = validCentroid
+                                        )
+                                    }
+                                }
+                                event.changes.forEach { change ->
+                                    if (change.positionChanged()) {
+                                        change.consume()
+                                    }
+                                }
+                            } else if (zoomState.scale > 1.02f) {
+                                if (!pastTouchSlop) {
+                                    panAccumulated += panChange
+                                    if (panAccumulated.getDistance() > touchSlop) {
+                                        pastTouchSlop = true
+                                        didTransform = true
+                                        currentOnUserInteraction()
+                                        val firstPan = panAccumulated
+                                        scope.launch {
+                                            zoomState.applyTransform(
+                                                zoomChange = 1f,
+                                                panChange = firstPan,
+                                                onHorizontalOverflowPan = currentOnHorizontalOverflowPan,
+                                                onVerticalOverflowPan = currentOnVerticalOverflowPan
+                                            )
+                                        }
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                } else if (panChange != ComposeOffset.Zero) {
+                                    didTransform = true
+                                    currentOnUserInteraction()
+                                    scope.launch {
+                                        zoomState.applyTransform(
+                                            zoomChange = 1f,
+                                            panChange = panChange,
+                                            onHorizontalOverflowPan = currentOnHorizontalOverflowPan,
+                                            onVerticalOverflowPan = currentOnVerticalOverflowPan
+                                        )
+                                    }
+                                    event.changes.forEach { change ->
+                                        if (change.positionChanged()) {
+                                            change.consume()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } finally {
+                        zoomState.setMultiTouchActive(false)
+                        if (didTransform) {
+                            zoomState.notifyScaleCommitted()
+                        }
                     }
                 }
             }
-            .pointerInput(zoomState, onSingleTap, onUserInteraction) {
+            .pointerInput(zoomState) {
                 detectTapGestures(
-                    onTap = { onSingleTap() },
+                    onTap = { currentOnSingleTap() },
                     onDoubleTap = { tapOffset ->
-                        onUserInteraction()
+                        currentOnUserInteraction()
                         scope.launch {
                             zoomState.toggleDoubleTap(tapOffset)
                         }
                     }
                 )
             }
-            .transformable(
-                state = transformState,
-                canPan = { zoomState.scale > 1.02f }
-            )
     ) {
         Box(
             modifier = Modifier

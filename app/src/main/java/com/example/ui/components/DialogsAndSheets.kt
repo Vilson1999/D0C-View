@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -166,6 +167,7 @@ fun DocumentInfoSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .displayCutoutPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -306,6 +308,7 @@ fun SortOptionsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
+                .displayCutoutPadding()
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -394,26 +397,26 @@ fun StoragePermissionDialog(
             listOf(
                 Triple(
                     AppIcons.FolderOpen,
-                    "All Files Access",
-                    "Scan PDF, DOC, EXCEL, PPT, and TEXT files across all folders including hidden (.) folders."
+                    "Read Documents",
+                    "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files across all folders including hidden (.) folders."
                 ),
                 Triple(
                     AppIcons.Storage,
-                    "Offline File Management",
-                    "Open, rename, and delete documents directly on your device without internet."
+                    "Write Documents",
+                    "Rename, edit, and delete documents offline directly in device storage."
                 )
             )
         } else {
             listOf(
                 Triple(
                     AppIcons.FolderOpen,
-                    "Read Device Storage",
+                    "Read Documents",
                     "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files stored on your device."
                 ),
                 Triple(
                     AppIcons.Storage,
-                    "Write Device Storage",
-                    "Rename and delete documents offline from device folders."
+                    "Write Documents",
+                    "Rename, edit, and delete documents offline from device folders."
                 )
             )
         }

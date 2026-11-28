@@ -53,6 +53,7 @@ import com.example.ui.theme.DocPillColor
 import com.example.ui.theme.ExcelPillColor
 import com.example.ui.theme.PdfPillColor
 import com.example.ui.theme.PptPillColor
+import com.example.ui.theme.SyncSystemBarsAppearance
 import com.example.ui.theme.TextPillColor
 import kotlin.math.PI
 import kotlin.math.sin
@@ -61,8 +62,15 @@ import kotlinx.coroutines.delay
 @Composable
 fun AppOpenLoadingScreen(
     onFinished: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    syncSystemBars: Boolean = true
 ) {
+    if (syncSystemBars) {
+        SyncSystemBarsAppearance(
+            statusBarColor = MaterialTheme.colorScheme.background,
+            navigationBarColor = MaterialTheme.colorScheme.background
+        )
+    }
     var started by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {

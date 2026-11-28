@@ -4,6 +4,7 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -20,6 +21,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -30,17 +33,21 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -78,8 +85,11 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -116,9 +126,44 @@ import com.example.ui.components.SortOptionsSheet
 import com.example.ui.components.StoragePermissionDialog
 import com.example.ui.components.TopBarSearchField
 import com.example.ui.theme.LocalMaterialUiEnabled
+import com.example.ui.theme.NavigationBarSideBackdrop
+import com.example.ui.theme.SyncSystemBarsAppearance
 import com.example.viewmodel.HomeUiState
 import kotlin.math.absoluteValue
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+
+enum class HomePageDisplayState {
+    LOADING,
+    EMPTY,
+    DOCUMENTS
+}
+
+object HomeLoadingPolicy {
+    const val EMPTY_WAIT_TIMEOUT_MS: Long = 5_000L
+
+    fun resolvePageDisplayState(
+        hasCategoryDocs: Boolean,
+        isSearching: Boolean,
+        isScanning: Boolean,
+        isAccessGrantScanning: Boolean,
+        isPullRefreshing: Boolean,
+        emptyWaitElapsed: Boolean
+    ): HomePageDisplayState {
+        if (hasCategoryDocs && !isAccessGrantScanning) {
+            return HomePageDisplayState.DOCUMENTS
+        }
+        if (isSearching && !isScanning && !isAccessGrantScanning) {
+            return HomePageDisplayState.EMPTY
+        }
+        val waitingForDocuments = !isPullRefreshing && (isScanning || !emptyWaitElapsed)
+        return if (isAccessGrantScanning || waitingForDocuments) {
+            HomePageDisplayState.LOADING
+        } else {
+            HomePageDisplayState.EMPTY
+        }
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -142,7 +187,8 @@ fun HomeScreen(
     onRequestStorageAccess: () -> Unit,
     onPullRefresh: () -> Unit,
     onShowAllDocTypes: () -> Unit,
-    suppressPermissionDialog: Boolean = false
+    suppressPermissionDialog: Boolean = false,
+    syncSystemBars: Boolean = true
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -150,6 +196,37 @@ fun HomeScreen(
     val focusManager = LocalFocusManager.current
     val visibleTypes = uiState.visibleDocTypes
     var searchBarBounds by remember { mutableStateOf<Rect?>(null) }
+
+    val materialUi = LocalMaterialUiEnabled.current
+    val topBarColor by animateColorAsState(
+        targetValue = if (uiState.isSelectionMode) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        animationSpec = tween(220),
+        label = "homeTopBarColor"
+    )
+    val selectionBottomBarColor = if (materialUi) {
+        MaterialTheme.colorScheme.surfaceContainerHigh
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val bottomBarColor by animateColorAsState(
+        targetValue = if (uiState.isSelectionMode) {
+            selectionBottomBarColor
+        } else {
+            MaterialTheme.colorScheme.background
+        },
+        animationSpec = tween(220),
+        label = "homeBottomBarColor"
+    )
+    if (syncSystemBars && !suppressPermissionDialog) {
+        SyncSystemBarsAppearance(
+            statusBarColor = topBarColor,
+            navigationBarColor = bottomBarColor
+        )
+    }
 
     LaunchedEffect(uiState.isSearchActive) {
         if (!uiState.isSearchActive) {
@@ -250,6 +327,32 @@ fun HomeScreen(
     var deleteTargets by remember { mutableStateOf<List<DocumentItem>?>(null) }
     var infoTargets by remember { mutableStateOf<List<DocumentItem>?>(null) }
 
+    // Wait up to 5 seconds showing big loading circle before showing the "No documents found" logo
+    val isHomeVisible = !suppressPermissionDialog
+    var emptyWaitElapsed by rememberSaveable { mutableStateOf(false) }
+    var wasAccessGrantScanning by remember { mutableStateOf(false) }
+
+    LaunchedEffect(uiState.isAccessGrantScanning) {
+        if (uiState.isAccessGrantScanning && !wasAccessGrantScanning) {
+            emptyWaitElapsed = false
+        }
+        wasAccessGrantScanning = uiState.isAccessGrantScanning
+    }
+
+    LaunchedEffect(isHomeVisible, uiState.allDocumentsCount, emptyWaitElapsed) {
+        if (!isHomeVisible) return@LaunchedEffect
+        if (uiState.allDocumentsCount > 0) {
+            if (emptyWaitElapsed) {
+                emptyWaitElapsed = false
+            }
+            return@LaunchedEffect
+        }
+        if (!emptyWaitElapsed) {
+            delay(HomeLoadingPolicy.EMPTY_WAIT_TIMEOUT_MS)
+            emptyWaitElapsed = true
+        }
+    }
+
     if (uiState.isSelectionMode) {
         BackHandler { onClearSelection() }
     } else if (uiState.isSearchActive) {
@@ -311,51 +414,59 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            Surface(
-                color = MaterialTheme.colorScheme.background,
-                tonalElevation = 0.dp,
-                modifier = Modifier.fillMaxWidth()
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.background)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .statusBarsPadding()
-                        .displayCutoutPadding()
+                Surface(
+                    color = topBarColor,
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                AnimatedContent(
-                    targetState = uiState.isSelectionMode,
-                    transitionSpec = {
-                        (slideInVertically(
-                            initialOffsetY = { -it / 3 },
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ) + fadeIn(tween(200))).togetherWith(
-                            slideOutVertically(
-                                targetOffsetY = { -it / 3 },
-                                animationSpec = tween(160)
-                            ) + fadeOut(tween(150))
-                        )
-                    },
-                    label = "homeTopBarModeSwitch"
-                ) { selectionMode ->
-                    if (selectionMode) {
-                        SelectionTopBar(
-                            selectedCount = uiState.selectedDocIds.size,
-                            onClear = onClearSelection,
-                            onSelectAll = onSelectAll
-                        )
-                    } else {
-                        HomeTopBar(
-                            themeMode = uiState.settings.themeMode,
-                            isSearchActive = uiState.isSearchActive,
-                            searchQuery = uiState.searchQuery,
-                            onSearchQueryChange = onSearchQueryChange,
-                            onCycleThemeMode = onCycleThemeMode,
-                            onOpenSort = { showSortSheet = true },
-                            onOpenSearch = onToggleSearch,
-                            onCloseSearch = onCloseSearch,
-                            onSearchBarBoundsChange = { searchBarBounds = it },
-                            onOpenSettings = onOpenSettings
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                            .displayCutoutPadding()
+                    ) {
+                        AnimatedContent(
+                            targetState = uiState.isSelectionMode,
+                            transitionSpec = {
+                                (slideInVertically(
+                                    initialOffsetY = { -it / 3 },
+                                    animationSpec = tween(220, easing = FastOutSlowInEasing)
+                                ) + fadeIn(tween(200))).togetherWith(
+                                    slideOutVertically(
+                                        targetOffsetY = { -it / 3 },
+                                        animationSpec = tween(160)
+                                    ) + fadeOut(tween(150))
+                                )
+                            },
+                            label = "homeTopBarModeSwitch"
+                        ) { selectionMode ->
+                            if (selectionMode) {
+                                SelectionTopBar(
+                                    selectedCount = uiState.selectedDocIds.size,
+                                    onClear = onClearSelection,
+                                    onSelectAll = onSelectAll
+                                )
+                            } else {
+                                HomeTopBar(
+                                    themeMode = uiState.settings.themeMode,
+                                    isSearchActive = uiState.isSearchActive,
+                                    searchQuery = uiState.searchQuery,
+                                    onSearchQueryChange = onSearchQueryChange,
+                                    onCycleThemeMode = onCycleThemeMode,
+                                    onOpenSort = { showSortSheet = true },
+                                    onOpenSearch = onToggleSearch,
+                                    onCloseSearch = onCloseSearch,
+                                    onSearchBarBoundsChange = { searchBarBounds = it },
+                                    onOpenSettings = onOpenSettings
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -366,36 +477,58 @@ fun HomeScreen(
                     counts = counts,
                     visible = pillsVisible,
                     isDarkTheme = isDarkTheme,
-                    onSelectType = onSelectCategory
+                    onSelectType = onSelectCategory,
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
+                        .displayCutoutPadding()
                 )
-            }
             }
         },
         bottomBar = {
-            AnimatedVisibility(
-                visible = uiState.isSelectionMode,
-                enter = expandVertically(expandFrom = Alignment.Bottom) + fadeIn(),
-                exit = shrinkVertically(shrinkTowards = Alignment.Bottom) + fadeOut()
-            ) {
-                SelectionBottomToolbar(
-                    onShare = {
-                        DocumentActionsHelper.shareDocuments(context, uiState.selectedDocuments)
-                    },
-                    onDelete = {
-                        val selected = uiState.selectedDocuments
-                        if (selected.isNotEmpty()) deleteTargets = selected
-                    },
-                    onPrint = {
-                        val selected = uiState.selectedDocuments
-                        if (activity != null && selected.isNotEmpty()) {
-                            DocumentActionsHelper.printDocuments(activity, selected)
+            AnimatedContent(
+                targetState = uiState.isSelectionMode,
+                transitionSpec = {
+                    (slideInVertically(
+                        initialOffsetY = { it / 2 },
+                        animationSpec = tween(200, easing = FastOutSlowInEasing)
+                    ) + fadeIn(tween(180))).togetherWith(
+                        slideOutVertically(
+                            targetOffsetY = { it / 2 },
+                            animationSpec = tween(150)
+                        ) + fadeOut(tween(140))
+                    )
+                },
+                label = "homeBottomBarSwitch"
+            ) { selectionMode ->
+                if (selectionMode) {
+                    SelectionBottomToolbar(
+                        containerColor = selectionBottomBarColor,
+                        onShare = {
+                            DocumentActionsHelper.shareDocuments(context, uiState.selectedDocuments)
+                        },
+                        onDelete = {
+                            val selected = uiState.selectedDocuments
+                            if (selected.isNotEmpty()) deleteTargets = selected
+                        },
+                        onPrint = {
+                            val selected = uiState.selectedDocuments
+                            if (activity != null && selected.isNotEmpty()) {
+                                DocumentActionsHelper.printDocuments(activity, selected)
+                            }
+                        },
+                        onInfo = {
+                            val selected = uiState.selectedDocuments
+                            if (selected.isNotEmpty()) infoTargets = selected
                         }
-                    },
-                    onInfo = {
-                        val selected = uiState.selectedDocuments
-                        if (selected.isNotEmpty()) infoTargets = selected
-                    }
-                )
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(bottomBarColor)
+                            .windowInsetsBottomHeight(WindowInsets.navigationBars)
+                    )
+                }
             }
         }
     ) { innerPadding ->
@@ -403,16 +536,37 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
                 .displayCutoutPadding()
+                .clipToBounds()
                 .nestedScroll(nestedScrollConnection),
             contentAlignment = Alignment.TopCenter
         ) {
-            if (visibleTypes.isEmpty()) {
-                AllDocTypesHiddenState(
-                    onShowAll = onShowAllDocTypes,
-                    onOpenSettings = onOpenSettings
-                )
-            } else {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                AnimatedVisibility(
+                    visible = !uiState.hasFullStorageAccess && permissionDialogDismissed && !uiState.isSelectionMode,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    StoragePermissionBannerCard(
+                        hasReadPermission = uiState.hasDocumentReadPermission,
+                        hasWritePermission = uiState.hasDocumentWritePermission,
+                        onGrantClick = onRequestStorageAccess,
+                        modifier = Modifier
+                            .widthIn(max = 720.dp)
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                    )
+                }
+
+                if (visibleTypes.isEmpty()) {
+                    AllDocTypesHiddenState(
+                        onShowAll = onShowAllDocTypes,
+                        onOpenSettings = onOpenSettings
+                    )
+                } else {
                 HorizontalPager(
                     state = pagerState,
                     flingBehavior = PagerDefaults.flingBehavior(
@@ -456,50 +610,82 @@ fun HomeScreen(
                         }
                         .testTag("document_pull_refresh_${pageType.name.lowercase()}")
                 ) {
-                    val showCenterLoading = uiState.isAccessGrantScanning ||
-                        (uiState.isScanning && !uiState.isPullRefreshing && docs.isEmpty())
+                    val displayState = HomeLoadingPolicy.resolvePageDisplayState(
+                        hasCategoryDocs = docs.isNotEmpty(),
+                        isSearching = uiState.searchQuery.isNotBlank(),
+                        isScanning = uiState.isScanning,
+                        isAccessGrantScanning = uiState.isAccessGrantScanning,
+                        isPullRefreshing = uiState.isPullRefreshing,
+                        emptyWaitElapsed = emptyWaitElapsed
+                    )
 
-                    if (showCenterLoading) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .testTag("home_center_loading_${pageType.name.lowercase()}"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                color = pageType.pillColor,
-                                strokeWidth = 5.dp,
-                                modifier = Modifier.size(64.dp)
-                            )
-                        }
-                    } else if (docs.isEmpty()) {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(16.dp)
-                        ) {
-                            item(key = "empty_category_state") {
+                    AnimatedContent(
+                        targetState = displayState,
+                        transitionSpec = {
+                            (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                                scaleIn(initialScale = 0.96f, animationSpec = tween(240)))
+                                .togetherWith(fadeOut(tween(160)))
+                        },
+                        label = "homePageDisplayState"
+                    ) { state ->
+                        when (state) {
+                            HomePageDisplayState.LOADING -> {
                                 Box(
-                                    modifier = Modifier.fillParentMaxSize(),
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .testTag("home_center_loading_${pageType.name.lowercase()}"),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    EmptyCategoryState(
-                                        docType = pageType,
-                                        isSearching = uiState.searchQuery.isNotBlank()
-                                    )
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(18.dp),
+                                        modifier = Modifier.padding(24.dp)
+                                    ) {
+                                        CircularProgressIndicator(
+                                            color = pageType.pillColor,
+                                            trackColor = pageType.pillColor.copy(alpha = 0.16f),
+                                            strokeWidth = 6.5.dp,
+                                            strokeCap = StrokeCap.Round,
+                                            modifier = Modifier.size(88.dp)
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.loading_documents),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            textAlign = TextAlign.Center
+                                        )
+                                    }
                                 }
                             }
-                        }
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 2.dp,
-                                bottom = if (uiState.isSelectionMode) 20.dp else 28.dp
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                            HomePageDisplayState.EMPTY -> {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(16.dp)
+                                ) {
+                                    item(key = "empty_category_state") {
+                                        Box(
+                                            modifier = Modifier.fillParentMaxSize(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            EmptyCategoryState(
+                                                docType = pageType,
+                                                isSearching = uiState.searchQuery.isNotBlank()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            HomePageDisplayState.DOCUMENTS -> {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        end = 16.dp,
+                                        top = 2.dp,
+                                        bottom = if (uiState.isSelectionMode) 20.dp else 28.dp
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
                             items(docs, key = { it.id }) { doc ->
                                 val isSelected = doc.id in uiState.selectedDocIds
                                 DocumentCard(
@@ -544,12 +730,17 @@ fun HomeScreen(
                                 )
                             }
                         }
+                        }
+                        }
                     }
                 }
             }
             }
+            }
         }
     }
+
+    NavigationBarSideBackdrop(color = bottomBarColor)
 
     if (showSortSheet) {
         SortOptionsSheet(
@@ -739,7 +930,8 @@ private fun SelectionTopBar(
     onSelectAll: () -> Unit
 ) {
     Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
+        color = Color.Transparent,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -779,23 +971,27 @@ private fun SelectionTopBar(
 
 @Composable
 private fun SelectionBottomToolbar(
+    containerColor: Color,
     onShare: () -> Unit,
     onDelete: () -> Unit,
     onPrint: () -> Unit,
     onInfo: () -> Unit
 ) {
-    val materialUi = LocalMaterialUiEnabled.current
     Surface(
-        color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.surface,
-        tonalElevation = 6.dp,
+        color = containerColor,
+        tonalElevation = 0.dp,
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .windowInsetsPadding(
+                    WindowInsets.navigationBars.only(
+                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                    )
+                )
                 .displayCutoutPadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 8.dp, vertical = 2.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
@@ -962,6 +1158,70 @@ private fun AllDocTypesHiddenState(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Settings")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StoragePermissionBannerCard(
+    hasReadPermission: Boolean,
+    hasWritePermission: Boolean,
+    onGrantClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("home_storage_permission_banner")
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                modifier = Modifier.size(38.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = AppIcons.FolderOpen,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.grant_storage_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Read: ${if (hasReadPermission) "Granted" else "Needed"} • Write: ${if (hasWritePermission) "Granted" else "Needed"}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Button(
+                onClick = onGrantClick,
+                modifier = Modifier
+                    .defaultMinSize(minHeight = 48.dp)
+                    .testTag("home_grant_storage_button")
+            ) {
+                Text(stringResource(R.string.grant_storage_button))
             }
         }
     }

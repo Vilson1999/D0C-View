@@ -50,7 +50,7 @@ object OfficeGraphicPdfRenderer {
         ensureSpace: (neededHeight: Float) -> Float,
         canvasProvider: () -> Canvas
     ): Float {
-        val bitmap = decodeScaledBitmap(image.bytes, maxDimPx = 1400) ?: return cursorY
+        val bitmap = decodeScaledBitmap(image.bytes, maxDimPx = 4096) ?: return cursorY
         return try {
             val aspect = if (bitmap.width > 0) bitmap.height.toFloat() / bitmap.width.toFloat() else 1f
             var drawW = (image.widthPt ?: (contentWidth * 0.68f)).coerceIn(36f, contentWidth)
@@ -203,7 +203,7 @@ object OfficeGraphicPdfRenderer {
 
                 for (para in cell.paragraphs) {
                     if (para.image != null) {
-                        val bmp = decodeScaledBitmap(para.image.bytes, maxDimPx = 900)
+                        val bmp = decodeScaledBitmap(para.image.bytes, maxDimPx = 4096)
                         if (bmp != null) {
                             val aspect = if (bmp.width > 0) bmp.height.toFloat() / bmp.width.toFloat() else 1f
                             var drawW = (para.image.widthPt ?: (cellWidthF * 0.9f)).coerceIn(20f, cellWidthF)
@@ -596,6 +596,7 @@ object OfficeGraphicPdfRenderer {
             }
             val opts = BitmapFactory.Options().apply {
                 inSampleSize = sample
+                inScaled = false
                 inPreferredConfig = Bitmap.Config.ARGB_8888
             }
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)

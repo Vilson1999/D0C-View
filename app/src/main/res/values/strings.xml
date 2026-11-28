@@ -22,12 +22,13 @@
     <string name="action_reset_zoom">Reset zoom</string>
     <string name="action_clear_selection">Clear selection</string>
     <string name="action_select_all">Select all</string>
-    <string name="grant_storage_title">Enable Full Document Scan</string>
-    <string name="grant_storage_desc">Allow offline access to automatically scan all device folders, including hidden (.) dot folders.</string>
+    <string name="grant_storage_title">Enable Document Read &amp; Write</string>
+    <string name="grant_storage_desc">Allow offline access to read all folders (including hidden dot folders) and rename or delete documents.</string>
     <string name="grant_storage_button">Grant Access</string>
     <string name="empty_category_title">No %1$s documents found</string>
-    <string name="permission_dialog_title">Storage Permissions</string>
-    <string name="permission_dialog_desc">Allow storage permissions so D0C View can scan and open your offline documents across device folders.</string>
+    <string name="loading_documents">Loading documents…</string>
+    <string name="permission_dialog_title">Document Permissions</string>
+    <string name="permission_dialog_desc">Allow read and write permissions so D0C View can scan, open, rename, and delete your offline documents across device folders.</string>
     <string name="permission_allow_button">Allow</string>
     <string name="permission_later_button">Not Now</string>
 </resources>

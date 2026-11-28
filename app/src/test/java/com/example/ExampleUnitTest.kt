@@ -7,6 +7,7 @@ import com.example.data.ExcelCell
 import com.example.data.ExcelRow
 import com.example.data.ExcelSheet
 import com.example.data.ExcelWorkbook
+import com.example.data.LosslessBitmapFormat
 import com.example.data.OfficeChart
 import com.example.data.OfficeChartType
 import com.example.data.OfficeContentSummary
@@ -16,6 +17,8 @@ import com.example.data.OoxmlDocumentParser
 import com.example.data.OoxmlPresentationParser
 import com.example.data.OoxmlWorkbookParser
 import com.example.data.ParsedDocument
+import com.example.data.PdfBitmapCachePolicy
+import com.example.data.PdfRenderQualityPolicy
 import com.example.data.SlidePage
 import com.example.data.WordBlock
 import com.example.data.WordImage
@@ -32,6 +35,7 @@ import com.example.model.PageViewMode
 import com.example.model.ScreenOrientationPolicy
 import com.example.model.SortOption
 import com.example.service.BackgroundLifecyclePolicy
+import com.example.ui.theme.SystemBarContrastPolicy
 import com.example.viewmodel.DocumentQueryProcessor
 import com.example.viewmodel.HomeUiState
 import org.junit.Assert.assertEquals
@@ -1158,6 +1162,63 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun homeLoadingPolicy_waits5SecondsBeforeEmptyLogoAndShowsLoadedDocsImmediately() {
+        assertEquals(5_000L, com.example.ui.screens.HomeLoadingPolicy.EMPTY_WAIT_TIMEOUT_MS)
+
+        // If documents loaded, show documents immediately regardless of timer/scan state
+        assertEquals(
+            com.example.ui.screens.HomePageDisplayState.DOCUMENTS,
+            com.example.ui.screens.HomeLoadingPolicy.resolvePageDisplayState(
+                hasCategoryDocs = true,
+                isSearching = false,
+                isScanning = true,
+                isAccessGrantScanning = false,
+                isPullRefreshing = false,
+                emptyWaitElapsed = false
+            )
+        )
+
+        // If no documents loaded yet and 5s timer has not elapsed, show loading circle even if quick scan finished
+        assertEquals(
+            com.example.ui.screens.HomePageDisplayState.LOADING,
+            com.example.ui.screens.HomeLoadingPolicy.resolvePageDisplayState(
+                hasCategoryDocs = false,
+                isSearching = false,
+                isScanning = false,
+                isAccessGrantScanning = false,
+                isPullRefreshing = false,
+                emptyWaitElapsed = false
+            )
+        )
+
+        // After 5s wait completes with still no documents loaded, show empty "No documents found" logo
+        assertEquals(
+            com.example.ui.screens.HomePageDisplayState.EMPTY,
+            com.example.ui.screens.HomeLoadingPolicy.resolvePageDisplayState(
+                hasCategoryDocs = false,
+                isSearching = false,
+                isScanning = false,
+                isAccessGrantScanning = false,
+                isPullRefreshing = false,
+                emptyWaitElapsed = true
+            )
+        )
+
+        // Search query with no matches shows empty state immediately without blocking 5s
+        assertEquals(
+            com.example.ui.screens.HomePageDisplayState.EMPTY,
+            com.example.ui.screens.HomeLoadingPolicy.resolvePageDisplayState(
+                hasCategoryDocs = false,
+                isSearching = true,
+                isScanning = false,
+                isAccessGrantScanning = false,
+                isPullRefreshing = false,
+                emptyWaitElapsed = false
+            )
+        )
+    }
+
+    @Test
     fun screenOrientationPolicy_togglesPortraitAndLandscapeAndFollowsSensor() {
         assertEquals(
             android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE,
@@ -1266,6 +1327,41 @@ class ExampleUnitTest {
         val (clampedX, clampedY) = com.example.ui.components.ReaderZoomMath.clampOffset(800f, -1500f, 2.0f, 1000f, 2000f)
         assertEquals(500f, clampedX, 0.01f)
         assertEquals(-1000f, clampedY, 0.01f)
+
+        // Portrait A4 page in Landscape viewport fits full height without vertical cropping
+        val (landW, landH) = com.example.ui.components.ReaderZoomMath.fitPageSize(
+            maxWidth = 800f,
+            maxHeight = 300f,
+            aspectRatio = 0.707f
+        )
+        assertEquals(300f, landH, 0.01f)
+        assertEquals(212.1f, landW, 0.5f)
+        assertEquals(0.707f, landW / landH, 0.01f)
+
+        // Portrait A4 page in Portrait viewport fits width without exceeding height
+        val (portW, portH) = com.example.ui.components.ReaderZoomMath.fitPageSize(
+            maxWidth = 390f,
+            maxHeight = 760f,
+            aspectRatio = 0.707f
+        )
+        assertEquals(390f, portW, 0.01f)
+        assertEquals(551.6f, portH, 0.5f)
+
+        // Pinch transform around off-center centroid moves offset toward opposite side and stays clamped
+        val (pinchX, pinchY) = com.example.ui.components.ReaderZoomMath.pinchTransformOffset(
+            currentOffsetX = 0f,
+            currentOffsetY = 0f,
+            currentScale = 1f,
+            targetScale = 2f,
+            centroidX = 650f,
+            centroidY = 200f,
+            panX = 0f,
+            panY = 0f,
+            viewportWidthPx = 800f,
+            viewportHeightPx = 400f
+        )
+        assertEquals(-250f, pinchX, 0.5f)
+        assertEquals(0f, pinchY, 0.5f)
     }
 
     @Test
@@ -1522,5 +1618,125 @@ class ExampleUnitTest {
             )
         )
         assertFalse(explicitPortraitWb.layout.isLandscape)
+    }
+
+    @Test
+    fun pdfRenderQualityPolicy_preservesNativeDimensionsAndDisplaySharpness() {
+        // High-res scanned/exported PDF page keeps full native resolution without downscaling to display width
+        val highResSize = PdfRenderQualityPolicy.resolveRenderSize(
+            pageWidth = 2480,
+            pageHeight = 3508,
+            requestedDisplayWidthPx = 1080,
+            needsRotate = false
+        )
+        assertEquals(2480 to 3508, highResSize)
+
+        // Standard 72-dpi A4 vector PDF matches exact requested display pixels without artificial inflation
+        val vectorA4Size = PdfRenderQualityPolicy.resolveRenderSize(
+            pageWidth = 595,
+            pageHeight = 842,
+            requestedDisplayWidthPx = 1080,
+            needsRotate = false
+        )
+        assertEquals(1080, vectorA4Size.first)
+        assertEquals(1528, vectorA4Size.second)
+
+        // Extreme dimensions are bounded proportionally to MAX_SAFE_TEXTURE_PX (4096) preserving aspect ratio
+        val extremeSize = PdfRenderQualityPolicy.resolveRenderSize(
+            pageWidth = 6000,
+            pageHeight = 8000,
+            requestedDisplayWidthPx = 1080,
+            needsRotate = false
+        )
+        assertEquals(3072 to 4096, extremeSize)
+
+        // Rotated page evaluates post-rotation width against display pixels and maps back to raw coordinates
+        val rotatedSize = PdfRenderQualityPolicy.resolveRenderSize(
+            pageWidth = 2480,
+            pageHeight = 1754,
+            requestedDisplayWidthPx = 1080,
+            needsRotate = true
+        )
+        assertEquals(2480 to 1754, rotatedSize)
+    }
+
+    @Test
+    fun systemBarContrastPolicy_picksDarkIconsForLightBarsAndLightIconsForDarkBars() {
+        // Light backgrounds (white, surfaceContainerLow, light primaryContainer) -> dark system bar icons
+        assertTrue(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.96f))
+        assertTrue(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.80f))
+        assertTrue(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.50f))
+
+        // Dark backgrounds (dark surface, dark primaryContainer, dark background) -> light system bar icons
+        assertFalse(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.49f))
+        assertFalse(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.12f))
+        assertFalse(SystemBarContrastPolicy.shouldUseDarkIcons(backgroundLuminance = 0.02f))
+    }
+
+    @Test
+    fun pdfBitmapCachePolicy_preservesLosslessOriginalQualityWithLowStorageAndRamSizing() {
+        // Android 11+ (API 30+) uses compact WEBP_LOSSLESS; API 28-29 falls back to lossless PNG
+        assertEquals(LosslessBitmapFormat.WEBP_LOSSLESS, PdfBitmapCachePolicy.selectLosslessFormat(30))
+        assertEquals(LosslessBitmapFormat.WEBP_LOSSLESS, PdfBitmapCachePolicy.selectLosslessFormat(36))
+        assertEquals(LosslessBitmapFormat.PNG, PdfBitmapCachePolicy.selectLosslessFormat(29))
+        assertEquals(LosslessBitmapFormat.PNG, PdfBitmapCachePolicy.selectLosslessFormat(28))
+
+        // Only landing page (Page 1 / index 0) is persisted to disk; interior pages stay fast in RAM LRU
+        assertTrue(PdfBitmapCachePolicy.shouldPersistPageToDisk(0))
+        assertFalse(PdfBitmapCachePolicy.shouldPersistPageToDisk(1))
+        assertFalse(PdfBitmapCachePolicy.shouldPersistPageToDisk(12))
+        assertFalse(PdfBitmapCachePolicy.shouldPersistPageToDisk(-1))
+
+        // RAM cache scales dynamically between 32 MB and 96 MB so full-resolution pages fit in memory
+        assertEquals(32 * 1024 * 1024, PdfBitmapCachePolicy.computeMemoryCacheBytes(128L * 1024L * 1024L))
+        assertEquals(51 * 1024 * 1024, PdfBitmapCachePolicy.computeMemoryCacheBytes(255L * 1024L * 1024L))
+        assertEquals(96 * 1024 * 1024, PdfBitmapCachePolicy.computeMemoryCacheBytes(512L * 1024L * 1024L))
+    }
+
+    @Test
+    fun documentCacheManager_compressesParsedCacheLosslesslyForLowStorage() {
+        val tempDir = Files.createTempDirectory("docview_gzip_cache").toFile()
+        try {
+            val largeText = buildString {
+                repeat(400) { idx ->
+                    append("Section $idx: Quarterly financial review and offline document cache verification line.\n")
+                }
+            }
+            val lines = largeText.lines()
+            val plainDoc = ParsedDocument.PlainText(
+                fullText = largeText,
+                pages = lines.chunked(42),
+                layout = OfficeLayoutResolver.DEFAULT_WORD_A4,
+                summary = OfficeContentSummary(
+                    detectedPageSize = "A4",
+                    detectedMargin = "Normal",
+                    effectivePageSize = "A4",
+                    effectiveMargin = "Normal",
+                    isLandscape = false,
+                    widthPt = 595f,
+                    heightPt = 842f,
+                    textCount = lines.size,
+                    imageCount = 0,
+                    chartCount = 0,
+                    tableCount = 0,
+                    unitCount = 10,
+                    unitLabel = "Pages"
+                )
+            )
+            val cacheFile = File(tempDir, "large_text.dat")
+            assertTrue(DocumentCacheManager.saveParsedToFile(cacheFile, plainDoc))
+
+            // GZIP-compressed binary cache must be dramatically smaller than the raw text payload
+            val rawPayloadBytes = largeText.toByteArray(Charsets.UTF_8).size.toLong()
+            assertTrue(
+                "Expected compressed cache (${cacheFile.length()} B) < 15% of raw payload ($rawPayloadBytes B)",
+                cacheFile.length() < (rawPayloadBytes * 15L) / 100L
+            )
+
+            // Lossless decompression must restore exact document content & layout
+            assertEquals(plainDoc, DocumentCacheManager.loadParsedFromFile(cacheFile))
+        } finally {
+            tempDir.deleteRecursively()
+        }
     }
 }

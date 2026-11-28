@@ -26,6 +26,7 @@ import java.io.InputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.Charset
+import java.util.concurrent.ConcurrentHashMap
 
 sealed interface ParsedDocument {
     data class Pdf(
@@ -61,13 +62,49 @@ sealed interface ParsedDocument {
     data class Error(val message: String) : ParsedDocument
 }
 
+object PdfRenderQualityPolicy {
+    const val MIN_RENDER_DIM_PX = 480
+    const val MAX_SAFE_TEXTURE_PX = 4096
+
+    fun normalizeRequestedWidth(requestedWidthPx: Int): Int =
+        requestedWidthPx.coerceIn(MIN_RENDER_DIM_PX, MAX_SAFE_TEXTURE_PX)
+
+    fun resolveRenderSize(
+        pageWidth: Int,
+        pageHeight: Int,
+        requestedDisplayWidthPx: Int,
+        needsRotate: Boolean
+    ): Pair<Int, Int> {
+        val postNativeW = (if (needsRotate) pageHeight else pageWidth).coerceAtLeast(1)
+        val postNativeH = (if (needsRotate) pageWidth else pageHeight).coerceAtLeast(1)
+        val aspectPost = postNativeH.toFloat() / postNativeW.toFloat()
+
+        // Keep native PDF dimensions when the page is >= display width, and match display pixels
+        // for 72dpi vector pages without artificially boosting or shrinking quality.
+        val desiredPostW = maxOf(postNativeW, normalizeRequestedWidth(requestedDisplayWidthPx))
+            .coerceIn(MIN_RENDER_DIM_PX, MAX_SAFE_TEXTURE_PX)
+        val rawScaledH = (desiredPostW * aspectPost).toInt().coerceAtLeast(1)
+        val finalPostH = rawScaledH.coerceAtMost(MAX_SAFE_TEXTURE_PX)
+        val finalPostW = if (rawScaledH > MAX_SAFE_TEXTURE_PX) {
+            (MAX_SAFE_TEXTURE_PX / aspectPost).toInt().coerceAtLeast(1)
+        } else {
+            desiredPostW
+        }
+
+        val rawW = if (needsRotate) finalPostH else finalPostW
+        val rawH = if (needsRotate) finalPostW else finalPostH
+        return rawW to rawH
+    }
+}
+
 class PdfDocumentSession(
     private val docKey: String,
     private val pfd: ParcelFileDescriptor,
     private val renderer: PdfRenderer,
     private val cacheManager: DocumentCacheManager,
     val viewOrientation: DocumentViewOrientation = DocumentViewOrientation.AUTO,
-    val isFirstPageNaturallyLandscape: Boolean = false
+    val isFirstPageNaturallyLandscape: Boolean = false,
+    private val firstPageAspectRatio: Float = 0.707f
 ) {
     private val effectiveCacheKey: String = if (viewOrientation == DocumentViewOrientation.AUTO) {
         docKey
@@ -75,19 +112,29 @@ class PdfDocumentSession(
         "${docKey}_orient_${viewOrientation.name.lowercase()}"
     }
     private val mutex = Mutex()
+    private val pageAspectRatios = ConcurrentHashMap<Int, Float>().apply {
+        put(0, firstPageAspectRatio.coerceIn(0.35f, 3.0f))
+    }
     @Volatile
     private var isClosed = false
     val pageCount: Int get() = if (isClosed) 0 else renderer.pageCount
 
+    fun getPageAspectRatio(index: Int): Float =
+        pageAspectRatios[index] ?: if (isFirstPageNaturallyLandscape) 1.414f else 0.707f
+
     fun peekCachedPage(index: Int, targetWidthPx: Int): Bitmap? {
         if (isClosed) return null
-        val safeWidth = targetWidthPx.coerceIn(480, 2048)
+        val safeWidth = PdfRenderQualityPolicy.normalizeRequestedWidth(targetWidthPx)
         return cacheManager.getMemoryPdfPageBitmap(effectiveCacheKey, index, safeWidth)
     }
 
-    suspend fun renderPage(index: Int, targetWidthPx: Int): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun renderPage(
+        index: Int,
+        targetWidthPx: Int,
+        persistSync: Boolean = false
+    ): Bitmap? = withContext(Dispatchers.IO) {
         if (isClosed) return@withContext null
-        val safeWidth = targetWidthPx.coerceIn(480, 2048)
+        val safeWidth = PdfRenderQualityPolicy.normalizeRequestedWidth(targetWidthPx)
         cacheManager.getCachedPdfPageBitmap(effectiveCacheKey, index, safeWidth)?.let { cached ->
             return@withContext cached
         }
@@ -105,10 +152,15 @@ class PdfDocumentSession(
                     }
                     val postW = if (needsRotate) page.height else page.width
                     val postH = if (needsRotate) page.width else page.height
-                    val aspectPost = if (postW > 0) postH.toFloat() / postW.toFloat() else 1.414f
-                    val targetPostH = (safeWidth * aspectPost).toInt().coerceIn(320, 3200)
-                    val rawW = if (needsRotate) targetPostH else safeWidth
-                    val rawH = if (needsRotate) safeWidth else targetPostH
+                    if (postW > 0 && postH > 0) {
+                        pageAspectRatios[index] = (postW.toFloat() / postH.toFloat()).coerceIn(0.35f, 3.0f)
+                    }
+                    val (rawW, rawH) = PdfRenderQualityPolicy.resolveRenderSize(
+                        pageWidth = page.width,
+                        pageHeight = page.height,
+                        requestedDisplayWidthPx = safeWidth,
+                        needsRotate = needsRotate
+                    )
 
                     val rawBitmap = Bitmap.createBitmap(rawW, rawH, Bitmap.Config.ARGB_8888)
                     rawBitmap.eraseColor(Color.WHITE)
@@ -130,7 +182,13 @@ class PdfDocumentSession(
                     } else {
                         rawBitmap
                     }
-                    cacheManager.putCachedPdfPageBitmap(effectiveCacheKey, index, safeWidth, finalBitmap)
+                    cacheManager.putCachedPdfPageBitmap(
+                        docKey = effectiveCacheKey,
+                        pageIndex = index,
+                        widthPx = safeWidth,
+                        bitmap = finalBitmap,
+                        persistSync = persistSync
+                    )
                     finalBitmap
                 }
             }.getOrNull()
@@ -138,8 +196,8 @@ class PdfDocumentSession(
     }
 
     suspend fun prefetchAdjacent(currentIndex: Int, targetWidthPx: Int) {
-        val safeWidth = targetWidthPx.coerceIn(480, 2048)
-        val neighbors = listOf(currentIndex + 1, currentIndex - 1)
+        val safeWidth = PdfRenderQualityPolicy.normalizeRequestedWidth(targetWidthPx)
+        val neighbors = listOf(currentIndex + 1, currentIndex - 1, currentIndex + 2)
         for (neighbor in neighbors) {
             if (isClosed) return
             if (neighbor in 0 until pageCount &&
@@ -194,17 +252,22 @@ class DocumentParser(private val context: Context) {
         settings: AppSettings,
         maxPrewarmDocs: Int = 5
     ) = withContext(Dispatchers.IO) {
-        val widthPx = context.resources.displayMetrics.widthPixels.coerceIn(600, 1800)
+        val dm = context.resources.displayMetrics
+        val widthPx = PdfRenderQualityPolicy.normalizeRequestedWidth(minOf(dm.widthPixels, dm.heightPixels))
         var warmed = 0
         for (doc in docs) {
             if (!currentCoroutineContext().isActive || warmed >= maxPrewarmDocs) break
             if (doc.sizeBytes > 6L * 1024L * 1024L || !isSourceAccessible(doc)) continue
             warmed++
             runCatching {
-                val parsed = parseInternal(doc = doc, settings = settings)
+                val parsed = parseInternal(
+                    doc = doc,
+                    settings = settings,
+                    documentOrientation = settings.viewOrientationFor(doc.type)
+                )
                 if (parsed is ParsedDocument.Pdf) {
                     try {
-                        parsed.session.renderPage(0, widthPx)
+                        parsed.session.renderPage(0, widthPx, persistSync = true)
                     } finally {
                         parsed.session.close()
                     }
@@ -301,9 +364,20 @@ class DocumentParser(private val context: Context) {
                 pfd.close()
                 ParsedDocument.Error("This PDF document has no pages.")
             } else {
-                val firstLandscape = runCatching {
-                    renderer.openPage(0).use { it.width > it.height }
-                }.getOrDefault(false)
+                val firstPageInfo = runCatching {
+                    renderer.openPage(0).use { p ->
+                        val naturalLandscape = p.width > p.height
+                        val needsRotate = when (documentOrientation) {
+                            DocumentViewOrientation.AUTO -> false
+                            DocumentViewOrientation.PORTRAIT -> p.width > p.height
+                            DocumentViewOrientation.LANDSCAPE -> p.width < p.height
+                        }
+                        val postW = if (needsRotate) p.height else p.width
+                        val postH = if (needsRotate) p.width else p.height
+                        val aspect = if (postH > 0) (postW.toFloat() / postH.toFloat()).coerceIn(0.35f, 3.0f) else 0.707f
+                        naturalLandscape to aspect
+                    }
+                }.getOrDefault(false to 0.707f)
                 ParsedDocument.Pdf(
                     session = PdfDocumentSession(
                         docKey = sessionKey,
@@ -311,7 +385,8 @@ class DocumentParser(private val context: Context) {
                         renderer = renderer,
                         cacheManager = cacheManager,
                         viewOrientation = documentOrientation,
-                        isFirstPageNaturallyLandscape = firstLandscape
+                        isFirstPageNaturallyLandscape = firstPageInfo.first,
+                        firstPageAspectRatio = firstPageInfo.second
                     ),
                     summary = summary?.copy(unitCount = renderer.pageCount)
                 )
@@ -418,7 +493,7 @@ class DocumentParser(private val context: Context) {
         val summary = buildWordSummary(docData.blocks, detectedLayout, effectiveLayout, pages.size)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
         val wordParsed = ParsedDocument.Word(pages = pages, layout = effectiveLayout, summary = summary)
-        cacheManager.saveDiskParsed(doc, wordParsed, variantTag)
+        cacheManager.putMemoryParsed(doc, wordParsed, variantTag)
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
@@ -434,6 +509,7 @@ class DocumentParser(private val context: Context) {
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
+            cacheManager.saveDiskParsed(doc, wordParsed, variantTag)
             wordParsed
         }
     }
@@ -665,7 +741,7 @@ class DocumentParser(private val context: Context) {
         val summary = buildSlidesSummary(effectiveSlides, detectedLayout, effectiveLayout)
         cacheManager.saveDiskSummary(doc, summary, sumVariant)
         val slidesParsed = ParsedDocument.Slides(slides = effectiveSlides, layout = effectiveLayout, summary = summary)
-        cacheManager.saveDiskParsed(doc, slidesParsed, variantTag)
+        cacheManager.putMemoryParsed(doc, slidesParsed, variantTag)
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
@@ -680,6 +756,7 @@ class DocumentParser(private val context: Context) {
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
+            cacheManager.saveDiskParsed(doc, slidesParsed, variantTag)
             slidesParsed
         }
     }
@@ -917,7 +994,7 @@ class DocumentParser(private val context: Context) {
             layout = effectiveLayout,
             summary = summary
         )
-        cacheManager.saveDiskParsed(doc, excelParsed, variantTag)
+        cacheManager.putMemoryParsed(doc, excelParsed, variantTag)
 
         if (cachedPdf.isFile && cachedPdf.length() > 0L) {
             cachedPdf.setLastModified(System.currentTimeMillis())
@@ -933,6 +1010,7 @@ class DocumentParser(private val context: Context) {
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, summary)
         } else {
+            cacheManager.saveDiskParsed(doc, excelParsed, variantTag)
             excelParsed
         }
     }
@@ -1074,7 +1152,11 @@ class DocumentParser(private val context: Context) {
                 layout = effectiveLayout,
                 summary = summary
             ).also {
-                cacheManager.saveDiskParsed(doc, it, textCacheKey)
+                if (renderFormat == OfficeRenderFormat.ORIGINAL) {
+                    cacheManager.saveDiskParsed(doc, it, textCacheKey)
+                } else {
+                    cacheManager.putMemoryParsed(doc, it, textCacheKey)
+                }
             }
         }
 
@@ -1099,6 +1181,7 @@ class DocumentParser(private val context: Context) {
         return if (ok) {
             openConvertedPdf(cachedPdf, sessionKey, plainParsed.summary)
         } else {
+            cacheManager.saveDiskParsed(doc, plainParsed, textCacheKey)
             plainParsed
         }
     }

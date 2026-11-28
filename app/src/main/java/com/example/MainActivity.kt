@@ -11,6 +11,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -27,6 +28,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -44,6 +46,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -51,6 +54,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.model.ScreenOrientationPolicy
@@ -77,7 +81,16 @@ class MainActivity : ComponentActivity() {
                 splashScreenView.remove()
             }
         }
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT
+            ),
+            navigationBarStyle = SystemBarStyle.auto(
+                android.graphics.Color.TRANSPARENT,
+                android.graphics.Color.TRANSPARENT
+            )
+        )
         handleIncomingIntent(intent)
 
         setContent {
@@ -107,6 +120,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val navController = rememberNavController()
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = currentBackStackEntry?.destination?.route
     val snackbarHostState = remember { SnackbarHostState() }
     var showAppOpenLoading by rememberSaveable { mutableStateOf(true) }
 
@@ -173,6 +188,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         }
     }
 
+    var legacyStoragePermissionRequested by rememberSaveable { mutableStateOf(false) }
+
     val legacyPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
@@ -189,11 +206,16 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri ->
         if (uri != null) {
+            val readWriteFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                )
+                context.contentResolver.takePersistableUriPermission(uri, readWriteFlags)
+            }.onFailure {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
             }
             viewModel.onSafFolderPicked(uri)
         }
@@ -203,11 +225,16 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
+            val readWriteFlags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
+                context.contentResolver.takePersistableUriPermission(uri, readWriteFlags)
+            }.onFailure {
+                runCatching {
+                    context.contentResolver.takePersistableUriPermission(
+                        uri,
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    )
+                }
             }
             viewModel.onImportedFilePicked(uri)
         }
@@ -224,12 +251,37 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                 manageAllFilesLauncher.launch(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
             }
         } else {
-            legacyPermissionLauncher.launch(
-                arrayOf(
-                    Manifest.permission.READ_EXTERNAL_STORAGE,
+            val permanentlyDenied = legacyStoragePermissionRequested &&
+                !uiState.hasFullStorageAccess &&
+                activity != null &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) &&
+                !ActivityCompat.shouldShowRequestPermissionRationale(
+                    activity,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE
                 )
-            )
+            if (permanentlyDenied) {
+                val appSettingsIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:${context.packageName}")
+                }
+                manageAllFilesLauncher.launch(appSettingsIntent)
+            } else {
+                legacyStoragePermissionRequested = true
+                legacyPermissionLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    )
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.writePermissionRequired.collect {
+            requestStorageAccess()
         }
     }
 
@@ -318,7 +370,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onRequestStorageAccess = requestStorageAccess,
                         onPullRefresh = viewModel::pullToRefreshDocuments,
                         onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) },
-                        suppressPermissionDialog = showAppOpenLoading
+                        suppressPermissionDialog = showAppOpenLoading,
+                        syncSystemBars = !showAppOpenLoading && currentRoute == ROUTE_HOME
                     )
                 }
 
@@ -354,7 +407,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                             onSaveRenderFormat = viewModel::setRenderFormatForType,
                             onSaveDocumentOrientation = viewModel::setViewOrientationForType,
                             onSaveReaderScreenOrientation = viewModel::setReaderScreenOrientation,
-                            onSaveOrgZoomScale = viewModel::setOrgZoomScaleForType
+                            onSaveOrgZoomScale = viewModel::setOrgZoomScaleForType,
+                            syncSystemBars = !showAppOpenLoading && currentRoute == ROUTE_VIEWER
                         )
                     }
                 }
@@ -362,6 +416,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                 composable(ROUTE_SETTINGS) {
                     SettingsScreen(
                         settings = uiState.settings,
+                        hasReadPermission = uiState.hasDocumentReadPermission,
+                        hasWritePermission = uiState.hasDocumentWritePermission,
                         hasFullStorageAccess = uiState.hasFullStorageAccess,
                         dotFolderDocCount = uiState.dotFolderDocCount,
                         countsByType = uiState.rawCountsByType,
@@ -402,7 +458,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onRemoveCustomFolder = viewModel::removeSafFolder,
                         onImportFile = openImportFile,
                         onRescanNow = { viewModel.refreshStorageAccessAndScan(userInitiated = true) },
-                        onClearCache = viewModel::clearCache
+                        onClearCache = viewModel::clearCache,
+                        syncSystemBars = !showAppOpenLoading && currentRoute == ROUTE_SETTINGS
                     )
                 }
             }
@@ -412,6 +469,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
+                    .displayCutoutPadding()
                     .padding(bottom = if (uiState.isSelectionMode) 64.dp else 12.dp)
             )
 
@@ -424,7 +482,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                 )
             ) {
                 AppOpenLoadingScreen(
-                    onFinished = { showAppOpenLoading = false }
+                    onFinished = { showAppOpenLoading = false },
+                    syncSystemBars = showAppOpenLoading
                 )
             }
         }

@@ -2,9 +2,20 @@ package com.example.ui.theme
 
 import android.app.Activity
 import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.windowInsetsEndWidth
+import androidx.compose.foundation.layout.windowInsetsStartWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -18,13 +29,76 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 val LocalMaterialUiEnabled = staticCompositionLocalOf { true }
+
+object SystemBarContrastPolicy {
+    fun shouldUseDarkIcons(backgroundLuminance: Float): Boolean = backgroundLuminance >= 0.5f
+
+    fun styleForColor(color: Color): SystemBarStyle {
+        val argb = color.toArgb()
+        return if (shouldUseDarkIcons(color.luminance())) {
+            SystemBarStyle.light(argb, argb)
+        } else {
+            SystemBarStyle.dark(argb)
+        }
+    }
+}
+
+@Composable
+fun SyncSystemBarsAppearance(
+    statusBarColor: Color,
+    navigationBarColor: Color
+) {
+    val view = LocalView.current
+    if (view.isInEditMode) return
+    val useDarkStatusIcons = SystemBarContrastPolicy.shouldUseDarkIcons(statusBarColor.luminance())
+    val useDarkNavIcons = SystemBarContrastPolicy.shouldUseDarkIcons(navigationBarColor.luminance())
+    SideEffect {
+        val activity = view.context as? ComponentActivity
+        if (activity != null) {
+            activity.enableEdgeToEdge(
+                statusBarStyle = SystemBarContrastPolicy.styleForColor(statusBarColor),
+                navigationBarStyle = SystemBarContrastPolicy.styleForColor(navigationBarColor)
+            )
+        } else {
+            val window = (view.context as? Activity)?.window
+            if (window != null) {
+                WindowCompat.getInsetsController(window, view).apply {
+                    isAppearanceLightStatusBars = useDarkStatusIcons
+                    isAppearanceLightNavigationBars = useDarkNavIcons
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun BoxScope.NavigationBarSideBackdrop(color: Color) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterStart)
+            .windowInsetsStartWidth(WindowInsets.navigationBars)
+            .fillMaxHeight()
+            .background(color)
+    )
+    Box(
+        modifier = Modifier
+            .align(Alignment.CenterEnd)
+            .windowInsetsEndWidth(WindowInsets.navigationBars)
+            .fillMaxHeight()
+            .background(color)
+    )
+}
 
 // Expressive Material Design 3 Light & Dark Schemes (fallback for Android 9-11 or fixed M3)
 private val MaterialLightColorScheme = lightColorScheme(
@@ -215,18 +289,10 @@ fun DocVaultTheme(
     }
 
     val colorScheme = rememberAnimatedColorScheme(targetScheme)
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = (view.context as? Activity)?.window
-            if (window != null) {
-                WindowCompat.getInsetsController(window, view).apply {
-                    isAppearanceLightStatusBars = !darkTheme
-                    isAppearanceLightNavigationBars = !darkTheme
-                }
-            }
-        }
-    }
+    SyncSystemBarsAppearance(
+        statusBarColor = colorScheme.background,
+        navigationBarColor = colorScheme.background
+    )
 
     CompositionLocalProvider(LocalMaterialUiEnabled provides useMaterialUi) {
         MaterialTheme(

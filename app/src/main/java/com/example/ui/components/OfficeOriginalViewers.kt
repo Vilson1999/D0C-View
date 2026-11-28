@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -59,6 +60,7 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
@@ -110,7 +112,7 @@ private fun isDarkRgb(rgb: Int): Boolean {
     return (0.299f * r + 0.587f * g + 0.114f * b) < 128f
 }
 
-private fun decodeScaledBitmap(bytes: ByteArray, maxDim: Int = 1440): Bitmap? = runCatching {
+private fun decodeScaledBitmap(bytes: ByteArray, maxDim: Int = 4096): Bitmap? = runCatching {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
     if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
@@ -118,7 +120,11 @@ private fun decodeScaledBitmap(bytes: ByteArray, maxDim: Int = 1440): Bitmap? = 
     while (bounds.outWidth / sample > maxDim || bounds.outHeight / sample > maxDim) {
         sample *= 2
     }
-    BitmapFactory.Options().apply { inSampleSize = sample }.let { opts ->
+    BitmapFactory.Options().apply {
+        inSampleSize = sample
+        inScaled = false
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }.let { opts ->
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, opts)
     }
 }.getOrNull()
@@ -356,6 +362,7 @@ fun WordRichBlockContent(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "Embedded document image",
                     contentScale = ContentScale.Fit,
+                    filterQuality = FilterQuality.High,
                     modifier = Modifier
                         .fillMaxWidth(0.92f)
                         .heightIn(max = 280.dp)
@@ -730,6 +737,7 @@ fun OfficeOriginalExcelContent(
     val sheet = workbook.sheets.getOrNull(safeIndex) ?: return
 
     val hScroll = rememberScrollState()
+    val listState = rememberLazyListState()
     val totalCols = sheet.maxColumns.coerceAtLeast(1)
     val rawColWidths = remember(sheet) {
         (0 until totalCols).map { idx ->
@@ -751,9 +759,20 @@ fun OfficeOriginalExcelContent(
             zoomState = zoomState,
             onSingleTap = onToggleUi,
             onUserInteraction = onZoomInteraction,
+            onVerticalOverflowPan = { overflowY ->
+                val safeScale = zoomState.scale.coerceAtLeast(1f)
+                val consumedChildDelta = listState.dispatchRawDelta(-overflowY / safeScale)
+                -consumedChildDelta * safeScale
+            },
+            onHorizontalOverflowPan = { overflowX ->
+                val safeScale = zoomState.scale.coerceAtLeast(1f)
+                val consumedChildDelta = hScroll.dispatchRawDelta(-overflowX / safeScale)
+                -consumedChildDelta * safeScale
+            },
             modifier = Modifier.fillMaxSize()
         ) {
             LazyColumn(
+                state = listState,
                 userScrollEnabled = zoomState.canInnerScroll,
                 modifier = Modifier
                     .fillMaxSize()
@@ -1023,17 +1042,26 @@ fun OfficeOriginalExcelContent(
                 .navigationBarsPadding()
                 .padding(bottom = 14.dp)
         ) {
-            Surface(
-                shape = RoundedCornerShape(50),
-                color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
-                shadowElevation = 4.dp,
-                modifier = Modifier.testTag("viewer_page_pill")
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.inverseOnSurface,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.88f),
+                    shadowElevation = 4.dp,
+                    modifier = Modifier.testTag("viewer_page_pill")
+                ) {
+                    Text(
+                        text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.inverseOnSurface,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
+                }
+                ReaderZoomControlsPill(
+                    zoomState = zoomState,
+                    onUserInteraction = onZoomInteraction
                 )
             }
         }

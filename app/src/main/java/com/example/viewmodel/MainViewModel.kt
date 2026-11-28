@@ -8,6 +8,7 @@ import com.example.DocViewApplication
 import com.example.data.DocumentCacheManager
 import com.example.data.DocumentParser
 import com.example.data.DocumentScanner
+import com.example.data.DocumentStoragePermissions
 import com.example.data.SettingsRepository
 import com.example.model.AppSettings
 import com.example.model.DocType
@@ -39,6 +40,8 @@ data class HomeUiState(
     val isScanning: Boolean = false,
     val isAccessGrantScanning: Boolean = false,
     val isPullRefreshing: Boolean = false,
+    val hasDocumentReadPermission: Boolean = false,
+    val hasDocumentWritePermission: Boolean = false,
     val hasFullStorageAccess: Boolean = false,
     val selectedCategory: DocType = DocType.PDF,
     val visibleDocTypes: List<DocType> = DocType.entries,
@@ -136,20 +139,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _isScanning = MutableStateFlow(false)
     private val _isAccessGrantScanning = MutableStateFlow(false)
     private val _isPullRefreshing = MutableStateFlow(false)
-    private val _hasFullAccess = MutableStateFlow(scanner.hasFullStorageAccess())
+    private val _storagePermissions = MutableStateFlow(scanner.getStoragePermissions())
     private val _selectedCategory = MutableStateFlow(DocType.PDF)
     private val _searchQuery = MutableStateFlow("")
     private val _isSearchActive = MutableStateFlow(false)
     private val _selectedDocIds = MutableStateFlow<Set<String>>(emptySet())
     private val _cacheSizeBytes = MutableStateFlow(0L)
 
-    private var lastKnownStorageAccess = _hasFullAccess.value
+    private var lastKnownPermissions = _storagePermissions.value
     private var hasUserSelectedCategory = false
     private val renamedIdAliases = HashMap<String, String>()
     private var activeViewingExternalDoc: DocumentItem? = null
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages = _messages.asSharedFlow()
+
+    private val _writePermissionRequired = MutableSharedFlow<Unit>(extraBufferCapacity = 2)
+    val writePermissionRequired = _writePermissionRequired.asSharedFlow()
 
     private val _openExternalDoc = MutableStateFlow<DocumentItem?>(null)
     val openExternalDoc: StateFlow<DocumentItem?> = _openExternalDoc.asStateFlow()
@@ -161,7 +167,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _rawDocuments,
         _isScanning,
         _isPullRefreshing,
-        _hasFullAccess,
+        _storagePermissions,
         _selectedCategory,
         _searchQuery,
         _isSearchActive,
@@ -174,7 +180,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val rawDocs = values[0] as List<DocumentItem>
         val scanning = values[1] as Boolean
         val pullRefreshing = values[2] as Boolean
-        val fullAccess = values[3] as Boolean
+        val permissions = values[3] as DocumentStoragePermissions
         val category = values[4] as DocType
         val query = values[5] as String
         val searchActive = values[6] as Boolean
@@ -211,7 +217,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isScanning = scanning,
             isAccessGrantScanning = accessGrantScanning,
             isPullRefreshing = pullRefreshing,
-            hasFullStorageAccess = fullAccess,
+            hasDocumentReadPermission = permissions.hasReadPermission,
+            hasDocumentWritePermission = permissions.hasWritePermission,
+            hasFullStorageAccess = permissions.hasFullAccess,
             selectedCategory = effectiveCategory,
             visibleDocTypes = visibleTypes,
             searchQuery = query,
@@ -227,7 +235,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        HomeUiState(hasFullStorageAccess = _hasFullAccess.value)
+        HomeUiState(
+            hasDocumentReadPermission = _storagePermissions.value.hasReadPermission,
+            hasDocumentWritePermission = _storagePermissions.value.hasWritePermission,
+            hasFullStorageAccess = _storagePermissions.value.hasFullAccess
+        )
     )
 
     private val backgroundCloseListener: () -> Unit = {
@@ -267,10 +279,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun pullToRefreshDocuments() {
-        val currentAccess = scanner.hasFullStorageAccess()
-        val accessJustGranted = !lastKnownStorageAccess && currentAccess
-        lastKnownStorageAccess = currentAccess
-        _hasFullAccess.value = currentAccess
+        val currentPermissions = scanner.getStoragePermissions()
+        val accessJustGranted = !lastKnownPermissions.hasFullAccess && currentPermissions.hasFullAccess
+        lastKnownPermissions = currentPermissions
+        _storagePermissions.value = currentPermissions
 
         pullRefreshJob?.cancel()
         _isPullRefreshing.value = true
@@ -310,10 +322,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         userInitiated: Boolean = false,
         isPullToRefresh: Boolean = false
     ) {
-        val currentAccess = scanner.hasFullStorageAccess()
-        val accessJustGranted = !lastKnownStorageAccess && currentAccess
-        lastKnownStorageAccess = currentAccess
-        _hasFullAccess.value = currentAccess
+        val currentPermissions = scanner.getStoragePermissions()
+        val accessJustGranted = !lastKnownPermissions.hasFullAccess && currentPermissions.hasFullAccess
+        lastKnownPermissions = currentPermissions
+        _storagePermissions.value = currentPermissions
         if (!accessJustGranted && !userInitiated && !isPullToRefresh && scanJob?.isActive == true) {
             return
         }
@@ -326,11 +338,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onForegroundResume() {
-        val currentAccess = scanner.hasFullStorageAccess()
-        _hasFullAccess.value = currentAccess
-        if (currentAccess != lastKnownStorageAccess) {
-            val accessJustGranted = !lastKnownStorageAccess && currentAccess
-            lastKnownStorageAccess = currentAccess
+        val currentPermissions = scanner.getStoragePermissions()
+        _storagePermissions.value = currentPermissions
+        if (currentPermissions != lastKnownPermissions) {
+            val accessJustGranted = !lastKnownPermissions.hasFullAccess && currentPermissions.hasFullAccess
+            lastKnownPermissions = currentPermissions
             scanDocuments(
                 forceRestart = true,
                 isAccessGrantScan = accessJustGranted
@@ -362,9 +374,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _isScanning.value = true
             DocViewApplication.beginBackgroundWork(getApplication())
             try {
-                val access = scanner.hasFullStorageAccess()
-                lastKnownStorageAccess = access
-                _hasFullAccess.value = access
+                val permissions = scanner.getStoragePermissions()
+                lastKnownPermissions = permissions
+                _storagePermissions.value = permissions
                 val currentSettings = settingsRepo.settingsFlow.first()
                 val baselineMap = withContext(Dispatchers.IO) {
                     _rawDocuments.value
@@ -523,7 +535,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setAutoCleanRenderCache(enabled: Boolean) {
-        viewModelScope.launch { settingsRepo.setAutoCleanRenderCache(enabled) }
+        viewModelScope.launch {
+            settingsRepo.setAutoCleanRenderCache(enabled)
+            if (enabled) {
+                _cacheSizeBytes.value = cacheManager.pruneUnnecessaryCache(
+                    validDocs = _rawDocuments.value.takeIf { it.isNotEmpty() },
+                    aggressive = true
+                )
+            }
+        }
     }
 
     fun setOfficeRenderFormat(format: OfficeRenderFormat) {
@@ -710,7 +730,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     onRenamed?.invoke(updated)
                 }
                 .onFailure { err ->
-                    _messages.tryEmit(err.localizedMessage ?: "Rename failed")
+                    if (!scanner.hasWritePermission()) {
+                        _writePermissionRequired.tryEmit(Unit)
+                        _messages.tryEmit("Document write permission required to rename")
+                    } else {
+                        _messages.tryEmit(err.localizedMessage ?: "Rename failed")
+                    }
                 }
         }
     }
@@ -742,6 +767,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     if (deletedCount == 1) "Document deleted" else "$deletedCount documents deleted"
                 )
                 onComplete?.invoke()
+            } else if (!scanner.hasWritePermission()) {
+                _writePermissionRequired.tryEmit(Unit)
+                _messages.tryEmit("Document write permission required to delete")
             } else {
                 _messages.tryEmit("Unable to delete document (read-only storage)")
             }

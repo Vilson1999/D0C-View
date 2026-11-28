@@ -29,11 +29,27 @@ data class ScanUpdate(
     val isComplete: Boolean
 )
 
+data class DocumentStoragePermissions(
+    val hasReadPermission: Boolean,
+    val hasWritePermission: Boolean
+) {
+    val hasFullAccess: Boolean get() = hasReadPermission && hasWritePermission
+}
+
 class DocumentScanner(private val context: Context) {
 
-    fun hasFullStorageAccess(): Boolean {
+    fun getStoragePermissions(): DocumentStoragePermissions {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Environment.isExternalStorageManager()
+            val isManager = Environment.isExternalStorageManager()
+            val hasLegacyRead = Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2 &&
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.READ_EXTERNAL_STORAGE
+                ) == PackageManager.PERMISSION_GRANTED
+            DocumentStoragePermissions(
+                hasReadPermission = isManager || hasLegacyRead,
+                hasWritePermission = isManager
+            )
         } else {
             val hasRead = ContextCompat.checkSelfPermission(
                 context,
@@ -44,10 +60,21 @@ class DocumentScanner(private val context: Context) {
                     context,
                     Manifest.permission.WRITE_EXTERNAL_STORAGE
                 ) == PackageManager.PERMISSION_GRANTED
-            } else true
-            hasRead && hasWrite
+            } else {
+                true
+            }
+            DocumentStoragePermissions(
+                hasReadPermission = hasRead,
+                hasWritePermission = hasWrite
+            )
         }
     }
+
+    fun hasReadPermission(): Boolean = getStoragePermissions().hasReadPermission
+
+    fun hasWritePermission(): Boolean = getStoragePermissions().hasWritePermission
+
+    fun hasFullStorageAccess(): Boolean = getStoragePermissions().hasFullAccess
 
     suspend fun scanAllDocuments(settings: AppSettings): List<DocumentItem> =
         streamScanAllDocuments(settings).last().documents
@@ -463,11 +490,16 @@ class DocumentScanner(private val context: Context) {
                 if (doc.isFilePath) {
                     val oldFile = File(doc.path)
                     require(oldFile.exists()) { "File no longer exists" }
+                    val isAppPrivate = oldFile.absolutePath.startsWith(context.filesDir.absolutePath) ||
+                        oldFile.absolutePath.startsWith(context.cacheDir.absolutePath)
+                    if (!isAppPrivate && !hasWritePermission()) {
+                        error("Document write permission is required to rename files")
+                    }
                     val parentDir = oldFile.parentFile ?: error("Invalid parent folder")
                     val newFile = File(parentDir, finalName)
                     require(!newFile.exists()) { "A file named \"$finalName\" already exists" }
                     val renamed = oldFile.renameTo(newFile)
-                    require(renamed) { "Could not rename file (check storage access)" }
+                    require(renamed) { "Could not rename file (write permission required)" }
 
                     renamedItem(
                         doc = doc,
@@ -521,7 +553,13 @@ class DocumentScanner(private val context: Context) {
     suspend fun deleteDocument(doc: DocumentItem): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             if (doc.isFilePath) {
-                File(doc.path).delete()
+                val file = File(doc.path)
+                val isAppPrivate = file.absolutePath.startsWith(context.filesDir.absolutePath) ||
+                    file.absolutePath.startsWith(context.cacheDir.absolutePath)
+                if (!isAppPrivate && !hasWritePermission()) {
+                    return@runCatching false
+                }
+                file.delete()
             } else {
                 val deletedViaDocs = runCatching {
                     DocumentsContract.deleteDocument(context.contentResolver, doc.uri)
