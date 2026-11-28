@@ -634,7 +634,7 @@ fun ReaderZoomControlsPill(
                     .testTag("viewer_zoom_out_button")
             ) {
                 Icon(
-                    imageVector = AppIcons.ZoomOut,
+                    imageVector = AppIcons.zoomOut(),
                     contentDescription = stringResource(R.string.action_zoom_out),
                     tint = fg,
                     modifier = Modifier.size(18.dp)
@@ -672,7 +672,7 @@ fun ReaderZoomControlsPill(
                     .testTag("viewer_zoom_in_button")
             ) {
                 Icon(
-                    imageVector = AppIcons.ZoomIn,
+                    imageVector = AppIcons.zoomIn(),
                     contentDescription = stringResource(R.string.action_zoom_in),
                     tint = fg,
                     modifier = Modifier.size(18.dp)

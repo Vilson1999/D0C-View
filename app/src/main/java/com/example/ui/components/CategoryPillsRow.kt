@@ -96,7 +96,7 @@ fun CategoryPillsRow(
         LazyRow(
             state = rowState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 7.dp, bottom = 7.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 8.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -186,7 +186,7 @@ private fun CategoryPill(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(AppIcons.scaledSize(16.192.dp))
+                    modifier = Modifier.size(AppIcons.scaledSize(17.8112.dp))
                 )
                 Spacer(modifier = Modifier.width(4.8.dp))
                 Text(

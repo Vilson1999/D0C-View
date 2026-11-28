@@ -10,10 +10,10 @@ val LightOnBackground = Color(0xFF0F172A)
 val LightOnSurface = Color(0xFF1E293B)
 val LightOnSurfaceVariant = Color(0xFF64748B)
 val LightOutline = Color(0xFFDCE2EC)
-val LightPrimary = Color(0xFF1E293B)
+val LightPrimary = Color(0xFF00796B)
 val LightOnPrimary = Color(0xFFFFFFFF)
-val LightPrimaryContainer = Color(0xFFE2E8F0)
-val LightOnPrimaryContainer = Color(0xFF0F172A)
+val LightPrimaryContainer = Color(0xFFCCFBF1)
+val LightOnPrimaryContainer = Color(0xFF00251E)
 
 // Obsidian Dark Surfaces & Ivory Ink
 val DarkBackground = Color(0xFF0B0F17)
@@ -23,10 +23,10 @@ val DarkOnBackground = Color(0xFFF1F5F9)
 val DarkOnSurface = Color(0xFFE2E8F0)
 val DarkOnSurfaceVariant = Color(0xFF94A3B8)
 val DarkOutline = Color(0xFF2B3548)
-val DarkPrimary = Color(0xFFE2E8F0)
-val DarkOnPrimary = Color(0xFF0F172A)
-val DarkPrimaryContainer = Color(0xFF283244)
-val DarkOnPrimaryContainer = Color(0xFFF8FAFC)
+val DarkPrimary = Color(0xFF2DD4BF)
+val DarkOnPrimary = Color(0xFF00201C)
+val DarkPrimaryContainer = Color(0xFF0F766E)
+val DarkOnPrimaryContainer = Color(0xFFE0F2F1)
 
 // Signature Category Pill Colors
 val PdfPillColor = Color(0xFFDC2626)       // Red

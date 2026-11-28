@@ -162,16 +162,16 @@ private val MaterialDarkColorScheme = darkColorScheme(
     onError = Color(0xFF450A0A)
 )
 
-// Classic Neutral / Minimal Schemes (when Material UI toggle is turned off)
+// Classic Teal Green Schemes (when Material UI toggle is turned off)
 private val ClassicDarkColorScheme = darkColorScheme(
     primary = DarkPrimary,
     onPrimary = DarkOnPrimary,
     primaryContainer = DarkPrimaryContainer,
     onPrimaryContainer = DarkOnPrimaryContainer,
-    secondary = Color(0xFF60A5FA),
-    onSecondary = Color(0xFF0A192F),
-    secondaryContainer = Color(0xFF1E293B),
-    onSecondaryContainer = Color(0xFFE2E8F0),
+    secondary = Color(0xFF5EEAD4),
+    onSecondary = Color(0xFF00201C),
+    secondaryContainer = Color(0xFF115E59),
+    onSecondaryContainer = Color(0xFFCCFBF1),
     background = DarkBackground,
     onBackground = DarkOnBackground,
     surface = DarkSurface,
@@ -194,10 +194,10 @@ private val ClassicLightColorScheme = lightColorScheme(
     onPrimary = LightOnPrimary,
     primaryContainer = LightPrimaryContainer,
     onPrimaryContainer = LightOnPrimaryContainer,
-    secondary = Color(0xFF2563EB),
+    secondary = Color(0xFF00897B),
     onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFE2E8F0),
-    onSecondaryContainer = Color(0xFF0F172A),
+    secondaryContainer = Color(0xFFE0F2F1),
+    onSecondaryContainer = Color(0xFF00332C),
     background = LightBackground,
     onBackground = LightOnBackground,
     surface = LightSurface,

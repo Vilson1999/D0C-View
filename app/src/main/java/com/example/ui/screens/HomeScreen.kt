@@ -88,6 +88,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
@@ -199,19 +200,26 @@ fun HomeScreen(
     var searchBarBounds by remember { mutableStateOf<Rect?>(null) }
 
     val materialUi = LocalMaterialUiEnabled.current
+    val targetTopBarColor = when {
+        uiState.isSelectionMode -> {
+            val base = MaterialTheme.colorScheme.primaryContainer
+            if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+        }
+        visibleTypes.isNotEmpty() -> {
+            val base = uiState.selectedCategory.pillColor
+            if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.20f)
+        }
+        else -> MaterialTheme.colorScheme.background
+    }
     val topBarColor by animateColorAsState(
-        targetValue = when {
-            uiState.isSelectionMode -> MaterialTheme.colorScheme.primaryContainer
-            visibleTypes.isNotEmpty() -> uiState.selectedCategory.pillColor
-            else -> MaterialTheme.colorScheme.background
-        },
+        targetValue = targetTopBarColor,
         animationSpec = tween(220),
         label = "homeTopBarColor"
     )
     val topBarContentColor by animateColorAsState(
         targetValue = when {
             uiState.isSelectionMode -> MaterialTheme.colorScheme.onPrimaryContainer
-            visibleTypes.isNotEmpty() -> if (SystemBarContrastPolicy.shouldUseDarkIcons(uiState.selectedCategory.pillColor.luminance())) {
+            visibleTypes.isNotEmpty() -> if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
                 MaterialTheme.colorScheme.onBackground
             } else {
                 Color.White
@@ -869,7 +877,7 @@ private fun HomeTopBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, top = 5.dp, bottom = 0.dp),
+                        .padding(start = 16.dp, end = 4.dp, top = 2.dp, bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     DocViewerAppIcon(
@@ -1018,7 +1026,7 @@ private fun SelectionBottomToolbar(
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 30.dp) {
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 36.dp) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1028,8 +1036,8 @@ private fun SelectionBottomToolbar(
                         )
                     )
                     .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
-                    .padding(start = 8.dp, end = 8.dp, top = 1.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+                    .padding(start = 8.dp, end = 8.dp, top = 3.dp, bottom = 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp, Alignment.CenterHorizontally),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 BottomToolbarAction(
@@ -1089,8 +1097,8 @@ private fun BottomToolbarAction(
                 indication = androidx.compose.material3.ripple(),
                 onClick = onClick
             )
-            .defaultMinSize(minWidth = 48.dp, minHeight = 30.dp)
-            .padding(horizontal = 10.dp, vertical = 0.dp),
+            .defaultMinSize(minWidth = 57.6.dp, minHeight = 36.dp)
+            .padding(horizontal = 12.dp, vertical = 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically)
     ) {
@@ -1098,13 +1106,13 @@ private fun BottomToolbarAction(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(AppIcons.scaledSize(19.2.dp))
+            modifier = Modifier.size(AppIcons.scaledSize(23.04.dp))
         )
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.sp,
-                lineHeight = 11.sp,
+                fontSize = 12.sp,
+                lineHeight = 13.2.sp,
                 platformStyle = PlatformTextStyle(includeFontPadding = false)
             ),
             color = tint
