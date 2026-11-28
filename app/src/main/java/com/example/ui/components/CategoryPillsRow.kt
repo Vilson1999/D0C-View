@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.model.DocType
 
 @Composable
@@ -93,7 +94,7 @@ fun CategoryPillsRow(
         LazyRow(
             state = rowState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 1.5.dp, bottom = 1.5.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -133,7 +134,7 @@ private fun CategoryPill(
         label = "pillScale"
     )
     val elevation by animateDpAsState(
-        targetValue = if (selected) 3.dp else 0.dp,
+        targetValue = if (selected) 2.4.dp else 0.dp,
         animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
         label = "pillElevation"
     )
@@ -156,7 +157,6 @@ private fun CategoryPill(
 
     Box(
         modifier = Modifier
-            .padding(vertical = 2.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -173,29 +173,31 @@ private fun CategoryPill(
         Surface(
             shape = CircleShape,
             color = containerColor,
-            border = BorderStroke(1.dp, borderColor),
+            border = BorderStroke(0.8.dp, borderColor),
             shadowElevation = elevation
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                modifier = Modifier.padding(horizontal = 9.6.dp, vertical = 5.6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(12.8.dp)
                 )
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(4.8.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
                     style = MaterialTheme.typography.labelLarge.copy(
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                        fontSize = 10.4.sp,
+                        lineHeight = 14.4.sp
                     )
                 )
                 if (count > 0) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.8.dp))
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
@@ -212,9 +214,11 @@ private fun CategoryPill(
                                 text = targetCount.toString(),
                                 color = contentColor,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 8.8.sp,
+                                    lineHeight = 11.2.sp
                                 ),
-                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 4.8.dp, vertical = 0.8.dp)
                             )
                         }
                     }
