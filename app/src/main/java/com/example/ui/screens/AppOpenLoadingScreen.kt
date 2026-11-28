@@ -51,6 +51,7 @@ import com.example.R
 import com.example.ui.components.DocViewerAppIcon
 import com.example.ui.theme.DocPillColor
 import com.example.ui.theme.ExcelPillColor
+import com.example.ui.theme.LocalAnimationsEnabled
 import com.example.ui.theme.PdfPillColor
 import com.example.ui.theme.PptPillColor
 import com.example.ui.theme.SyncSystemBarsAppearance
@@ -71,7 +72,8 @@ fun AppOpenLoadingScreen(
             navigationBarColor = MaterialTheme.colorScheme.background
         )
     }
-    var started by remember { mutableStateOf(false) }
+    val animationsEnabled = LocalAnimationsEnabled.current
+    var started by remember { mutableStateOf(!animationsEnabled) }
 
     LaunchedEffect(Unit) {
         started = true
@@ -80,44 +82,52 @@ fun AppOpenLoadingScreen(
     }
 
     val logoScale by animateFloatAsState(
-        targetValue = if (started) 1f else 0.72f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
+        targetValue = if (started || !animationsEnabled) 1f else 0.72f,
+        animationSpec = if (animationsEnabled) {
+            spring(
+                dampingRatio = Spring.DampingRatioMediumBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        } else {
+            androidx.compose.animation.core.snap()
+        },
         label = "appOpenLogoScale"
     )
     val logoAlpha by animateFloatAsState(
-        targetValue = if (started) 1f else 0f,
-        animationSpec = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+        targetValue = if (started || !animationsEnabled) 1f else 0f,
+        animationSpec = if (animationsEnabled) tween(durationMillis = 360, easing = FastOutSlowInEasing) else androidx.compose.animation.core.snap(),
         label = "appOpenLogoAlpha"
     )
     val titleAlpha by animateFloatAsState(
-        targetValue = if (started) 1f else 0f,
-        animationSpec = tween(durationMillis = 380, delayMillis = 120, easing = FastOutSlowInEasing),
+        targetValue = if (started || !animationsEnabled) 1f else 0f,
+        animationSpec = if (animationsEnabled) tween(durationMillis = 380, delayMillis = 120, easing = FastOutSlowInEasing) else androidx.compose.animation.core.snap(),
         label = "appOpenTitleAlpha"
     )
     val titleOffsetY by animateFloatAsState(
-        targetValue = if (started) 0f else 22f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
+        targetValue = if (started || !animationsEnabled) 0f else 22f,
+        animationSpec = if (animationsEnabled) {
+            spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        } else {
+            androidx.compose.animation.core.snap()
+        },
         label = "appOpenTitleOffset"
     )
     val devAlpha by animateFloatAsState(
-        targetValue = if (started) 1f else 0f,
-        animationSpec = tween(durationMillis = 380, delayMillis = 220, easing = FastOutSlowInEasing),
+        targetValue = if (started || !animationsEnabled) 1f else 0f,
+        animationSpec = if (animationsEnabled) tween(durationMillis = 380, delayMillis = 220, easing = FastOutSlowInEasing) else androidx.compose.animation.core.snap(),
         label = "appOpenDevAlpha"
     )
     val devOffsetY by animateFloatAsState(
-        targetValue = if (started) 0f else 18f,
-        animationSpec = tween(durationMillis = 420, delayMillis = 180, easing = FastOutSlowInEasing),
+        targetValue = if (started || !animationsEnabled) 0f else 18f,
+        animationSpec = if (animationsEnabled) tween(durationMillis = 420, delayMillis = 180, easing = FastOutSlowInEasing) else androidx.compose.animation.core.snap(),
         label = "appOpenDevOffset"
     )
 
     val infiniteTransition = rememberInfiniteTransition(label = "appOpenPulse")
-    val glowPulse by infiniteTransition.animateFloat(
+    val glowPulseAnim by infiniteTransition.animateFloat(
         initialValue = 0.88f,
         targetValue = 1.12f,
         animationSpec = infiniteRepeatable(
@@ -126,7 +136,7 @@ fun AppOpenLoadingScreen(
         ),
         label = "appOpenGlowPulse"
     )
-    val wavePhase by infiniteTransition.animateFloat(
+    val wavePhaseAnim by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = (2f * PI).toFloat(),
         animationSpec = infiniteRepeatable(
@@ -135,6 +145,8 @@ fun AppOpenLoadingScreen(
         ),
         label = "appOpenDotsWave"
     )
+    val glowPulse = if (animationsEnabled) glowPulseAnim else 1f
+    val wavePhase = if (animationsEnabled) wavePhaseAnim else 0f
 
     val glowPrimary = MaterialTheme.colorScheme.primary
     val glowSecondary = DocPillColor

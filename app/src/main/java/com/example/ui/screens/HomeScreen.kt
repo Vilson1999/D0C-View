@@ -4,10 +4,11 @@ import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandHorizontally
@@ -129,11 +130,15 @@ import com.example.ui.components.SortOptionsSheet
 import com.example.ui.components.StoragePermissionDialog
 import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.TopBarSearchField
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
+import com.example.ui.theme.LocalAnimationsEnabled
 import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
 import com.example.ui.theme.SystemBarContrastPolicy
+import com.example.ui.theme.bouncyPressScale
 import com.example.viewmodel.HomeUiState
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
@@ -203,6 +208,7 @@ fun HomeScreen(
     val visibleTypes = uiState.visibleDocTypes
     var searchBarBounds by remember { mutableStateOf<Rect?>(null) }
 
+    val animationsEnabled = LocalAnimationsEnabled.current
     val materialUi = LocalMaterialUiEnabled.current
     val usePillTopBar = uiState.settings.usePillTopBar
     val useColorfulTopBar = uiState.settings.useColorfulTopBar
@@ -231,7 +237,7 @@ fun HomeScreen(
     }
     val topBarColor by animateColorAsState(
         targetValue = targetTopBarColor,
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
         label = "homeTopBarColor"
     )
     val topBarContentColor by animateColorAsState(
@@ -255,7 +261,7 @@ fun HomeScreen(
         } else {
             MaterialTheme.colorScheme.onBackground
         },
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
         label = "homeTopBarContentColor"
     )
     val statusBarColor = if (usePillTopBar) MaterialTheme.colorScheme.background else topBarColor
@@ -270,7 +276,7 @@ fun HomeScreen(
         } else {
             MaterialTheme.colorScheme.background
         },
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
         label = "homeBottomBarColor"
     )
     if (syncSystemBars && !suppressPermissionDialog) {
@@ -337,20 +343,24 @@ fun HomeScreen(
     }
 
     // 2. Sync pill clicks / visibility changes / external category updates -> pager
-    LaunchedEffect(uiState.selectedCategory, visibleTypes) {
+    LaunchedEffect(uiState.selectedCategory, visibleTypes, animationsEnabled) {
         if (visibleTypes.isEmpty()) return@LaunchedEffect
         pillsVisible = true
         val targetIndex = visibleTypes.indexOf(uiState.selectedCategory)
         if (targetIndex >= 0 && pagerState.currentPage != targetIndex) {
             programmaticTargetIndex = targetIndex
             try {
-                pagerState.animateScrollToPage(
-                    page = targetIndex,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMediumLow
+                if (animationsEnabled) {
+                    pagerState.animateScrollToPage(
+                        page = targetIndex,
+                        animationSpec = spring(
+                            dampingRatio = AppMotionPolicy.SMOOTH_SPRING_DAMPING,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
                     )
-                )
+                } else {
+                    pagerState.scrollToPage(targetIndex)
+                }
             } finally {
                 if (programmaticTargetIndex == targetIndex) {
                     programmaticTargetIndex = null
@@ -487,15 +497,19 @@ fun HomeScreen(
                     AnimatedContent(
                         targetState = uiState.isSelectionMode,
                         transitionSpec = {
-                            (slideInVertically(
-                                initialOffsetY = { -it / 3 },
-                                animationSpec = tween(220, easing = FastOutSlowInEasing)
-                            ) + fadeIn(tween(200))).togetherWith(
-                                slideOutVertically(
-                                    targetOffsetY = { -it / 3 },
-                                    animationSpec = tween(160)
-                                ) + fadeOut(tween(150))
-                            )
+                            if (animationsEnabled) {
+                                (slideInVertically(
+                                    initialOffsetY = { -it / 3 },
+                                    animationSpec = AppMotionPolicy.smoothSpring(true)
+                                ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))).togetherWith(
+                                    slideOutVertically(
+                                        targetOffsetY = { -it / 3 },
+                                        animationSpec = tween(160, easing = AppMotionPolicy.SmoothEasing)
+                                    ) + fadeOut(tween(150))
+                                )
+                            } else {
+                                EnterTransition.None togetherWith ExitTransition.None
+                            }
                         },
                         label = "homeTopBarModeSwitch"
                     ) { selectionMode ->
@@ -538,15 +552,19 @@ fun HomeScreen(
             AnimatedContent(
                 targetState = uiState.isSelectionMode,
                 transitionSpec = {
-                    (slideInVertically(
-                        initialOffsetY = { it / 2 },
-                        animationSpec = tween(200, easing = FastOutSlowInEasing)
-                    ) + fadeIn(tween(180))).togetherWith(
-                        slideOutVertically(
-                            targetOffsetY = { it / 2 },
-                            animationSpec = tween(150)
-                        ) + fadeOut(tween(140))
-                    )
+                    if (animationsEnabled) {
+                        (slideInVertically(
+                            initialOffsetY = { it / 2 },
+                            animationSpec = AppMotionPolicy.smoothSpring(true)
+                        ) + fadeIn(tween(190, easing = AppMotionPolicy.SmoothEasing))).togetherWith(
+                            slideOutVertically(
+                                targetOffsetY = { it / 2 },
+                                animationSpec = tween(150, easing = AppMotionPolicy.SmoothEasing)
+                            ) + fadeOut(tween(140))
+                        )
+                    } else {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    }
                 },
                 label = "homeBottomBarSwitch"
             ) { selectionMode ->
@@ -599,8 +617,8 @@ fun HomeScreen(
             ) {
                 AnimatedVisibility(
                     visible = showPermissionBanner,
-                    enter = expandVertically() + fadeIn(),
-                    exit = shrinkVertically() + fadeOut()
+                    enter = if (animationsEnabled) expandVertically() + fadeIn() else EnterTransition.None,
+                    exit = if (animationsEnabled) shrinkVertically() + fadeOut() else ExitTransition.None
                 ) {
                     StoragePermissionBannerCard(
                         hasReadPermission = uiState.hasDocumentReadPermission,
@@ -627,10 +645,14 @@ fun HomeScreen(
                     state = pagerState,
                     flingBehavior = PagerDefaults.flingBehavior(
                         state = pagerState,
-                        snapAnimationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
+                        snapAnimationSpec = if (animationsEnabled) {
+                            spring(
+                                dampingRatio = AppMotionPolicy.SMOOTH_SPRING_DAMPING,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        } else {
+                            snap()
+                        }
                     ),
                     modifier = Modifier
                         .fillMaxSize()
@@ -659,12 +681,14 @@ fun HomeScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .graphicsLayer {
-                            val offset = ((pagerState.currentPage - pageIndex) +
-                                pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
-                            val pageScale = 1f - (0.035f * offset)
-                            scaleX = pageScale
-                            scaleY = pageScale
-                            alpha = 1f - (0.28f * offset)
+                            if (animationsEnabled) {
+                                val offset = ((pagerState.currentPage - pageIndex) +
+                                    pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                                val pageScale = 1f - (0.035f * offset)
+                                scaleX = pageScale
+                                scaleY = pageScale
+                                alpha = 1f - (0.28f * offset)
+                            }
                         }
                         .testTag("document_pull_refresh_${pageType.name.lowercase()}")
                 ) {
@@ -679,11 +703,7 @@ fun HomeScreen(
 
                     AnimatedContent(
                         targetState = displayState,
-                        transitionSpec = {
-                            (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                                scaleIn(initialScale = 0.96f, animationSpec = tween(240)))
-                                .togetherWith(fadeOut(tween(160)))
-                        },
+                        transitionSpec = { AppMotion.smoothRevealTransform(animationsEnabled) },
                         label = "homePageDisplayState"
                     ) { state ->
                         when (state) {
@@ -778,12 +798,16 @@ fun HomeScreen(
                                     onInfo = { infoTargets = listOf(doc) },
                                     onDelete = { deleteTargets = listOf(doc) },
                                     modifier = Modifier.animateItem(
-                                        fadeInSpec = tween(180),
-                                        placementSpec = spring(
-                                            dampingRatio = 0.85f,
-                                            stiffness = Spring.StiffnessMediumLow
-                                        ),
-                                        fadeOutSpec = tween(140)
+                                        fadeInSpec = if (animationsEnabled) tween(200, easing = AppMotionPolicy.SmoothEasing) else null,
+                                        placementSpec = if (animationsEnabled) {
+                                            spring(
+                                                dampingRatio = 0.85f,
+                                                stiffness = Spring.StiffnessMediumLow
+                                            )
+                                        } else {
+                                            null
+                                        },
+                                        fadeOutSpec = if (animationsEnabled) tween(140) else null
                                     )
                                 )
                             }
@@ -876,25 +900,31 @@ private fun HomeTopBar(
     onOpenSettings: () -> Unit
 ) {
     val materialIconsEnabled = LocalMaterialIconsEnabled.current
+    val animationsEnabled = LocalAnimationsEnabled.current
     AnimatedContent(
         targetState = isSearchActive,
         transitionSpec = {
-            if (targetState) {
+            if (!animationsEnabled) {
+                EnterTransition.None togetherWith ExitTransition.None
+            } else if (targetState) {
                 (expandHorizontally(
                     expandFrom = Alignment.End,
                     animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        dampingRatio = AppMotionPolicy.SMOOTH_SPRING_DAMPING,
                         stiffness = Spring.StiffnessMediumLow
                     )
-                ) + fadeIn(tween(200))).togetherWith(
-                    fadeOut(tween(140)) + scaleOut(targetScale = 0.96f, animationSpec = tween(140))
+                ) + fadeIn(tween(220, easing = AppMotionPolicy.SmoothEasing))).togetherWith(
+                    fadeOut(tween(150)) + scaleOut(targetScale = 0.95f, animationSpec = tween(150))
                 )
             } else {
-                (fadeIn(tween(200)) + scaleIn(initialScale = 0.96f, animationSpec = tween(200))).togetherWith(
+                (fadeIn(tween(220, easing = AppMotionPolicy.SmoothEasing)) + scaleIn(
+                    initialScale = 0.95f,
+                    animationSpec = tween(220, easing = AppMotionPolicy.SmoothEasing)
+                )).togetherWith(
                     shrinkHorizontally(
                         shrinkTowards = Alignment.End,
-                        animationSpec = tween(180, easing = FastOutSlowInEasing)
-                    ) + fadeOut(tween(150))
+                        animationSpec = tween(200, easing = AppMotionPolicy.SmoothEasing)
+                    ) + fadeOut(tween(160))
                 )
             }
         },
@@ -904,7 +934,7 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.8.dp)
+                    .height(if (usePillTopBar) 60.dp else 52.8.dp)
                     .padding(horizontal = 12.dp, vertical = 2.4.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
@@ -916,7 +946,8 @@ private fun HomeTopBar(
                     inputTestTag = "search_input",
                     closeTestTag = "topbar_search_close_button",
                     shape = if (usePillTopBar) CircleShape else RoundedCornerShape(14.dp),
-                    accentColor = accentColor
+                    accentColor = accentColor,
+                    height = if (usePillTopBar) 55.2.dp else 48.dp
                 )
             }
         } else {
@@ -936,7 +967,16 @@ private fun HomeTopBar(
                             AnimatedContent(
                                 targetState = selectedCategoryLabel,
                                 transitionSpec = {
-                                    fadeIn(tween(180)).togetherWith(fadeOut(tween(140)))
+                                    if (!animationsEnabled) {
+                                        EnterTransition.None togetherWith ExitTransition.None
+                                    } else {
+                                        (fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing)) +
+                                            slideInVertically(tween(220, easing = AppMotionPolicy.SmoothEasing)) { it / 4 })
+                                            .togetherWith(
+                                                fadeOut(tween(130)) +
+                                                    slideOutVertically(tween(130)) { -it / 4 }
+                                            )
+                                    }
                                 },
                                 label = "topbarCategoryLabel"
                             ) { label ->
@@ -973,16 +1013,7 @@ private fun HomeTopBar(
                                 AnimatedContent(
                                     targetState = themeMode,
                                     transitionSpec = {
-                                        (scaleIn(
-                                            initialScale = 0.65f,
-                                            animationSpec = spring(
-                                                dampingRatio = 0.65f,
-                                                stiffness = Spring.StiffnessMedium
-                                            )
-                                        ) + fadeIn(tween(180))).togetherWith(
-                                            scaleOut(targetScale = 0.65f, animationSpec = tween(120)) +
-                                                fadeOut(tween(120))
-                                        )
+                                        AppMotion.bouncyIconContentTransform(animationsEnabled)
                                     },
                                     label = "themeIconSwitch"
                                 ) { mode ->
@@ -1066,11 +1097,10 @@ private fun HomeTopBar(
                         rowContent(
                             Modifier
                                 .fillMaxWidth()
+                                .height(48.3.dp)
                                 .padding(
-                                    start = 10.dp,
-                                    end = if (materialIconsEnabled) 8.dp else 6.dp,
-                                    top = 4.dp,
-                                    bottom = 4.dp
+                                    start = 12.dp,
+                                    end = if (materialIconsEnabled) 10.dp else 8.dp
                                 )
                         )
                     }
@@ -1121,15 +1151,33 @@ private fun SelectionTopBar(
                     tint = tint
                 )
             }
-            Text(
-                text = "$selectedCount selected",
-                style = MaterialTheme.typography.titleMedium,
-                color = contentColor,
-                maxLines = 1,
+            val animationsEnabled = LocalAnimationsEnabled.current
+            AnimatedContent(
+                targetState = selectedCount,
+                transitionSpec = {
+                    if (!animationsEnabled) {
+                        EnterTransition.None togetherWith ExitTransition.None
+                    } else {
+                        (fadeIn(tween(180, easing = AppMotionPolicy.SmoothEasing)) +
+                            slideInVertically(tween(180, easing = AppMotionPolicy.SmoothEasing)) { it / 3 })
+                            .togetherWith(
+                                fadeOut(tween(120)) +
+                                    slideOutVertically(tween(120)) { -it / 3 }
+                            )
+                    }
+                },
+                label = "selectionCountText",
                 modifier = Modifier
                     .weight(1f)
                     .padding(start = 10.dp)
-            )
+            ) { count ->
+                Text(
+                    text = "$count selected",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = contentColor,
+                    maxLines = 1
+                )
+            }
             TopBarActionButton(
                 onClick = onSelectAll,
                 accentColor = accentColor,
@@ -1171,8 +1219,8 @@ private fun SelectionTopBar(
                     rowContent(
                         Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
-                            .padding(horizontal = 6.dp)
+                            .height(50.6.dp)
+                            .padding(horizontal = 8.dp)
                     )
                 }
             }
@@ -1276,9 +1324,10 @@ private fun BottomToolbarAction(
     val materialIconsEnabled = LocalMaterialIconsEnabled.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.92f else 1f,
-        animationSpec = spring(dampingRatio = 0.7f, stiffness = Spring.StiffnessMedium),
+    val scale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        pressedScale = 0.84f,
+        dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
         label = "bottomToolbarActionScale"
     )
     if (materialIconsEnabled) {
@@ -1409,15 +1458,23 @@ private fun AllDocTypesHiddenState(
                 textAlign = TextAlign.Center
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                val showAllInteraction = remember { MutableInteractionSource() }
                 Button(
                     onClick = onShowAll,
-                    modifier = Modifier.testTag("show_all_doc_types_button")
+                    interactionSource = showAllInteraction,
+                    modifier = Modifier
+                        .bouncyPressScale(showAllInteraction, pressedScale = 0.92f)
+                        .testTag("show_all_doc_types_button")
                 ) {
                     Text("Show All")
                 }
+                val settingsInteraction = remember { MutableInteractionSource() }
                 OutlinedButton(
                     onClick = onOpenSettings,
-                    modifier = Modifier.testTag("hidden_open_settings_button")
+                    interactionSource = settingsInteraction,
+                    modifier = Modifier
+                        .bouncyPressScale(settingsInteraction, pressedScale = 0.92f)
+                        .testTag("hidden_open_settings_button")
                 ) {
                     Icon(
                         AppIcons.settings(),
@@ -1484,9 +1541,12 @@ private fun StoragePermissionBannerCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            val grantInteraction = remember { MutableInteractionSource() }
             Button(
                 onClick = onGrantClick,
+                interactionSource = grantInteraction,
                 modifier = Modifier
+                    .bouncyPressScale(grantInteraction, pressedScale = 0.92f)
                     .defaultMinSize(minHeight = 48.dp)
                     .testTag("home_grant_storage_button")
             ) {

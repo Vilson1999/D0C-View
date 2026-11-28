@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.ui.theme.LocalMaterialIconsEnabled
@@ -48,7 +49,8 @@ fun TopBarSearchField(
     closeTestTag: String,
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(14.dp),
-    accentColor: Color = MaterialTheme.colorScheme.primary
+    accentColor: Color = MaterialTheme.colorScheme.primary,
+    height: Dp = 48.dp
 ) {
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -66,12 +68,12 @@ fun TopBarSearchField(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .height(48.dp)
+            .height(height)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(48.dp)
+                .height(height)
                 .padding(
                     start = if (materialIconsEnabled) 8.dp else 12.dp,
                     end = if (materialIconsEnabled) 7.dp else 4.dp

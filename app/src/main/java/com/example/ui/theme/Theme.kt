@@ -41,6 +41,7 @@ import androidx.core.view.WindowCompat
 
 val LocalMaterialUiEnabled = staticCompositionLocalOf { true }
 val LocalMaterialIconsEnabled = staticCompositionLocalOf { true }
+val LocalAnimationsEnabled = staticCompositionLocalOf { true }
 
 object SystemBarContrastPolicy {
     fun shouldUseDarkIcons(backgroundLuminance: Float): Boolean = backgroundLuminance >= 0.5f
@@ -231,7 +232,8 @@ private val ClassicAppShapes = Shapes(
 )
 
 @Composable
-private fun animateColor(target: Color): Color {
+private fun animateColor(target: Color, animationsEnabled: Boolean): Color {
+    if (!animationsEnabled) return target
     val color by animateColorAsState(
         targetValue = target,
         animationSpec = tween(durationMillis = 260),
@@ -241,34 +243,38 @@ private fun animateColor(target: Color): Color {
 }
 
 @Composable
-private fun rememberAnimatedColorScheme(target: ColorScheme): ColorScheme {
+private fun rememberAnimatedColorScheme(
+    target: ColorScheme,
+    animationsEnabled: Boolean
+): ColorScheme {
+    if (!animationsEnabled) return target
     return target.copy(
-        primary = animateColor(target.primary),
-        onPrimary = animateColor(target.onPrimary),
-        primaryContainer = animateColor(target.primaryContainer),
-        onPrimaryContainer = animateColor(target.onPrimaryContainer),
-        secondary = animateColor(target.secondary),
-        onSecondary = animateColor(target.onSecondary),
-        secondaryContainer = animateColor(target.secondaryContainer),
-        onSecondaryContainer = animateColor(target.onSecondaryContainer),
-        tertiary = animateColor(target.tertiary),
-        onTertiary = animateColor(target.onTertiary),
-        tertiaryContainer = animateColor(target.tertiaryContainer),
-        onTertiaryContainer = animateColor(target.onTertiaryContainer),
-        background = animateColor(target.background),
-        onBackground = animateColor(target.onBackground),
-        surface = animateColor(target.surface),
-        onSurface = animateColor(target.onSurface),
-        surfaceVariant = animateColor(target.surfaceVariant),
-        onSurfaceVariant = animateColor(target.onSurfaceVariant),
-        surfaceContainerLowest = animateColor(target.surfaceContainerLowest),
-        surfaceContainerLow = animateColor(target.surfaceContainerLow),
-        surfaceContainer = animateColor(target.surfaceContainer),
-        surfaceContainerHigh = animateColor(target.surfaceContainerHigh),
-        surfaceContainerHighest = animateColor(target.surfaceContainerHighest),
-        outline = animateColor(target.outline),
-        outlineVariant = animateColor(target.outlineVariant),
-        error = animateColor(target.error)
+        primary = animateColor(target.primary, true),
+        onPrimary = animateColor(target.onPrimary, true),
+        primaryContainer = animateColor(target.primaryContainer, true),
+        onPrimaryContainer = animateColor(target.onPrimaryContainer, true),
+        secondary = animateColor(target.secondary, true),
+        onSecondary = animateColor(target.onSecondary, true),
+        secondaryContainer = animateColor(target.secondaryContainer, true),
+        onSecondaryContainer = animateColor(target.onSecondaryContainer, true),
+        tertiary = animateColor(target.tertiary, true),
+        onTertiary = animateColor(target.onTertiary, true),
+        tertiaryContainer = animateColor(target.tertiaryContainer, true),
+        onTertiaryContainer = animateColor(target.onTertiaryContainer, true),
+        background = animateColor(target.background, true),
+        onBackground = animateColor(target.onBackground, true),
+        surface = animateColor(target.surface, true),
+        onSurface = animateColor(target.onSurface, true),
+        surfaceVariant = animateColor(target.surfaceVariant, true),
+        onSurfaceVariant = animateColor(target.onSurfaceVariant, true),
+        surfaceContainerLowest = animateColor(target.surfaceContainerLowest, true),
+        surfaceContainerLow = animateColor(target.surfaceContainerLow, true),
+        surfaceContainer = animateColor(target.surfaceContainer, true),
+        surfaceContainerHigh = animateColor(target.surfaceContainerHigh, true),
+        surfaceContainerHighest = animateColor(target.surfaceContainerHighest, true),
+        outline = animateColor(target.outline, true),
+        outlineVariant = animateColor(target.outlineVariant, true),
+        error = animateColor(target.error, true)
     )
 }
 
@@ -277,6 +283,7 @@ fun DocVaultTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     useMaterialUi: Boolean = true,
     useMaterialIcons: Boolean = true,
+    animationsEnabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -290,7 +297,7 @@ fun DocVaultTheme(
         if (darkTheme) ClassicDarkColorScheme else ClassicLightColorScheme
     }
 
-    val colorScheme = rememberAnimatedColorScheme(targetScheme)
+    val colorScheme = rememberAnimatedColorScheme(targetScheme, animationsEnabled)
     SyncSystemBarsAppearance(
         statusBarColor = colorScheme.background,
         navigationBarColor = colorScheme.background
@@ -298,7 +305,8 @@ fun DocVaultTheme(
 
     CompositionLocalProvider(
         LocalMaterialUiEnabled provides useMaterialUi,
-        LocalMaterialIconsEnabled provides useMaterialIcons
+        LocalMaterialIconsEnabled provides useMaterialIcons,
+        LocalAnimationsEnabled provides animationsEnabled
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

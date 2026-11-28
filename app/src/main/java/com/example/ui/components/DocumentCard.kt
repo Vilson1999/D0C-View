@@ -3,14 +3,6 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -50,7 +42,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.model.DocumentItem
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
+import com.example.ui.theme.LocalAnimationsEnabled
 import com.example.ui.theme.LocalMaterialUiEnabled
+import com.example.ui.theme.bouncyPressScale
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -69,13 +65,16 @@ fun DocumentCard(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     var menuExpanded by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.985f else 1f,
-        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium),
+    val pressScale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        pressedScale = 0.965f,
+        dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+        stiffness = Spring.StiffnessMedium,
         label = "cardPressScale"
     )
 
@@ -90,7 +89,7 @@ fun DocumentCard(
         } else {
             if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface
         },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "cardBg"
     )
     val borderColor by animateColorAsState(
@@ -99,7 +98,7 @@ fun DocumentCard(
         } else {
             MaterialTheme.colorScheme.outlineVariant
         },
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "cardBorder"
     )
 
@@ -144,10 +143,7 @@ fun DocumentCard(
                         val badgeKey = (if (isSelectionMode) 2 else 0) + (if (isSelected) 1 else 0)
                         AnimatedContent(
                             targetState = badgeKey,
-                            transitionSpec = {
-                                (scaleIn(initialScale = 0.72f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeIn(tween(150)))
-                                    .togetherWith(scaleOut(targetScale = 0.72f) + fadeOut(tween(110)))
-                            },
+                            transitionSpec = { AppMotion.bouncyIconContentTransform(animationsEnabled) },
                             label = "cardBadgeSwitch"
                         ) { state ->
                             val selectionActive = state >= 2
@@ -241,9 +237,13 @@ fun DocumentCard(
             }
 
             Box {
+                val moreInteraction = remember { MutableInteractionSource() }
                 IconButton(
                     onClick = { menuExpanded = true },
-                    modifier = Modifier.testTag("doc_more_${document.name}")
+                    interactionSource = moreInteraction,
+                    modifier = Modifier
+                        .bouncyPressScale(moreInteraction, pressedScale = 0.84f)
+                        .testTag("doc_more_${document.name}")
                 ) {
                     Icon(
                         imageVector = AppIcons.moreVert(),

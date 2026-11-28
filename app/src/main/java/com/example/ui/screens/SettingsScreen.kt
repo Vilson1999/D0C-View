@@ -2,20 +2,21 @@ package com.example.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -91,8 +92,11 @@ import com.example.ui.components.AppIcons
 import com.example.ui.components.DocViewerAppIcon
 import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.docTypeIcon
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
 import com.example.ui.theme.DocPillColor
 import com.example.ui.theme.ExcelPillColor
+import com.example.ui.theme.LocalAnimationsEnabled
 import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
@@ -101,6 +105,7 @@ import com.example.ui.theme.PptPillColor
 import com.example.ui.theme.SyncSystemBarsAppearance
 import com.example.ui.theme.SystemBarContrastPolicy
 import com.example.ui.theme.TextPillColor
+import com.example.ui.theme.bouncyPressScale
 import kotlin.math.roundToInt
 
 private enum class SettingsFolderId(
@@ -115,7 +120,7 @@ private enum class SettingsFolderId(
     PPT("PPT", "folder_ppt", PptPillColor, 4),
     TEXT("TEXT", "folder_text", TextPillColor, 7),
     DOC_VISIBILITY("Home Screen Documents", "folder_doc_visibility", PdfPillColor, DocType.entries.size),
-    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 6),
+    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 7),
     STORAGE("Storage & Scanning", "folder_storage", PptPillColor, 5),
     CACHE("Cache & Optimization", "folder_compression", TextPillColor, 2)
 }
@@ -135,6 +140,7 @@ fun SettingsScreen(
     onSetUseMaterialIcons: (Boolean) -> Unit,
     onSetUsePillTopBar: (Boolean) -> Unit,
     onSetUseColorfulTopBar: (Boolean) -> Unit,
+    onSetAnimationsEnabled: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -181,6 +187,7 @@ fun SettingsScreen(
     var activeFolder by rememberSaveable { mutableStateOf<SettingsFolderId?>(null) }
 
     val materialIconsEnabled = LocalMaterialIconsEnabled.current
+    val animationsEnabled = LocalAnimationsEnabled.current
     val usePillTopBar = settings.usePillTopBar
     val useColorfulTopBar = settings.useColorfulTopBar
     val topBarAccentColor = activeFolder?.color ?: MaterialTheme.colorScheme.primary
@@ -192,7 +199,7 @@ fun SettingsScreen(
     }
     val topBarColor by animateColorAsState(
         targetValue = targetTopBarColor,
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, durationMillis = 240),
         label = "settingsTopBarColor"
     )
     val topBarContentColor by animateColorAsState(
@@ -205,7 +212,7 @@ fun SettingsScreen(
         } else {
             MaterialTheme.colorScheme.onBackground
         },
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, durationMillis = 240),
         label = "settingsTopBarContentColor"
     )
     val subtitleColor = if (useColorfulTopBar) {
@@ -295,39 +302,60 @@ fun SettingsScreen(
                                     )
                                 }
                                 val currentFolder = activeFolder
-                                if (currentFolder != null) {
-                                    val badgeColors = AppIcons.styledColors(currentFolder.color)
-                                    Surface(
-                                        shape = if (materialIconsEnabled) RoundedCornerShape(8.dp) else CircleShape,
-                                        color = if (materialIconsEnabled) {
-                                            badgeColors.background
-                                        } else if (useColorfulTopBar) {
-                                            topBarContentColor.copy(alpha = 0.16f)
+                                AnimatedContent(
+                                    targetState = currentFolder,
+                                    transitionSpec = {
+                                        if (!animationsEnabled) {
+                                            EnterTransition.None togetherWith ExitTransition.None
                                         } else {
-                                            currentFolder.color.copy(alpha = 0.16f)
-                                        },
-                                        border = if (materialIconsEnabled) {
-                                            BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
-                                        } else {
-                                            null
-                                        },
-                                        modifier = Modifier
-                                            .padding(start = 8.dp)
-                                            .size(28.dp)
-                                    ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(
-                                                imageVector = folderIconFor(currentFolder),
-                                                contentDescription = null,
-                                                tint = if (materialIconsEnabled) {
-                                                    badgeColors.icon
-                                                } else if (useColorfulTopBar) {
-                                                    topBarContentColor
-                                                } else {
-                                                    currentFolder.color
-                                                },
-                                                modifier = Modifier.size(AppIcons.scaledSize(15.dp))
+                                            (fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing)) +
+                                                scaleIn(
+                                                    initialScale = 0.72f,
+                                                    animationSpec = spring(
+                                                        dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                                                        stiffness = Spring.StiffnessMedium
+                                                    )
+                                                )).togetherWith(
+                                                fadeOut(tween(120)) + scaleOut(targetScale = 0.75f, animationSpec = tween(120))
                                             )
+                                        }
+                                    },
+                                    label = "settingsPillTopBarBadge"
+                                ) { folderForBadge ->
+                                    if (folderForBadge != null) {
+                                        val badgeColors = AppIcons.styledColors(folderForBadge.color)
+                                        Surface(
+                                            shape = if (materialIconsEnabled) RoundedCornerShape(8.dp) else CircleShape,
+                                            color = if (materialIconsEnabled) {
+                                                badgeColors.background
+                                            } else if (useColorfulTopBar) {
+                                                topBarContentColor.copy(alpha = 0.16f)
+                                            } else {
+                                                folderForBadge.color.copy(alpha = 0.16f)
+                                            },
+                                            border = if (materialIconsEnabled) {
+                                                BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
+                                            } else {
+                                                null
+                                            },
+                                            modifier = Modifier
+                                                .padding(start = 8.dp)
+                                                .size(28.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = folderIconFor(folderForBadge),
+                                                    contentDescription = null,
+                                                    tint = if (materialIconsEnabled) {
+                                                        badgeColors.icon
+                                                    } else if (useColorfulTopBar) {
+                                                        topBarContentColor
+                                                    } else {
+                                                        folderForBadge.color
+                                                    },
+                                                    modifier = Modifier.size(AppIcons.scaledSize(15.dp))
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -387,39 +415,60 @@ fun SettingsScreen(
                             )
                         }
                         val currentFolder = activeFolder
-                        if (currentFolder != null) {
-                            val badgeColors = AppIcons.styledColors(currentFolder.color)
-                            Surface(
-                                shape = RoundedCornerShape(if (materialIconsEnabled) 8.dp else 7.dp),
-                                color = if (materialIconsEnabled) {
-                                    badgeColors.background
-                                } else if (useColorfulTopBar) {
-                                    topBarContentColor.copy(alpha = 0.16f)
+                        AnimatedContent(
+                            targetState = currentFolder,
+                            transitionSpec = {
+                                if (!animationsEnabled) {
+                                    EnterTransition.None togetherWith ExitTransition.None
                                 } else {
-                                    currentFolder.color.copy(alpha = 0.16f)
-                                },
-                                border = if (materialIconsEnabled) {
-                                    BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
-                                } else {
-                                    null
-                                },
-                                modifier = Modifier
-                                    .padding(start = 8.dp)
-                                    .size(28.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = folderIconFor(currentFolder),
-                                        contentDescription = null,
-                                        tint = if (materialIconsEnabled) {
-                                            badgeColors.icon
-                                        } else if (useColorfulTopBar) {
-                                            topBarContentColor
-                                        } else {
-                                            currentFolder.color
-                                        },
-                                        modifier = Modifier.size(AppIcons.scaledSize(15.dp))
+                                    (fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing)) +
+                                        scaleIn(
+                                            initialScale = 0.72f,
+                                            animationSpec = spring(
+                                                dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                                                stiffness = Spring.StiffnessMedium
+                                            )
+                                        )).togetherWith(
+                                        fadeOut(tween(120)) + scaleOut(targetScale = 0.75f, animationSpec = tween(120))
                                     )
+                                }
+                            },
+                            label = "settingsFlatTopBarBadge"
+                        ) { folderForBadge ->
+                            if (folderForBadge != null) {
+                                val badgeColors = AppIcons.styledColors(folderForBadge.color)
+                                Surface(
+                                    shape = RoundedCornerShape(if (materialIconsEnabled) 8.dp else 7.dp),
+                                    color = if (materialIconsEnabled) {
+                                        badgeColors.background
+                                    } else if (useColorfulTopBar) {
+                                        topBarContentColor.copy(alpha = 0.16f)
+                                    } else {
+                                        folderForBadge.color.copy(alpha = 0.16f)
+                                    },
+                                    border = if (materialIconsEnabled) {
+                                        BorderStroke(0.8.dp, badgeColors.icon.copy(alpha = 0.18f))
+                                    } else {
+                                        null
+                                    },
+                                    modifier = Modifier
+                                        .padding(start = 8.dp)
+                                        .size(28.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = folderIconFor(folderForBadge),
+                                            contentDescription = null,
+                                            tint = if (materialIconsEnabled) {
+                                                badgeColors.icon
+                                            } else if (useColorfulTopBar) {
+                                                topBarContentColor
+                                            } else {
+                                                folderForBadge.color
+                                            },
+                                            modifier = Modifier.size(AppIcons.scaledSize(15.dp))
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -466,27 +515,10 @@ fun SettingsScreen(
         AnimatedContent(
             targetState = activeFolder,
             transitionSpec = {
-                if (targetState != null) {
-                    (slideInHorizontally(
-                        initialOffsetX = { (it * 0.22f).toInt() },
-                        animationSpec = tween(240, easing = FastOutSlowInEasing)
-                    ) + fadeIn(tween(200))).togetherWith(
-                        slideOutHorizontally(
-                            targetOffsetX = { -(it * 0.12f).toInt() },
-                            animationSpec = tween(200, easing = FastOutSlowInEasing)
-                        ) + fadeOut(tween(150))
-                    )
-                } else {
-                    (slideInHorizontally(
-                        initialOffsetX = { -(it * 0.14f).toInt() },
-                        animationSpec = tween(220, easing = FastOutSlowInEasing)
-                    ) + fadeIn(tween(180))).togetherWith(
-                        slideOutHorizontally(
-                            targetOffsetX = { (it * 0.22f).toInt() },
-                            animationSpec = tween(220, easing = FastOutSlowInEasing)
-                        ) + fadeOut(tween(150))
-                    )
-                }
+                AppMotion.smoothSlideHorizontalTransform(
+                    animationsEnabled = animationsEnabled,
+                    forward = targetState != null
+                )
             },
             label = "settingsFolderNavigation",
             modifier = Modifier
@@ -517,6 +549,7 @@ fun SettingsScreen(
                     onSetUseMaterialIcons = onSetUseMaterialIcons,
                     onSetUsePillTopBar = onSetUsePillTopBar,
                     onSetUseColorfulTopBar = onSetUseColorfulTopBar,
+                    onSetAnimationsEnabled = onSetAnimationsEnabled,
                     onSetThemeMode = onSetThemeMode,
                     onSetDocTypeVisible = onSetDocTypeVisible,
                     onSetScanDotFolders = onSetScanDotFolders,
@@ -587,7 +620,7 @@ private fun SettingsFoldersOverview(
         append(settings.themeMode.label.removeSuffix(" Mode"))
         append(if (settings.usePillTopBar) " • Pill Topbar" else " • Flat Topbar")
         if (settings.useColorfulTopBar) append(" • Colourfull")
-        append(if (settings.useMaterialUi) " • Material UI" else " • Classic UI")
+        append(if (settings.animationsEnabled) " • Animation" else " • Static")
     }
 
     LazyColumn(
@@ -596,6 +629,22 @@ private fun SettingsFoldersOverview(
         verticalArrangement = Arrangement.spacedBy(12.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        item(key = SettingsFolderId.APPEARANCE.name) {
+            SettingsFolderCard(
+                folder = SettingsFolderId.APPEARANCE,
+                subtitle = appearanceSummary,
+                onClick = { onOpenFolder(SettingsFolderId.APPEARANCE) }
+            )
+        }
+
+        item(key = SettingsFolderId.DOC_VISIBILITY.name) {
+            SettingsFolderCard(
+                folder = SettingsFolderId.DOC_VISIBILITY,
+                subtitle = "Show or hide home screen pills ($visibleCount/${DocType.entries.size} shown)",
+                onClick = { onOpenFolder(SettingsFolderId.DOC_VISIBILITY) }
+            )
+        }
+
         item(key = SettingsFolderId.PDF.name) {
             SettingsFolderCard(
                 folder = SettingsFolderId.PDF,
@@ -640,26 +689,10 @@ private fun SettingsFoldersOverview(
             )
         }
 
-        item(key = SettingsFolderId.DOC_VISIBILITY.name) {
-            SettingsFolderCard(
-                folder = SettingsFolderId.DOC_VISIBILITY,
-                subtitle = "Show or hide home screen pills ($visibleCount/${DocType.entries.size} shown)",
-                onClick = { onOpenFolder(SettingsFolderId.DOC_VISIBILITY) }
-            )
-        }
-
-        item(key = SettingsFolderId.APPEARANCE.name) {
-            SettingsFolderCard(
-                folder = SettingsFolderId.APPEARANCE,
-                subtitle = appearanceSummary,
-                onClick = { onOpenFolder(SettingsFolderId.APPEARANCE) }
-            )
-        }
-
         item(key = SettingsFolderId.STORAGE.name) {
             SettingsFolderCard(
                 folder = SettingsFolderId.STORAGE,
-                subtitle = "$readStatusLabel • $writeStatusLabel • Show hidden folders & custom trees",
+                subtitle = "$readStatusLabel • $writeStatusLabel • Scan hidden folders & custom trees",
                 onClick = { onOpenFolder(SettingsFolderId.STORAGE) }
             )
         }
@@ -734,6 +767,7 @@ private fun SettingsFolderCard(
     onClick: () -> Unit
 ) {
     val materialUi = LocalMaterialUiEnabled.current
+    val interactionSource = androidx.compose.runtime.remember { MutableInteractionSource() }
     val folderBg = if (materialUi) {
         MaterialTheme.colorScheme.surfaceContainerLow
     } else {
@@ -749,6 +783,11 @@ private fun SettingsFolderCard(
             color = MaterialTheme.colorScheme.outlineVariant
         ),
         modifier = Modifier
+            .bouncyPressScale(
+                interactionSource = interactionSource,
+                pressedScale = 0.96f,
+                dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO
+            )
             .fillMaxWidth()
             .widthIn(max = 700.dp)
             .testTag(folder.testTag)
@@ -757,7 +796,11 @@ private fun SettingsFolderCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(18.dp))
-                .clickable(onClick = onClick)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = androidx.compose.material3.ripple(),
+                    onClick = onClick
+                )
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -830,6 +873,7 @@ private fun SettingsFolderDetailScreen(
     onSetUseMaterialIcons: (Boolean) -> Unit,
     onSetUsePillTopBar: (Boolean) -> Unit,
     onSetUseColorfulTopBar: (Boolean) -> Unit,
+    onSetAnimationsEnabled: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -1165,6 +1209,14 @@ private fun SettingsFolderDetailScreen(
                                 modifier = Modifier.testTag("toggle_colorful_topbar")
                             )
                             HorizontalDivider()
+                            SettingsSwitchRow(
+                                title = "Animation",
+                                subtitle = "Enable smooth tabs, pages, and scrolling plus bouncy icons, buttons, pills, and menus",
+                                checked = settings.animationsEnabled,
+                                onCheckedChange = onSetAnimationsEnabled,
+                                modifier = Modifier.testTag("toggle_animations")
+                            )
+                            HorizontalDivider()
                             OptionChipsFlowRow(
                                 title = "Theme",
                                 options = ThemeMode.entries,
@@ -1204,8 +1256,12 @@ private fun SettingsFolderDetailScreen(
                             }
                             HorizontalDivider()
                             SettingsSwitchRow(
-                                title = "Show hidden folder",
-                                subtitle = "Automatically include hidden folders ($dotFolderDocCount found)",
+                                title = "Scan hidden folders",
+                                subtitle = if (settings.scanDotFolders) {
+                                    "Scanning hidden folders ($dotFolderDocCount found)"
+                                } else {
+                                    "Hidden folders (starting with .) are skipped"
+                                },
                                 checked = settings.scanDotFolders,
                                 onCheckedChange = onSetScanDotFolders,
                                 modifier = Modifier.testTag("toggle_show_hidden_folder")
@@ -1230,14 +1286,22 @@ private fun SettingsFolderDetailScreen(
                                 }
                                 Spacer(modifier = Modifier.width(8.dp))
                                 if (!hasFullStorageAccess) {
+                                    val grantInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
                                     Button(
                                         onClick = onRequestStorageAccess,
-                                        modifier = Modifier.testTag("settings_grant_storage_button")
+                                        interactionSource = grantInteraction,
+                                        modifier = Modifier
+                                            .bouncyPressScale(grantInteraction, pressedScale = 0.92f)
+                                            .testTag("settings_grant_storage_button")
                                     ) { Text("Grant") }
                                 } else {
+                                    val rescanInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
                                     OutlinedButton(
                                         onClick = onRescanNow,
-                                        modifier = Modifier.testTag("settings_rescan_button")
+                                        interactionSource = rescanInteraction,
+                                        modifier = Modifier
+                                            .bouncyPressScale(rescanInteraction, pressedScale = 0.92f)
+                                            .testTag("settings_rescan_button")
                                     ) {
                                         Icon(AppIcons.refresh(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                         Spacer(modifier = Modifier.width(4.dp))
@@ -1250,12 +1314,26 @@ private fun SettingsFolderDetailScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                OutlinedButton(onClick = onPickCustomFolder, modifier = Modifier.weight(1f)) {
+                                val addFolderInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
+                                OutlinedButton(
+                                    onClick = onPickCustomFolder,
+                                    interactionSource = addFolderInteraction,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .bouncyPressScale(addFolderInteraction, pressedScale = 0.92f)
+                                ) {
                                     Icon(AppIcons.createNewFolder(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Add Folder")
                                 }
-                                OutlinedButton(onClick = onImportFile, modifier = Modifier.weight(1f)) {
+                                val importInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
+                                OutlinedButton(
+                                    onClick = onImportFile,
+                                    interactionSource = importInteraction,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .bouncyPressScale(importInteraction, pressedScale = 0.92f)
+                                ) {
                                     Icon(AppIcons.fileOpen(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Import File")
@@ -1326,7 +1404,12 @@ private fun SettingsFolderDetailScreen(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                OutlinedButton(onClick = onClearCache) { Text("Clear") }
+                                val clearInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
+                                OutlinedButton(
+                                    onClick = onClearCache,
+                                    interactionSource = clearInteraction,
+                                    modifier = Modifier.bouncyPressScale(clearInteraction, pressedScale = 0.92f)
+                                ) { Text("Clear") }
                             }
                         }
                     }
@@ -1381,11 +1464,22 @@ private fun <T> OptionChipsFlowRow(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             options.forEachIndexed { idx, option ->
+                val chipInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
+                val isSelected = selected == option
                 FilterChip(
-                    selected = selected == option,
+                    selected = isSelected,
                     onClick = { onSelect(option) },
+                    interactionSource = chipInteraction,
                     label = { Text(labelFor(option)) },
-                    modifier = Modifier.testTag("${tagPrefix}_$idx")
+                    modifier = Modifier
+                        .bouncyPressScale(
+                            interactionSource = chipInteraction,
+                            pressedScale = 0.90f,
+                            selected = isSelected,
+                            selectedScale = 1.03f,
+                            dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO
+                        )
+                        .testTag("${tagPrefix}_$idx")
                 )
             }
         }
@@ -1399,29 +1493,42 @@ private fun DocTypeVisibilityRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    val extPreview = type.extensions.take(3).joinToString(", ") { ".$it" }
+    val animationsEnabled = LocalAnimationsEnabled.current
+    val extPreview = if (type == DocType.TEXT) {
+        ".txt only"
+    } else {
+        type.extensions.take(3).joinToString(", ") { ".$it" }
+    }
     val countLabel = if (foundCount == 1) "1 file" else "$foundCount files"
     val badgeBg by animateColorAsState(
         targetValue = type.pillColor.copy(alpha = if (checked) 0.16f else 0.08f),
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "docTypeRowBg"
     )
     val iconTint by animateColorAsState(
         targetValue = if (checked) type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "docTypeRowTint"
     )
-    val iconScale by animateFloatAsState(
-        targetValue = if (checked) 1f else 0.9f,
-        animationSpec = spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessMedium),
+    val rowInteraction = androidx.compose.runtime.remember { MutableInteractionSource() }
+    val iconScale = AppMotion.rememberBouncyScale(
+        pressed = false,
+        selected = checked,
+        selectedScale = 1.06f,
+        dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
         label = "docTypeRowScale"
     )
 
     Row(
         modifier = Modifier
+            .bouncyPressScale(rowInteraction, pressedScale = 0.96f)
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable { onCheckedChange(!checked) }
+            .clickable(
+                interactionSource = rowInteraction,
+                indication = androidx.compose.material3.ripple(),
+                onClick = { onCheckedChange(!checked) }
+            )
             .padding(vertical = 4.dp)
             .testTag("toggle_visibility_${type.name.lowercase()}"),
         verticalAlignment = Alignment.CenterVertically

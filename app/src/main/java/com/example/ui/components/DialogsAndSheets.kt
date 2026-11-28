@@ -2,15 +2,17 @@ package com.example.ui.components
 
 import android.os.Build
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -43,6 +45,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,7 +63,12 @@ import androidx.compose.material3.ripple
 import com.example.R
 import com.example.model.DocumentItem
 import com.example.model.SortOption
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalAnimationsEnabled
+import com.example.ui.theme.bouncyPressScale
+import kotlinx.coroutines.delay
 
 @Composable
 fun RenameDocumentDialog(
@@ -97,16 +105,25 @@ fun RenameDocumentDialog(
             }
         },
         confirmButton = {
+            val confirmInteraction = remember { MutableInteractionSource() }
             Button(
                 onClick = { onConfirm(text.trim()) },
                 enabled = text.isNotBlank(),
-                modifier = Modifier.testTag("rename_confirm_button")
+                interactionSource = confirmInteraction,
+                modifier = Modifier
+                    .bouncyPressScale(confirmInteraction, pressedScale = 0.90f)
+                    .testTag("rename_confirm_button")
             ) {
                 Text("Save")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            val dismissInteraction = remember { MutableInteractionSource() }
+            TextButton(
+                onClick = onDismiss,
+                interactionSource = dismissInteraction,
+                modifier = Modifier.bouncyPressScale(dismissInteraction, pressedScale = 0.90f)
+            ) {
                 Text("Cancel")
             }
         }
@@ -138,19 +155,28 @@ fun DeleteConfirmDialog(
         title = { Text(if (count == 1) "Delete Document" else "Delete $count Documents") },
         text = { Text(message) },
         confirmButton = {
+            val confirmInteraction = remember { MutableInteractionSource() }
             Button(
                 onClick = onConfirm,
+                interactionSource = confirmInteraction,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
                 ),
-                modifier = Modifier.testTag("delete_confirm_button")
+                modifier = Modifier
+                    .bouncyPressScale(confirmInteraction, pressedScale = 0.90f)
+                    .testTag("delete_confirm_button")
             ) {
                 Text("Delete")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            val dismissInteraction = remember { MutableInteractionSource() }
+            TextButton(
+                onClick = onDismiss,
+                interactionSource = dismissInteraction,
+                modifier = Modifier.bouncyPressScale(dismissInteraction, pressedScale = 0.90f)
+            ) {
                 Text("Cancel")
             }
         }
@@ -305,6 +331,7 @@ fun SortOptionsSheet(
     onSelect: (SortOption) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
@@ -320,67 +347,109 @@ fun SortOptionsSheet(
                 style = MaterialTheme.typography.titleMedium,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            SortOption.entries.forEach { option ->
+            SortOption.entries.forEachIndexed { idx, option ->
                 val selected = option == currentOption
+                var rowVisible by remember { mutableStateOf(!animationsEnabled) }
+                LaunchedEffect(animationsEnabled) {
+                    if (animationsEnabled) {
+                        delay(idx * 24L)
+                        rowVisible = true
+                    } else {
+                        rowVisible = true
+                    }
+                }
                 val rowBg by animateColorAsState(
                     targetValue = if (selected) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
                         MaterialTheme.colorScheme.surface
                     },
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                    animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
                     label = "sortOptionBg"
                 )
                 val interactionSource = remember { MutableInteractionSource() }
                 val pressed by interactionSource.collectIsPressedAsState()
-                val scale by animateFloatAsState(
-                    targetValue = if (pressed) 0.97f else 1f,
-                    animationSpec = spring(stiffness = Spring.StiffnessMedium),
+                val scale = AppMotion.rememberBouncyScale(
+                    pressed = pressed,
+                    pressedScale = 0.94f,
+                    dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                    stiffness = Spring.StiffnessMedium,
                     label = "sortOptionScale"
                 )
 
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = rowBg,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable(
-                            interactionSource = interactionSource,
-                            indication = ripple(),
-                            onClick = {
-                                onSelect(option)
-                                onDismiss()
-                            }
-                        )
-                        .testTag("sort_${option.name.lowercase()}")
+                AnimatedVisibility(
+                    visible = rowVisible,
+                    enter = if (animationsEnabled) {
+                        fadeIn(tween(170, easing = AppMotionPolicy.SmoothEasing)) +
+                            slideInVertically(
+                                initialOffsetY = { it / 3 },
+                                animationSpec = spring(
+                                    dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                                    stiffness = Spring.StiffnessMediumLow
+                                )
+                            )
+                    } else {
+                        EnterTransition.None
+                    },
+                    exit = ExitTransition.None
                 ) {
-                    Row(
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = rowBg,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = option.label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                        AnimatedVisibility(
-                            visible = selected,
-                            enter = scaleIn(initialScale = 0.6f, animationSpec = spring(stiffness = Spring.StiffnessMedium)) + fadeIn(tween(150)),
-                            exit = scaleOut(targetScale = 0.6f) + fadeOut(tween(100))
-                        ) {
-                            Icon(
-                                imageVector = AppIcons.check(),
-                                contentDescription = "Selected",
-                                tint = MaterialTheme.colorScheme.primary
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(
+                                interactionSource = interactionSource,
+                                indication = ripple(),
+                                onClick = {
+                                    onSelect(option)
+                                    onDismiss()
+                                }
                             )
+                            .testTag("sort_${option.name.lowercase()}")
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = option.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                            AnimatedVisibility(
+                                visible = selected,
+                                enter = if (animationsEnabled) {
+                                    scaleIn(
+                                        initialScale = 0.55f,
+                                        animationSpec = AppMotionPolicy.bouncySpring(
+                                            animationsEnabled = true,
+                                            dampingRatio = 0.44f
+                                        )
+                                    ) + fadeIn(tween(150))
+                                } else {
+                                    EnterTransition.None
+                                },
+                                exit = if (animationsEnabled) {
+                                    scaleOut(targetScale = 0.6f) + fadeOut(tween(100))
+                                } else {
+                                    ExitTransition.None
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = AppIcons.check(),
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
                         }
                     }
                 }
@@ -491,17 +560,25 @@ fun StoragePermissionDialog(
             }
         },
         confirmButton = {
+            val allowInteraction = remember { MutableInteractionSource() }
             Button(
                 onClick = onAllow,
-                modifier = Modifier.testTag("permission_allow_button")
+                interactionSource = allowInteraction,
+                modifier = Modifier
+                    .bouncyPressScale(allowInteraction, pressedScale = 0.90f)
+                    .testTag("permission_allow_button")
             ) {
                 Text(stringResource(R.string.permission_allow_button))
             }
         },
         dismissButton = {
+            val dismissInteraction = remember { MutableInteractionSource() }
             TextButton(
                 onClick = onDismiss,
-                modifier = Modifier.testTag("permission_dismiss_button")
+                interactionSource = dismissInteraction,
+                modifier = Modifier
+                    .bouncyPressScale(dismissInteraction, pressedScale = 0.90f)
+                    .testTag("permission_dismiss_button")
             ) {
                 Text(stringResource(R.string.permission_later_button))
             }

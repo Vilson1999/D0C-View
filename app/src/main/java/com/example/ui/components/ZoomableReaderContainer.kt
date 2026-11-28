@@ -1,11 +1,13 @@
 package com.example.ui.components
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculateCentroid
@@ -51,6 +53,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.LocalAnimationsEnabled
+import com.example.ui.theme.bouncyPressScale
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -152,6 +157,7 @@ object ReaderZoomMath {
 class ReaderZoomState(
     private val doubleTapZoom: Float,
     initialScale: Float = ReaderZoomMath.MIN_SCALE,
+    private var animationsEnabled: Boolean = true,
     private var onScaleCommitted: (Float) -> Unit = {}
 ) {
     private val scaleAnim = Animatable(ReaderZoomMath.clampScale(initialScale))
@@ -193,6 +199,10 @@ class ReaderZoomState(
 
     fun updateOnScaleCommitted(callback: (Float) -> Unit) {
         onScaleCommitted = callback
+    }
+
+    fun updateAnimationsEnabled(enabled: Boolean) {
+        animationsEnabled = enabled
     }
 
     suspend fun syncInitialScaleIfUntouched(initialScale: Float) {
@@ -314,6 +324,11 @@ class ReaderZoomState(
             viewportWidthPx = viewportWidthPx,
             viewportHeightPx = viewportHeightPx
         )
+        if (!animationsEnabled) {
+            scaleAnim.snapTo(clampedScale)
+            offsetAnim.snapTo(ComposeOffset(clampedX, clampedY))
+            return
+        }
         val scaleSpec = spring<Float>(dampingRatio = 0.84f, stiffness = Spring.StiffnessMediumLow)
         val offsetSpec = spring<ComposeOffset>(dampingRatio = 0.84f, stiffness = Spring.StiffnessMediumLow)
         coroutineScope {
@@ -334,6 +349,11 @@ class ReaderZoomState(
         val offsetSpec = spring<ComposeOffset>(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
         if (scaleAnim.value > 1.05f) {
             onScaleCommitted(ReaderZoomMath.MIN_SCALE)
+            if (!animationsEnabled) {
+                scaleAnim.snapTo(ReaderZoomMath.MIN_SCALE)
+                offsetAnim.snapTo(ComposeOffset.Zero)
+                return
+            }
             coroutineScope {
                 launch { scaleAnim.animateTo(ReaderZoomMath.MIN_SCALE, scaleSpec) }
                 launch { offsetAnim.animateTo(ComposeOffset.Zero, offsetSpec) }
@@ -348,6 +368,11 @@ class ReaderZoomState(
                 viewportWidthPx = viewportWidthPx,
                 viewportHeightPx = viewportHeightPx
             )
+            if (!animationsEnabled) {
+                scaleAnim.snapTo(targetScale)
+                offsetAnim.snapTo(ComposeOffset(tx, ty))
+                return
+            }
             coroutineScope {
                 launch { scaleAnim.animateTo(targetScale, scaleSpec) }
                 launch { offsetAnim.animateTo(ComposeOffset(tx, ty), offsetSpec) }
@@ -363,13 +388,16 @@ fun rememberReaderZoomState(
     initialScale: Float = ReaderZoomMath.MIN_SCALE,
     onScaleCommitted: (Float) -> Unit = {}
 ): ReaderZoomState {
+    val animationsEnabled = LocalAnimationsEnabled.current
     val state = remember(key, doubleTapZoom) {
         ReaderZoomState(
             doubleTapZoom = doubleTapZoom,
             initialScale = initialScale,
+            animationsEnabled = animationsEnabled,
             onScaleCommitted = onScaleCommitted
         )
     }
+    state.updateAnimationsEnabled(animationsEnabled)
     state.updateOnScaleCommitted(onScaleCommitted)
     LaunchedEffect(state, initialScale) {
         state.syncInitialScaleIfUntouched(initialScale)
@@ -607,8 +635,12 @@ fun ReaderZoomControlsPill(
     onUserInteraction: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     val scope = rememberCoroutineScope()
     val fg = MaterialTheme.colorScheme.inverseOnSurface
+    val zoomOutInteraction = remember { MutableInteractionSource() }
+    val resetInteraction = remember { MutableInteractionSource() }
+    val zoomInInteraction = remember { MutableInteractionSource() }
 
     Surface(
         shape = CircleShape,
@@ -625,8 +657,13 @@ fun ReaderZoomControlsPill(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
+                    .bouncyPressScale(zoomOutInteraction, pressedScale = 0.82f)
                     .clip(CircleShape)
-                    .clickable(enabled = zoomState.canZoomOut) {
+                    .clickable(
+                        enabled = zoomState.canZoomOut,
+                        interactionSource = zoomOutInteraction,
+                        indication = androidx.compose.material3.ripple()
+                    ) {
                         onUserInteraction()
                         scope.launch { zoomState.zoomOut() }
                     }
@@ -644,27 +681,43 @@ fun ReaderZoomControlsPill(
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
+                    .bouncyPressScale(resetInteraction, pressedScale = 0.88f)
                     .clip(CircleShape)
-                    .clickable(enabled = zoomState.canZoomOut) {
+                    .clickable(
+                        enabled = zoomState.canZoomOut,
+                        interactionSource = resetInteraction,
+                        indication = androidx.compose.material3.ripple()
+                    ) {
                         onUserInteraction()
                         scope.launch { zoomState.reset() }
                     }
                     .padding(horizontal = 4.dp, vertical = 6.dp)
                     .testTag("viewer_zoom_label")
             ) {
-                Text(
-                    text = "${zoomState.zoomPercent}%",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = fg
-                )
+                AnimatedContent(
+                    targetState = zoomState.zoomPercent,
+                    transitionSpec = { AppMotion.bouncyIconContentTransform(animationsEnabled) },
+                    label = "zoomPercent"
+                ) { pct ->
+                    Text(
+                        text = "$pct%",
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = fg
+                    )
+                }
             }
 
             Box(
                 contentAlignment = Alignment.Center,
                 modifier = Modifier
                     .minimumInteractiveComponentSize()
+                    .bouncyPressScale(zoomInInteraction, pressedScale = 0.82f)
                     .clip(CircleShape)
-                    .clickable(enabled = zoomState.canZoomIn) {
+                    .clickable(
+                        enabled = zoomState.canZoomIn,
+                        interactionSource = zoomInInteraction,
+                        indication = androidx.compose.material3.ripple()
+                    ) {
                         onUserInteraction()
                         scope.launch { zoomState.zoomIn() }
                     }

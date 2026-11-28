@@ -6,11 +6,13 @@ import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -131,7 +133,10 @@ import com.example.ui.components.RenameDocumentDialog
 import com.example.ui.components.TopBarActionButton
 import com.example.ui.components.ZoomableReaderViewport
 import com.example.ui.components.rememberReaderZoomState
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
 import com.example.ui.theme.JetBrainsMonoFontFamily
+import com.example.ui.theme.LocalAnimationsEnabled
 import com.example.ui.theme.LocalMaterialIconsEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
@@ -312,25 +317,35 @@ fun DocumentViewerScreen(
 
     BackHandler { onBack() }
 
+    val animationsEnabled = LocalAnimationsEnabled.current
     val materialIconsEnabled = LocalMaterialIconsEnabled.current
     val usePillTopBar = settings.usePillTopBar
     val useColorfulTopBar = settings.useColorfulTopBar
     val viewerAccentColor = currentDoc.type.pillColor
-    val topBarColor = if (useColorfulTopBar) {
+    val targetTopBarColor = if (useColorfulTopBar) {
         val base = currentDoc.type.pillColor
         if (isDarkTheme) lerp(base, Color.Black, 0.20f) else lerp(base, Color.White, 0.10f)
     } else {
         if (usePillTopBar) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.background
     }
-    val topBarContentColor = if (useColorfulTopBar) {
-        if (SystemBarContrastPolicy.shouldUseDarkIcons(topBarColor.luminance())) {
-            MaterialTheme.colorScheme.onBackground
+    val topBarColor by animateColorAsState(
+        targetValue = targetTopBarColor,
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
+        label = "viewerTopBarColor"
+    )
+    val topBarContentColor by animateColorAsState(
+        targetValue = if (useColorfulTopBar) {
+            if (SystemBarContrastPolicy.shouldUseDarkIcons(targetTopBarColor.luminance())) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                Color.White
+            }
         } else {
-            Color.White
-        }
-    } else {
-        MaterialTheme.colorScheme.onBackground
-    }
+            MaterialTheme.colorScheme.onBackground
+        },
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
+        label = "viewerTopBarContentColor"
+    )
     val pagePillColor = if (useColorfulTopBar) {
         topBarColor.copy(alpha = 0.50f)
     } else {
@@ -339,7 +354,7 @@ fun DocumentViewerScreen(
     val pagePillContentColor = MaterialTheme.colorScheme.onBackground
     val statusBarColor by animateColorAsState(
         targetValue = if (!usePillTopBar && isReaderUiVisible) topBarColor else MaterialTheme.colorScheme.background,
-        animationSpec = tween(220),
+        animationSpec = AppMotionPolicy.smoothTween(animationsEnabled, 240),
         label = "viewerStatusBarColor"
     )
     val bottomBarColor = MaterialTheme.colorScheme.background
@@ -350,7 +365,7 @@ fun DocumentViewerScreen(
         )
     }
 
-    val topBarReserve = if (usePillTopBar) 56.dp else 43.dp
+    val topBarReserve = if (usePillTopBar) 62.6.dp else 43.dp
     val navBarReserve = 0.dp
 
     Scaffold(
@@ -385,11 +400,7 @@ fun DocumentViewerScreen(
                         is ParsedDocument.PlainText -> "text_${currentDoc.id}_${activeRenderFormat.name}_${documentOrientation.name}"
                     }
                 },
-                transitionSpec = {
-                    (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
-                        scaleIn(initialScale = 0.985f, animationSpec = tween(240)))
-                        .togetherWith(fadeOut(tween(150)))
-                },
+                transitionSpec = { AppMotion.smoothRevealTransform(animationsEnabled) },
                 label = "documentContentReveal"
             ) { doc ->
                 when (doc) {
@@ -586,8 +597,22 @@ fun DocumentViewerScreen(
 
             AnimatedVisibility(
                 visible = isReaderUiVisible,
-                enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+                enter = if (animationsEnabled) {
+                    slideInVertically(
+                        initialOffsetY = { -it },
+                        animationSpec = AppMotionPolicy.smoothSpring(true)
+                    ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))
+                } else {
+                    EnterTransition.None
+                },
+                exit = if (animationsEnabled) {
+                    slideOutVertically(
+                        targetOffsetY = { -it },
+                        animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+                    ) + fadeOut(tween(150))
+                } else {
+                    ExitTransition.None
+                },
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .testTag("viewer_topbar")
@@ -614,9 +639,10 @@ fun DocumentViewerScreen(
 
                             val rotateRotation by animateFloatAsState(
                                 targetValue = if (isLandscape) 90f else 0f,
-                                animationSpec = spring(
-                                    dampingRatio = 0.78f,
-                                    stiffness = Spring.StiffnessMedium
+                                animationSpec = AppMotionPolicy.bouncySpring(
+                                    animationsEnabled = animationsEnabled,
+                                    dampingRatio = 0.52f,
+                                    stiffness = Spring.StiffnessMediumLow
                                 ),
                                 label = "viewerRotateIconAngle"
                             )
@@ -671,18 +697,7 @@ fun DocumentViewerScreen(
                                 ) { tint ->
                                     AnimatedContent(
                                         targetState = pageViewMode,
-                                        transitionSpec = {
-                                            (scaleIn(
-                                                initialScale = 0.7f,
-                                                animationSpec = spring(
-                                                    dampingRatio = 0.7f,
-                                                    stiffness = Spring.StiffnessMedium
-                                                )
-                                            ) + fadeIn(tween(180))).togetherWith(
-                                                scaleOut(targetScale = 0.7f, animationSpec = tween(120)) +
-                                                    fadeOut(tween(120))
-                                            )
-                                        },
+                                        transitionSpec = { AppMotion.bouncyIconContentTransform(animationsEnabled) },
                                         label = "pageModeIconSwitch"
                                     ) { currentMode ->
                                         Icon(
@@ -700,9 +715,10 @@ fun DocumentViewerScreen(
                                 Box {
                                     val menuIconRotation by animateFloatAsState(
                                         targetValue = if (menuExpanded) 90f else 0f,
-                                        animationSpec = spring(
-                                            dampingRatio = 0.75f,
-                                            stiffness = Spring.StiffnessMedium
+                                        animationSpec = AppMotionPolicy.bouncySpring(
+                                            animationsEnabled = animationsEnabled,
+                                            dampingRatio = 0.52f,
+                                            stiffness = Spring.StiffnessMediumLow
                                         ),
                                         label = "viewerMenuButtonRotation"
                                     )
@@ -798,10 +814,10 @@ fun DocumentViewerScreen(
                             topBarRowContent(
                                 Modifier
                                     .fillMaxWidth()
-                                    .height(44.dp)
+                                    .height(50.6.dp)
                                     .padding(
                                         start = 14.dp,
-                                        end = if (materialIconsEnabled) 8.dp else 4.dp
+                                        end = if (materialIconsEnabled) 10.dp else 6.dp
                                     )
                             )
                         }
@@ -894,6 +910,7 @@ private fun <T> PagedOrContinuousViewer(
     singleItemContent: @Composable (T) -> Unit,
     continuousItemContent: @Composable (Int, T) -> Unit
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     val containerModifier = if (enableContainerTap && zoomState == null) {
         Modifier
             .fillMaxSize()
@@ -906,11 +923,7 @@ private fun <T> PagedOrContinuousViewer(
 
     AnimatedContent(
         targetState = mode,
-        transitionSpec = {
-            (fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
-                .togetherWith(fadeOut(tween(150)))
-        },
+        transitionSpec = { AppMotion.smoothRevealTransform(animationsEnabled) },
         label = "viewerModeSwitch"
     ) { targetMode ->
         if (targetMode == PageViewMode.SINGLE_PAGE) {
@@ -922,10 +935,14 @@ private fun <T> PagedOrContinuousViewer(
                     userScrollEnabled = zoomState?.canInnerScroll ?: true,
                     flingBehavior = PagerDefaults.flingBehavior(
                         state = pagerState,
-                        snapAnimationSpec = spring(
-                            dampingRatio = Spring.DampingRatioNoBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
+                        snapAnimationSpec = if (animationsEnabled) {
+                            spring(
+                                dampingRatio = AppMotionPolicy.SMOOTH_SPRING_DAMPING,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        } else {
+                            snap()
+                        }
                     ),
                     modifier = Modifier
                         .fillMaxSize()
@@ -936,14 +953,20 @@ private fun <T> PagedOrContinuousViewer(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .clipToBounds()
-                                .graphicsLayer {
-                                    val offset = ((pagerState.currentPage - idx) +
-                                        pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
-                                    val pageScale = 1f - (0.045f * offset)
-                                    scaleX = pageScale
-                                    scaleY = pageScale
-                                    alpha = 1f - (0.30f * offset)
-                                }
+                                .then(
+                                    if (animationsEnabled) {
+                                        Modifier.graphicsLayer {
+                                            val offset = ((pagerState.currentPage - idx) +
+                                                pagerState.currentPageOffsetFraction).absoluteValue.coerceIn(0f, 1f)
+                                            val pageScale = 1f - (0.045f * offset)
+                                            scaleX = pageScale
+                                            scaleY = pageScale
+                                            alpha = 1f - (0.30f * offset)
+                                        }
+                                    } else {
+                                        Modifier
+                                    }
+                                )
                         ) {
                             singleItemContent(items[idx])
                         }
@@ -964,8 +987,31 @@ private fun <T> PagedOrContinuousViewer(
                 }
                 AnimatedVisibility(
                     visible = showPagePill,
-                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    enter = if (animationsEnabled) {
+                        slideInVertically(
+                            initialOffsetY = { it / 2 },
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + scaleIn(
+                            initialScale = 0.85f,
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))
+                    } else {
+                        EnterTransition.None
+                    },
+                    exit = if (animationsEnabled) {
+                        slideOutVertically(
+                            targetOffsetY = { it / 2 },
+                            animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+                        ) + scaleOut(targetScale = 0.88f, animationSpec = tween(160)) + fadeOut(tween(150))
+                    } else {
+                        ExitTransition.None
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -1023,8 +1069,31 @@ private fun <T> PagedOrContinuousViewer(
                 }
                 AnimatedVisibility(
                     visible = showPagePill,
-                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    enter = if (animationsEnabled) {
+                        slideInVertically(
+                            initialOffsetY = { it / 2 },
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + scaleIn(
+                            initialScale = 0.85f,
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))
+                    } else {
+                        EnterTransition.None
+                    },
+                    exit = if (animationsEnabled) {
+                        slideOutVertically(
+                            targetOffsetY = { it / 2 },
+                            animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+                        ) + scaleOut(targetScale = 0.88f, animationSpec = tween(160)) + fadeOut(tween(150))
+                    } else {
+                        ExitTransition.None
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -1243,6 +1312,7 @@ private fun PlainTextViewerContent(
     onZoomInteraction: () -> Unit,
     onToggleUi: () -> Unit
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     val hScroll = rememberScrollState()
     val wrapModifier = if (wordWrap) {
         Modifier.fillMaxSize()
@@ -1257,11 +1327,7 @@ private fun PlainTextViewerContent(
 
     AnimatedContent(
         targetState = mode,
-        transitionSpec = {
-            (fadeIn(tween(220, easing = FastOutSlowInEasing)) +
-                scaleIn(initialScale = 0.98f, animationSpec = tween(220)))
-                .togetherWith(fadeOut(tween(150)))
-        },
+        transitionSpec = { AppMotion.smoothRevealTransform(animationsEnabled) },
         label = "plainTextModeSwitch"
     ) { targetMode ->
         if (targetMode == PageViewMode.SINGLE_PAGE) {
@@ -1386,8 +1452,31 @@ private fun PlainTextViewerContent(
                 }
                 AnimatedVisibility(
                     visible = showPagePill && pages.size > 1,
-                    enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-                    exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+                    enter = if (animationsEnabled) {
+                        slideInVertically(
+                            initialOffsetY = { it / 2 },
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + scaleIn(
+                            initialScale = 0.85f,
+                            animationSpec = spring(
+                                dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))
+                    } else {
+                        EnterTransition.None
+                    },
+                    exit = if (animationsEnabled) {
+                        slideOutVertically(
+                            targetOffsetY = { it / 2 },
+                            animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+                        ) + scaleOut(targetScale = 0.88f, animationSpec = tween(160)) + fadeOut(tween(150))
+                    } else {
+                        ExitTransition.None
+                    },
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .navigationBarsPadding()
@@ -1450,6 +1539,7 @@ private fun PageIndicatorPill(
     contentColor: Color,
     modifier: Modifier = Modifier
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     Surface(
         shape = CircleShape,
         color = pillColor,
@@ -1460,9 +1550,17 @@ private fun PageIndicatorPill(
         AnimatedContent(
             targetState = text,
             transitionSpec = {
-                (fadeIn(tween(140)) + slideInVertically(tween(140)) { it / 3 })
-                    .togetherWith(fadeOut(tween(100)) + slideOutVertically(tween(100)) { -it / 3 })
-                    .using(SizeTransform(clip = false))
+                if (!animationsEnabled) {
+                    (EnterTransition.None togetherWith ExitTransition.None)
+                        .using(SizeTransform(clip = false))
+                } else {
+                    (fadeIn(tween(160, easing = AppMotionPolicy.SmoothEasing)) +
+                        slideInVertically(tween(170, easing = AppMotionPolicy.SmoothEasing)) { it / 3 })
+                        .togetherWith(
+                            fadeOut(tween(110)) + slideOutVertically(tween(110)) { -it / 3 }
+                        )
+                        .using(SizeTransform(clip = false))
+                }
             },
             label = "pageIndicatorText"
         ) { currentText ->

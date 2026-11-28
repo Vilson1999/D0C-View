@@ -1,12 +1,14 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -42,6 +44,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.R
 import com.example.model.DocumentViewOrientation
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
+import com.example.ui.theme.LocalAnimationsEnabled
 import kotlinx.coroutines.delay
 
 @Composable
@@ -187,10 +192,13 @@ private fun CompactMenuActionItem(
     selected: Boolean = false,
     tint: Color = MaterialTheme.colorScheme.onSurface
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(menuExpanded) {
+    LaunchedEffect(menuExpanded, animationsEnabled) {
         if (menuExpanded) {
-            delay(staggerIndex * 22L)
+            if (animationsEnabled) {
+                delay(staggerIndex * 24L)
+            }
             visible = true
         } else {
             visible = false
@@ -199,20 +207,46 @@ private fun CompactMenuActionItem(
 
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) 0.95f else 1f,
-        animationSpec = spring(stiffness = Spring.StiffnessMedium),
+    val scale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        pressedScale = 0.91f,
+        dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+        stiffness = Spring.StiffnessMedium,
         label = "menuItemPress"
+    )
+    val iconScale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        selected = selected,
+        pressedScale = 0.84f,
+        selectedScale = 1.12f,
+        dampingRatio = 0.44f,
+        stiffness = Spring.StiffnessMedium,
+        label = "menuIconBounce"
     )
     val effectiveTint = if (selected) MaterialTheme.colorScheme.primary else tint
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(tween(150)) + slideInVertically(
-            initialOffsetY = { -it / 4 },
-            animationSpec = spring(dampingRatio = 0.85f, stiffness = Spring.StiffnessMediumLow)
-        ),
-        exit = fadeOut(tween(80))
+        enter = if (animationsEnabled) {
+            fadeIn(tween(170, easing = AppMotionPolicy.SmoothEasing)) +
+                scaleIn(
+                    initialScale = 0.84f,
+                    animationSpec = spring(
+                        dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) +
+                slideInVertically(
+                    initialOffsetY = { -it / 3 },
+                    animationSpec = spring(
+                        dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                )
+        } else {
+            EnterTransition.None
+        },
+        exit = if (animationsEnabled) fadeOut(tween(90)) else ExitTransition.None
     ) {
         Row(
             modifier = Modifier
@@ -237,7 +271,12 @@ private fun CompactMenuActionItem(
                 imageVector = icon,
                 contentDescription = null,
                 tint = effectiveTint,
-                modifier = Modifier.size(AppIcons.scaledSize(18.dp))
+                modifier = Modifier
+                    .size(AppIcons.scaledSize(18.dp))
+                    .graphicsLayer {
+                        scaleX = iconScale
+                        scaleY = iconScale
+                    }
             )
             Text(
                 text = label,

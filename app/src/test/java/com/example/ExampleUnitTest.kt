@@ -35,7 +35,11 @@ import com.example.model.PageViewMode
 import com.example.model.ScreenOrientationPolicy
 import com.example.model.SortOption
 import com.example.service.BackgroundLifecyclePolicy
+import com.example.ui.theme.AppMotionPolicy
 import com.example.ui.theme.SystemBarContrastPolicy
+import androidx.compose.animation.core.SnapSpec
+import androidx.compose.animation.core.SpringSpec
+import androidx.compose.animation.core.TweenSpec
 import androidx.compose.ui.graphics.luminance
 import com.example.viewmodel.DocumentQueryProcessor
 import com.example.viewmodel.HomeUiState
@@ -105,6 +109,8 @@ class ExampleUnitTest {
         assertTrue(defaults.useMaterialIcons)
         assertTrue(defaults.usePillTopBar)
         assertTrue(defaults.useColorfulTopBar)
+        assertTrue(defaults.animationsEnabled)
+        assertFalse(defaults.scanDotFolders)
         assertTrue(defaults.showPptSpeakerNotes)
         assertTrue(defaults.textWordWrap)
         assertTrue(defaults.textMonospace)
@@ -1820,5 +1826,62 @@ class ExampleUnitTest {
                 styled.icon.luminance() <= 0.15f
             )
         }
+    }
+
+    @Test
+    fun appMotionPolicy_returnsSmoothAndBouncySpecsWhenEnabledAndSnapWhenDisabled() {
+        val enabledSmooth = AppMotionPolicy.smoothTween<Float>(animationsEnabled = true)
+        assertTrue(enabledSmooth is TweenSpec<Float>)
+        val enabledBouncy = AppMotionPolicy.bouncySpring<Float>(animationsEnabled = true)
+        assertTrue(enabledBouncy is SpringSpec<Float>)
+        assertTrue((enabledBouncy as SpringSpec<Float>).dampingRatio < 0.7f)
+
+        assertTrue(AppMotionPolicy.smoothTween<Float>(animationsEnabled = false) is SnapSpec<Float>)
+        assertTrue(AppMotionPolicy.smoothSpring<Float>(animationsEnabled = false) is SnapSpec<Float>)
+        assertTrue(AppMotionPolicy.bouncySpring<Float>(animationsEnabled = false) is SnapSpec<Float>)
+    }
+
+    @Test
+    fun queryProcessor_showsOnlyTxtFilesForTextCategoryOnHomeScreen() {
+        val textDocs = listOf(
+            fakeDoc("notes.txt", DocType.TEXT, 120L, 5000L),
+            fakeDoc("README.TXT", DocType.TEXT, 220L, 4000L),
+            fakeDoc("app.log", DocType.TEXT, 320L, 3000L),
+            fakeDoc("readme.md", DocType.TEXT, 420L, 2000L),
+            fakeDoc("data.csv", DocType.TEXT, 520L, 1000L),
+            fakeDoc("config.json", DocType.TEXT, 620L, 900L),
+            fakeDoc("settings.ini", DocType.TEXT, 720L, 800L),
+            fakeDoc("rules.cfg", DocType.TEXT, 820L, 700L),
+            fakeDoc("manual.pdf", DocType.PDF, 920L, 600L)
+        )
+
+        val grouped = DocumentQueryProcessor.groupByType(
+            documents = textDocs,
+            query = "",
+            sortOption = SortOption.DATE_DESC,
+            visibleTypes = DocType.entries.toSet()
+        )
+        assertEquals(listOf("notes.txt", "README.TXT"), grouped[DocType.TEXT]?.map { it.name })
+        assertEquals(listOf("manual.pdf"), grouped[DocType.PDF]?.map { it.name })
+
+        // Searching specifically for hidden text extensions still hides them from Home
+        val searchHidden = DocumentQueryProcessor.filterAndSort(
+            documents = textDocs,
+            query = "config",
+            sortOption = SortOption.NAME_ASC,
+            visibleTypes = DocType.entries.toSet()
+        )
+        assertTrue(searchHidden.isEmpty())
+
+        // If only non-.txt text files exist alongside PDF, TEXT pill is not marked populated
+        val onlyNonTxtAndPdf = listOf(
+            fakeDoc("app.log", DocType.TEXT, 320L, 3000L),
+            fakeDoc("config.json", DocType.TEXT, 620L, 900L),
+            fakeDoc("manual.pdf", DocType.PDF, 920L, 600L)
+        )
+        assertEquals(
+            listOf(DocType.PDF),
+            DocumentQueryProcessor.resolveHomePillTypes(onlyNonTxtAndPdf, DocType.entries.toSet())
+        )
     }
 }

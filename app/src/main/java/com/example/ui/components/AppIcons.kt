@@ -86,6 +86,7 @@ import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material.icons.rounded.ZoomIn
 import androidx.compose.material.icons.rounded.ZoomOut
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -94,6 +95,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -103,6 +105,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.LocalMaterialIconsEnabled
+import com.example.ui.theme.bouncyPressScale
 
 @Immutable
 data class StyledIconColors(
@@ -268,15 +271,21 @@ fun TopBarActionButton(
     cornerRadius: Dp = 10.dp,
     content: @Composable (tint: Color) -> Unit
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val bounceModifier = modifier.bouncyPressScale(
+        interactionSource = interactionSource,
+        pressedScale = 0.84f
+    )
     if (LocalMaterialIconsEnabled.current) {
         val colors = AppIcons.styledColors(accentColor)
         Surface(
             onClick = onClick,
+            interactionSource = interactionSource,
             shape = RoundedCornerShape(cornerRadius),
             color = colors.background,
             contentColor = colors.icon,
             border = BorderStroke(0.8.dp, colors.icon.copy(alpha = 0.18f)),
-            modifier = modifier.size(buttonSize)
+            modifier = bounceModifier.size(buttonSize)
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
@@ -288,7 +297,8 @@ fun TopBarActionButton(
     } else {
         IconButton(
             onClick = onClick,
-            modifier = modifier.size(buttonSize)
+            interactionSource = interactionSource,
+            modifier = bounceModifier.size(buttonSize)
         ) {
             content(plainTint)
         }

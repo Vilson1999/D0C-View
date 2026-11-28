@@ -2,9 +2,17 @@ package com.example.ui.components
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +21,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -49,6 +58,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -86,6 +96,10 @@ import com.example.data.SlidePage
 import com.example.data.WordBlock
 import com.example.data.WordPage
 import com.example.data.WordTableRow
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
+import com.example.ui.theme.LocalAnimationsEnabled
+import com.example.ui.theme.bouncyPressScale
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -734,12 +748,14 @@ fun OfficeOriginalExcelContent(
     pillColor: Color = MaterialTheme.colorScheme.inverseSurface.copy(alpha = 0.50f),
     pillContentColor: Color = MaterialTheme.colorScheme.onBackground
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     var selectedSheetIdx by remember(workbook) { mutableIntStateOf(0) }
     val safeIndex = selectedSheetIdx.coerceIn(0, workbook.sheets.lastIndex.coerceAtLeast(0))
     val sheet = workbook.sheets.getOrNull(safeIndex) ?: return
 
     val hScroll = rememberScrollState()
     val listState = rememberLazyListState()
+    val sheetTabsState = rememberLazyListState()
     val totalCols = sheet.maxColumns.coerceAtLeast(1)
     val rawColWidths = remember(sheet) {
         (0 until totalCols).map { idx ->
@@ -751,6 +767,16 @@ fun OfficeOriginalExcelContent(
     val rowHeaderWidth = 38.dp
     val maxSheetWidthDp = if (layout.isLandscape) 940.dp else 660.dp
     val sheetAspect = (layout.widthPt / layout.heightPt.coerceAtLeast(1f)).coerceIn(0.60f, 1.85f)
+
+    LaunchedEffect(safeIndex, animationsEnabled) {
+        if (workbook.sheets.size > 1) {
+            if (animationsEnabled) {
+                sheetTabsState.animateScrollToItem(safeIndex)
+            } else {
+                sheetTabsState.scrollToItem(safeIndex)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -791,20 +817,31 @@ fun OfficeOriginalExcelContent(
                 if (workbook.sheets.size > 1) {
                     item(key = "sheet_tabs") {
                         LazyRow(
+                            state = sheetTabsState,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .widthIn(max = maxSheetWidthDp)
                         ) {
                             itemsIndexed(workbook.sheets) { idx, item ->
+                                val chipInteraction = remember { MutableInteractionSource() }
+                                val isTabSelected = idx == safeIndex
                                 FilterChip(
-                                    selected = idx == safeIndex,
+                                    selected = isTabSelected,
                                     onClick = {
                                         selectedSheetIdx = idx
                                         onZoomInteraction()
                                     },
+                                    interactionSource = chipInteraction,
                                     label = { Text(item.name) },
-                                    modifier = Modifier.testTag("excel_sheet_tab_$idx")
+                                    modifier = Modifier
+                                        .bouncyPressScale(
+                                            interactionSource = chipInteraction,
+                                            pressedScale = 0.88f,
+                                            selected = isTabSelected,
+                                            selectedScale = 1.05f
+                                        )
+                                        .testTag("excel_sheet_tab_$idx")
                                 )
                             }
                         }
@@ -1037,8 +1074,28 @@ fun OfficeOriginalExcelContent(
 
         AnimatedVisibility(
             visible = showControls,
-            enter = slideInVertically(initialOffsetY = { it / 2 }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it / 2 }) + fadeOut(),
+            enter = if (animationsEnabled) {
+                slideInVertically(
+                    initialOffsetY = { it / 2 },
+                    animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled = true)
+                ) + scaleIn(
+                    initialScale = 0.88f,
+                    animationSpec = spring(
+                        dampingRatio = AppMotionPolicy.GENTLE_BOUNCY_DAMPING_RATIO,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) + fadeIn(tween(180))
+            } else {
+                EnterTransition.None
+            },
+            exit = if (animationsEnabled) {
+                slideOutVertically(
+                    targetOffsetY = { it / 2 },
+                    animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+                ) + scaleOut(targetScale = 0.9f, animationSpec = tween(150)) + fadeOut(tween(150))
+            } else {
+                ExitTransition.None
+            },
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .navigationBarsPadding()
@@ -1051,12 +1108,18 @@ fun OfficeOriginalExcelContent(
                 shadowElevation = 0.dp,
                 modifier = Modifier.testTag("viewer_page_pill")
             ) {
-                Text(
-                    text = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
-                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
-                    color = pillContentColor,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                )
+                AnimatedContent(
+                    targetState = "Sheet ${safeIndex + 1} / ${workbook.sheets.size}",
+                    transitionSpec = { AppMotion.bouncyIconContentTransform(animationsEnabled) },
+                    label = "excelSheetPillText"
+                ) { pillText ->
+                    Text(
+                        text = pillText,
+                        style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = pillContentColor,
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                    )
+                }
             }
         }
     }

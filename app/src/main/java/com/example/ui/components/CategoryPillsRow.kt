@@ -2,20 +2,16 @@ package com.example.ui.components
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -56,6 +52,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.DocType
+import com.example.ui.theme.AppMotion
+import com.example.ui.theme.AppMotionPolicy
+import com.example.ui.theme.LocalAnimationsEnabled
 
 @Composable
 fun CategoryPillsRow(
@@ -68,23 +67,40 @@ fun CategoryPillsRow(
     modifier: Modifier = Modifier
 ) {
     val rowState = rememberLazyListState()
+    val animationsEnabled = LocalAnimationsEnabled.current
 
-    LaunchedEffect(selectedType, visible, visibleTypes) {
+    LaunchedEffect(selectedType, visible, visibleTypes, animationsEnabled) {
         if (!visible || visibleTypes.isEmpty()) return@LaunchedEffect
         val index = visibleTypes.indexOf(selectedType)
         if (index >= 0) {
-            rowState.animateScrollToItem(index)
+            if (animationsEnabled) {
+                rowState.animateScrollToItem(index)
+            } else {
+                rowState.scrollToItem(index)
+            }
         }
     }
 
     AnimatedVisibility(
         visible = visible && visibleTypes.isNotEmpty(),
-        enter = expandVertically(
-            animationSpec = tween(180, easing = FastOutSlowInEasing)
-        ) + fadeIn(tween(180)),
-        exit = shrinkVertically(
-            animationSpec = tween(160, easing = FastOutSlowInEasing)
-        ) + fadeOut(tween(160)),
+        enter = if (animationsEnabled) {
+            expandVertically(
+                animationSpec = AppMotionPolicy.smoothSpring(
+                    animationsEnabled = true,
+                    dampingRatio = 0.86f,
+                    stiffness = Spring.StiffnessMediumLow
+                )
+            ) + fadeIn(tween(200, easing = AppMotionPolicy.SmoothEasing))
+        } else {
+            EnterTransition.None
+        },
+        exit = if (animationsEnabled) {
+            shrinkVertically(
+                animationSpec = tween(180, easing = AppMotionPolicy.SmoothEasing)
+            ) + fadeOut(tween(150))
+        } else {
+            ExitTransition.None
+        },
         modifier = modifier
     ) {
         val horizontalArrangement = if (visibleTypes.size <= 3) {
@@ -123,37 +139,47 @@ private fun CategoryPill(
     isDarkTheme: Boolean,
     onClick: () -> Unit
 ) {
+    val animationsEnabled = LocalAnimationsEnabled.current
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
 
-    val scale by animateFloatAsState(
-        targetValue = when {
-            pressed -> 0.94f
-            selected -> 1.04f
-            else -> 1f
-        },
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = Spring.StiffnessMedium),
+    val scale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        selected = selected,
+        pressedScale = 0.88f,
+        selectedScale = 1.06f,
+        dampingRatio = AppMotionPolicy.BOUNCY_DAMPING_RATIO,
+        stiffness = Spring.StiffnessMedium,
         label = "pillScale"
+    )
+    val iconScale = AppMotion.rememberBouncyScale(
+        pressed = pressed,
+        selected = selected,
+        pressedScale = 0.84f,
+        selectedScale = 1.12f,
+        dampingRatio = 0.44f,
+        stiffness = Spring.StiffnessMedium,
+        label = "pillIconScale"
     )
     val elevation by animateDpAsState(
         targetValue = if (selected) 2.4.dp else 0.dp,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "pillElevation"
     )
     val tintBg = if (isDarkTheme) type.tintDark else type.tintLight
     val containerColor by animateColorAsState(
         targetValue = if (selected) type.pillColor else tintBg,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "pillBg"
     )
     val contentColor by animateColorAsState(
         targetValue = if (selected) Color.White else if (isDarkTheme) Color.White.copy(alpha = 0.92f) else type.pillColor,
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "pillFg"
     )
     val borderColor by animateColorAsState(
         targetValue = if (selected) type.pillColor else type.pillColor.copy(alpha = 0.35f),
-        animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+        animationSpec = AppMotionPolicy.smoothSpring(animationsEnabled),
         label = "pillBorder"
     )
 
@@ -186,7 +212,12 @@ private fun CategoryPill(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(AppIcons.scaledSize(17.8112.dp))
+                    modifier = Modifier
+                        .size(AppIcons.scaledSize(17.8112.dp))
+                        .graphicsLayer {
+                            scaleX = iconScale
+                            scaleY = iconScale
+                        }
                 )
                 Spacer(modifier = Modifier.width(4.8.dp))
                 Text(
@@ -207,10 +238,7 @@ private fun CategoryPill(
                     ) {
                         AnimatedContent(
                             targetState = count,
-                            transitionSpec = {
-                                (scaleIn(initialScale = 0.8f) + fadeIn(tween(140)))
-                                    .togetherWith(scaleOut(targetScale = 0.8f) + fadeOut(tween(100)))
-                            },
+                            transitionSpec = { AppMotion.bouncyIconContentTransform(animationsEnabled) },
                             label = "pillCount"
                         ) { targetCount ->
                             Text(

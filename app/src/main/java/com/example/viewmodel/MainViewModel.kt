@@ -63,6 +63,12 @@ data class HomeUiState(
 }
 
 object DocumentQueryProcessor {
+    fun isVisibleOnHomeScreen(doc: DocumentItem): Boolean {
+        if (doc.type != DocType.TEXT) return true
+        val ext = doc.extension.ifBlank { doc.name.substringAfterLast('.', "") }.trimStart('.').lowercase()
+        return ext == "txt"
+    }
+
     fun filterAndSort(
         documents: List<DocumentItem>,
         query: String,
@@ -72,6 +78,7 @@ object DocumentQueryProcessor {
     ): List<DocumentItem> {
         val trimmed = query.trim()
         val matched = documents.asSequence()
+            .filter { isVisibleOnHomeScreen(it) }
             .filter { it.type in visibleTypes }
             .filter { typeFilter == null || it.type == typeFilter }
             .filter {
@@ -112,7 +119,9 @@ object DocumentQueryProcessor {
     ): List<DocType> {
         val enabledOrdered = DocType.entries.filter { it in enabledTypes }
         if (enabledOrdered.isEmpty()) return emptyList()
-        val populated = enabledOrdered.filter { type -> documents.any { it.type == type } }
+        val populated = enabledOrdered.filter { type ->
+            documents.any { it.type == type && isVisibleOnHomeScreen(it) }
+        }
         return populated.ifEmpty { enabledOrdered }
     }
 
@@ -191,13 +200,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val settings = values[9] as AppSettings
         val accessGrantScanning = values[10] as Boolean
 
+        val homeEligibleDocs = rawDocs.filter { DocumentQueryProcessor.isVisibleOnHomeScreen(it) }
         val visibleTypes = DocumentQueryProcessor.resolveHomePillTypes(
-            documents = rawDocs,
+            documents = homeEligibleDocs,
             enabledTypes = settings.visibleDocTypes
         )
-        val rawCounts = DocType.entries.associateWith { type -> rawDocs.count { it.type == type } }
+        val rawCounts = DocType.entries.associateWith { type -> homeEligibleDocs.count { it.type == type } }
         val grouped = DocumentQueryProcessor.groupByType(
-            documents = rawDocs,
+            documents = homeEligibleDocs,
             query = query,
             sortOption = settings.sortOption,
             visibleTypes = settings.visibleDocTypes
@@ -207,7 +217,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             visibleTypes.isNotEmpty() -> visibleTypes.first()
             else -> category
         }
-        val visibleIds = rawDocs
+        val visibleIds = homeEligibleDocs
             .asSequence()
             .filter { it.type in settings.visibleDocTypes }
             .map { it.id }
@@ -229,7 +239,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             documentsByType = grouped,
             rawCountsByType = rawCounts,
             allDocumentsCount = visibleTypes.sumOf { rawCounts[it] ?: 0 },
-            dotFolderDocCount = rawDocs.count { it.type in settings.visibleDocTypes && it.isFromDotFolder },
+            dotFolderDocCount = homeEligibleDocs.count { it.type in settings.visibleDocTypes && it.isFromDotFolder },
             cacheSizeBytes = cacheBytes,
             settings = settings
         )
@@ -418,7 +428,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         )
                         launchSmartPrewarm(update.documents, currentSettings)
                         if (userInitiated) {
-                            val visibleCount = update.documents.count { it.type in currentSettings.visibleDocTypes }
+                            val visibleCount = update.documents.count {
+                                it.type in currentSettings.visibleDocTypes &&
+                                    DocumentQueryProcessor.isVisibleOnHomeScreen(it)
+                            }
                             _messages.tryEmit(
                                 if (visibleCount == 1) "Scan complete • 1 document found"
                                 else "Scan complete • $visibleCount documents found"
@@ -518,6 +531,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setUseColorfulTopBar(enabled: Boolean) {
         viewModelScope.launch { settingsRepo.setUseColorfulTopBar(enabled) }
+    }
+
+    fun setAnimationsEnabled(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setAnimationsEnabled(enabled) }
     }
 
     fun setSortOption(option: SortOption) {
@@ -824,12 +841,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 scanner.resolveContentUriToDocument(uri)
             }
             if (resolved != null) {
-                if (resolved.type in settingsFlow.value.visibleDocTypes) {
+                if (resolved.type in settingsFlow.value.visibleDocTypes &&
+                    DocumentQueryProcessor.isVisibleOnHomeScreen(resolved)
+                ) {
                     hasUserSelectedCategory = true
                     _selectedCategory.value = resolved.type
                     settingsRepo.setSelectedCategory(resolved.type)
                 } else {
-                    // Even if the category pill is hidden on Home, open the document directly
+                    // Even if hidden from Home (pill hidden or non-.txt text file), open the document directly
                     externalDocsById[resolved.id] = resolved
                     activeViewingExternalDoc = resolved
                     _openExternalDoc.value = resolved

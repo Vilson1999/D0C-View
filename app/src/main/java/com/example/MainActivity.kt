@@ -18,6 +18,8 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -67,6 +69,7 @@ import com.example.ui.screens.AppOpenLoadingScreen
 import com.example.ui.screens.DocumentViewerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.SettingsScreen
+import com.example.ui.theme.AppMotionPolicy
 import com.example.ui.theme.DocVaultTheme
 import com.example.viewmodel.MainViewModel
 
@@ -316,44 +319,63 @@ private fun DocVaultApp(
         )
     }
 
+    val animationsEnabled = uiState.settings.animationsEnabled
+
     DocVaultTheme(
         darkTheme = isDarkTheme,
         useMaterialUi = uiState.settings.useMaterialUi,
-        useMaterialIcons = uiState.settings.useMaterialIcons
+        useMaterialIcons = uiState.settings.useMaterialIcons,
+        animationsEnabled = animationsEnabled
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
                 navController = navController,
                 startDestination = ROUTE_HOME,
                 enterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { (it * 0.25f).toInt() },
-                        animationSpec = tween(280, easing = FastOutSlowInEasing)
-                    ) + fadeIn(tween(240)) + scaleIn(
-                        initialScale = 0.96f,
-                        animationSpec = tween(280, easing = FastOutSlowInEasing)
-                    )
+                    if (animationsEnabled) {
+                        slideInHorizontally(
+                            initialOffsetX = { (it * 0.24f).toInt() },
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        ) + fadeIn(tween(240, easing = AppMotionPolicy.SmoothEasing)) + scaleIn(
+                            initialScale = 0.95f,
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        )
+                    } else {
+                        EnterTransition.None
+                    }
                 },
                 exitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { -(it * 0.14f).toInt() },
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeOut(tween(220), targetAlpha = 0.7f)
+                    if (animationsEnabled) {
+                        slideOutHorizontally(
+                            targetOffsetX = { -(it * 0.14f).toInt() },
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        ) + fadeOut(tween(220, easing = AppMotionPolicy.SmoothEasing), targetAlpha = 0.72f)
+                    } else {
+                        ExitTransition.None
+                    }
                 },
                 popEnterTransition = {
-                    slideInHorizontally(
-                        initialOffsetX = { -(it * 0.14f).toInt() },
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeIn(tween(220), initialAlpha = 0.7f)
+                    if (animationsEnabled) {
+                        slideInHorizontally(
+                            initialOffsetX = { -(it * 0.14f).toInt() },
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        ) + fadeIn(tween(220, easing = AppMotionPolicy.SmoothEasing), initialAlpha = 0.72f)
+                    } else {
+                        EnterTransition.None
+                    }
                 },
                 popExitTransition = {
-                    slideOutHorizontally(
-                        targetOffsetX = { (it * 0.25f).toInt() },
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    ) + fadeOut(tween(220)) + scaleOut(
-                        targetScale = 0.96f,
-                        animationSpec = tween(260, easing = FastOutSlowInEasing)
-                    )
+                    if (animationsEnabled) {
+                        slideOutHorizontally(
+                            targetOffsetX = { (it * 0.24f).toInt() },
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        ) + fadeOut(tween(220, easing = AppMotionPolicy.SmoothEasing)) + scaleOut(
+                            targetScale = 0.95f,
+                            animationSpec = tween(AppMotionPolicy.WINDOW_DURATION_MS, easing = AppMotionPolicy.SmoothEasing)
+                        )
+                    } else {
+                        ExitTransition.None
+                    }
                 }
             ) {
                 composable(ROUTE_HOME) {
@@ -443,6 +465,7 @@ private fun DocVaultApp(
                         onSetUseMaterialIcons = viewModel::setUseMaterialIcons,
                         onSetUsePillTopBar = viewModel::setUsePillTopBar,
                         onSetUseColorfulTopBar = viewModel::setUseColorfulTopBar,
+                        onSetAnimationsEnabled = viewModel::setAnimationsEnabled,
                         onSetThemeMode = viewModel::setThemeMode,
                         onSetDocTypeVisible = viewModel::setDocTypeVisible,
                         onSetScanDotFolders = viewModel::setScanDotFolders,
@@ -495,10 +518,14 @@ private fun DocVaultApp(
             AnimatedVisibility(
                 visible = showAppOpenLoading,
                 enter = fadeIn(tween(0)),
-                exit = fadeOut(tween(240, easing = FastOutSlowInEasing)) + scaleOut(
-                    targetScale = 1.03f,
-                    animationSpec = tween(240, easing = FastOutSlowInEasing)
-                )
+                exit = if (animationsEnabled) {
+                    fadeOut(tween(260, easing = AppMotionPolicy.SmoothEasing)) + scaleOut(
+                        targetScale = 1.03f,
+                        animationSpec = tween(260, easing = AppMotionPolicy.SmoothEasing)
+                    )
+                } else {
+                    ExitTransition.None
+                }
             ) {
                 AppOpenLoadingScreen(
                     onFinished = { showAppOpenLoading = false },

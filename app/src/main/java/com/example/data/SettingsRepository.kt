@@ -30,6 +30,7 @@ class SettingsRepository(private val context: Context) {
         val USE_MATERIAL_ICONS = booleanPreferencesKey("use_material_icons")
         val USE_PILL_TOP_BAR = booleanPreferencesKey("use_pill_top_bar")
         val USE_COLORFUL_TOP_BAR = booleanPreferencesKey("use_colorful_top_bar")
+        val ANIMATIONS_ENABLED = booleanPreferencesKey("animations_enabled")
         val SCAN_DOT_FOLDERS = booleanPreferencesKey("scan_dot_folders")
         val SHOW_DOT_FOLDER_BADGE = booleanPreferencesKey("show_dot_folder_badge")
         val DEFAULT_PAGE_VIEW_MODE = stringPreferencesKey("default_page_view_mode")
@@ -94,7 +95,8 @@ class SettingsRepository(private val context: Context) {
             useMaterialIcons = prefs[Keys.USE_MATERIAL_ICONS] ?: true,
             usePillTopBar = prefs[Keys.USE_PILL_TOP_BAR] ?: true,
             useColorfulTopBar = prefs[Keys.USE_COLORFUL_TOP_BAR] ?: true,
-            scanDotFolders = prefs[Keys.SCAN_DOT_FOLDERS] ?: true,
+            animationsEnabled = prefs[Keys.ANIMATIONS_ENABLED] ?: true,
+            scanDotFolders = prefs[Keys.SCAN_DOT_FOLDERS] ?: false,
             showDotFolderBadge = prefs[Keys.SHOW_DOT_FOLDER_BADGE] ?: true,
             defaultPageViewMode = defaultPageMode,
             sortOption = prefs[Keys.SORT_OPTION]?.let {
@@ -169,6 +171,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setUseColorfulTopBar(enabled: Boolean) {
         context.dataStore.edit { it[Keys.USE_COLORFUL_TOP_BAR] = enabled }
+    }
+
+    suspend fun setAnimationsEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ANIMATIONS_ENABLED] = enabled }
     }
 
     suspend fun setScanDotFolders(enabled: Boolean) {
