@@ -395,7 +395,7 @@ fun DocumentViewerScreen(
                                     imageVector = AppIcons.errorOutline(),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(44.dp)
+                                    modifier = Modifier.size(AppIcons.scaledSize(44.dp))
                                 )
                                 Text(
                                     text = doc.message,

@@ -18,13 +18,17 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -165,7 +169,7 @@ fun DocumentInfoSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .displayCutoutPadding()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -217,7 +221,7 @@ fun DocumentInfoSheet(
                             AppIcons.insertDriveFile(),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(AppIcons.scaledSize(18.dp))
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
@@ -276,7 +280,7 @@ private fun InfoRow(icon: ImageVector, label: String, value: String) {
             imageVector = icon,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(AppIcons.scaledSize(18.dp))
         )
         Spacer(modifier = Modifier.width(10.dp))
         Text(
@@ -306,7 +310,7 @@ fun SortOptionsSheet(
             modifier = Modifier
                 .fillMaxWidth()
                 .navigationBarsPadding()
-                .displayCutoutPadding()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -463,7 +467,7 @@ fun StoragePermissionDialog(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
                                     .padding(top = 2.dp)
-                                    .size(20.dp)
+                                    .size(AppIcons.scaledSize(20.dp))
                             )
                             Column(
                                 modifier = Modifier.weight(1f),

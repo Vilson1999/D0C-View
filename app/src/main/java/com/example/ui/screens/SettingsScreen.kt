@@ -26,7 +26,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,7 +34,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
@@ -203,9 +204,14 @@ fun SettingsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
+                            .windowInsetsPadding(
+                                WindowInsets.statusBars.union(
+                                    WindowInsets.displayCutout.only(
+                                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                                    )
+                                )
+                            )
                             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                            .displayCutoutPadding()
                             .height(29.4.dp)
                             .padding(horizontal = 4.dp, vertical = 0.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -219,7 +225,7 @@ fun SettingsScreen(
                             Icon(
                                 imageVector = AppIcons.arrowBack(),
                                 contentDescription = "Back",
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(AppIcons.scaledSize(22.dp))
                             )
                         }
                         val currentFolder = activeFolder
@@ -236,7 +242,7 @@ fun SettingsScreen(
                                         imageVector = folderIconFor(currentFolder),
                                         contentDescription = null,
                                         tint = currentFolder.color,
-                                        modifier = Modifier.size(13.dp)
+                                        modifier = Modifier.size(AppIcons.scaledSize(13.dp))
                                     )
                                 }
                             }
@@ -318,7 +324,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                .displayCutoutPadding()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .clipToBounds()
         ) { folder ->
             if (folder == null) {
@@ -594,7 +600,7 @@ private fun SettingsFolderCard(
                         imageVector = folderIconFor(folder),
                         contentDescription = null,
                         tint = folder.color,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(AppIcons.scaledSize(22.dp))
                     )
                 }
             }
@@ -1044,7 +1050,7 @@ private fun SettingsFolderDetailScreen(
                                         onClick = onRescanNow,
                                         modifier = Modifier.testTag("settings_rescan_button")
                                     ) {
-                                        Icon(AppIcons.refresh(), contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(AppIcons.refresh(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Rescan")
                                     }
@@ -1056,12 +1062,12 @@ private fun SettingsFolderDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = onPickCustomFolder, modifier = Modifier.weight(1f)) {
-                                    Icon(AppIcons.createNewFolder(), contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(AppIcons.createNewFolder(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Add Folder")
                                 }
                                 OutlinedButton(onClick = onImportFile, modifier = Modifier.weight(1f)) {
-                                    Icon(AppIcons.fileOpen(), contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(AppIcons.fileOpen(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Import File")
                                 }
@@ -1084,7 +1090,7 @@ private fun SettingsFolderDetailScreen(
                                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(AppIcons.folder(), contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(AppIcons.folder(), contentDescription = null, modifier = Modifier.size(AppIcons.scaledSize(16.dp)))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = uriStr.substringAfterLast("%3A").ifBlank { uriStr },
@@ -1100,7 +1106,7 @@ private fun SettingsFolderDetailScreen(
                                                     Icon(
                                                         AppIcons.delete(),
                                                         contentDescription = "Remove folder",
-                                                        modifier = Modifier.size(18.dp)
+                                                        modifier = Modifier.size(AppIcons.scaledSize(18.dp))
                                                     )
                                                 }
                                             }

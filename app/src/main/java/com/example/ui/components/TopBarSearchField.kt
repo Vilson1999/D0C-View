@@ -56,7 +56,7 @@ fun TopBarSearchField(
 
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f),
+        color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
@@ -73,7 +73,7 @@ fun TopBarSearchField(
                 imageVector = AppIcons.search(),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(AppIcons.scaledSize(20.dp))
             )
             Spacer(modifier = Modifier.width(8.dp))
             Box(

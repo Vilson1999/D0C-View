@@ -157,14 +157,14 @@ fun DocumentCard(
                                     imageVector = if (itemSelected) AppIcons.checkCircle() else AppIcons.radioButtonUnchecked(),
                                     contentDescription = if (itemSelected) "Selected" else "Not selected",
                                     tint = if (itemSelected) document.type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.size(24.dp)
+                                    modifier = Modifier.size(AppIcons.scaledSize(24.dp))
                                 )
                             } else {
                                 Icon(
                                     imageVector = docTypeIcon(document.type),
                                     contentDescription = document.type.label,
                                     tint = document.type.pillColor,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(AppIcons.scaledSize(22.dp))
                                 )
                             }
                         }

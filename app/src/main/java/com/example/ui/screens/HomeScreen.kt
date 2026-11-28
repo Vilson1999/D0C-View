@@ -35,7 +35,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.displayCutoutPadding
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -43,7 +43,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsBottomHeight
@@ -87,6 +88,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -101,9 +103,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.DocumentActionsHelper
 import com.example.model.DocType
@@ -124,6 +128,7 @@ import com.example.ui.components.TopBarSearchField
 import com.example.ui.theme.LocalMaterialUiEnabled
 import com.example.ui.theme.NavigationBarSideBackdrop
 import com.example.ui.theme.SyncSystemBarsAppearance
+import com.example.ui.theme.SystemBarContrastPolicy
 import com.example.viewmodel.HomeUiState
 import kotlin.math.absoluteValue
 import kotlinx.coroutines.delay
@@ -195,13 +200,26 @@ fun HomeScreen(
 
     val materialUi = LocalMaterialUiEnabled.current
     val topBarColor by animateColorAsState(
-        targetValue = if (uiState.isSelectionMode) {
-            MaterialTheme.colorScheme.primaryContainer
-        } else {
-            MaterialTheme.colorScheme.background
+        targetValue = when {
+            uiState.isSelectionMode -> MaterialTheme.colorScheme.primaryContainer
+            visibleTypes.isNotEmpty() -> uiState.selectedCategory.pillColor
+            else -> MaterialTheme.colorScheme.background
         },
         animationSpec = tween(220),
         label = "homeTopBarColor"
+    )
+    val topBarContentColor by animateColorAsState(
+        targetValue = when {
+            uiState.isSelectionMode -> MaterialTheme.colorScheme.onPrimaryContainer
+            visibleTypes.isNotEmpty() -> if (SystemBarContrastPolicy.shouldUseDarkIcons(uiState.selectedCategory.pillColor.luminance())) {
+                MaterialTheme.colorScheme.onBackground
+            } else {
+                Color.White
+            }
+            else -> MaterialTheme.colorScheme.onBackground
+        },
+        animationSpec = tween(220),
+        label = "homeTopBarContentColor"
     )
     val selectionBottomBarColor = if (materialUi) {
         MaterialTheme.colorScheme.surfaceContainerHigh
@@ -418,14 +436,20 @@ fun HomeScreen(
                 Surface(
                     color = topBarColor,
                     tonalElevation = 0.dp,
+                    shadowElevation = 0.dp,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .statusBarsPadding()
+                            .windowInsetsPadding(
+                                WindowInsets.statusBars.union(
+                                    WindowInsets.displayCutout.only(
+                                        WindowInsetsSides.Top + WindowInsetsSides.Horizontal
+                                    )
+                                )
+                            )
                             .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                            .displayCutoutPadding()
                     ) {
                         AnimatedContent(
                             targetState = uiState.isSelectionMode,
@@ -451,6 +475,7 @@ fun HomeScreen(
                             } else {
                                 HomeTopBar(
                                     themeMode = uiState.settings.themeMode,
+                                    iconTint = topBarContentColor,
                                     isSearchActive = uiState.isSearchActive,
                                     searchQuery = uiState.searchQuery,
                                     onSearchQueryChange = onSearchQueryChange,
@@ -476,7 +501,7 @@ fun HomeScreen(
                     onSelectType = onSelectCategory,
                     modifier = Modifier
                         .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                        .displayCutoutPadding()
+                        .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 )
             }
         },
@@ -533,7 +558,7 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
-                .displayCutoutPadding()
+                .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                 .clipToBounds()
                 .nestedScroll(nestedScrollConnection),
             contentAlignment = Alignment.TopCenter
@@ -787,6 +812,7 @@ fun HomeScreen(
 @Composable
 private fun HomeTopBar(
     themeMode: ThemeMode,
+    iconTint: Color,
     isSearchActive: Boolean,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
@@ -884,7 +910,7 @@ private fun HomeTopBar(
                                     ThemeMode.LIGHT -> AppIcons.lightMode()
                                 },
                                 contentDescription = stringResource(R.string.action_toggle_theme),
-                                tint = MaterialTheme.colorScheme.onBackground
+                                tint = iconTint
                             )
                         }
                     }
@@ -897,7 +923,7 @@ private fun HomeTopBar(
                         Icon(
                             imageVector = AppIcons.sort(),
                             contentDescription = stringResource(R.string.action_sort),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = iconTint
                         )
                     }
                     IconButton(
@@ -909,7 +935,7 @@ private fun HomeTopBar(
                         Icon(
                             imageVector = AppIcons.search(),
                             contentDescription = stringResource(R.string.action_search),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = iconTint
                         )
                     }
                     IconButton(
@@ -921,7 +947,7 @@ private fun HomeTopBar(
                         Icon(
                             imageVector = AppIcons.settings(),
                             contentDescription = stringResource(R.string.action_settings),
-                            tint = MaterialTheme.colorScheme.onBackground
+                            tint = iconTint
                         )
                     }
                 }
@@ -992,44 +1018,46 @@ private fun SelectionBottomToolbar(
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(
-                    WindowInsets.navigationBars.only(
-                        WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+        CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 30.dp) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .windowInsetsPadding(
+                        WindowInsets.navigationBars.only(
+                            WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom
+                        )
                     )
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+                    .padding(start = 8.dp, end = 8.dp, top = 2.dp, bottom = 0.dp),
+                horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BottomToolbarAction(
+                    icon = AppIcons.share(),
+                    label = stringResource(R.string.action_share),
+                    onClick = onShare,
+                    modifier = Modifier.testTag("bottom_share_button")
                 )
-                .displayCutoutPadding()
-                .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 0.dp),
-            horizontalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            BottomToolbarAction(
-                icon = AppIcons.share(),
-                label = stringResource(R.string.action_share),
-                onClick = onShare,
-                modifier = Modifier.testTag("bottom_share_button")
-            )
-            BottomToolbarAction(
-                icon = AppIcons.delete(),
-                label = stringResource(R.string.action_delete),
-                tint = MaterialTheme.colorScheme.error,
-                onClick = onDelete,
-                modifier = Modifier.testTag("bottom_delete_button")
-            )
-            BottomToolbarAction(
-                icon = AppIcons.print(),
-                label = stringResource(R.string.action_print),
-                onClick = onPrint,
-                modifier = Modifier.testTag("bottom_print_button")
-            )
-            BottomToolbarAction(
-                icon = AppIcons.info(),
-                label = stringResource(R.string.action_info),
-                onClick = onInfo,
-                modifier = Modifier.testTag("bottom_info_button")
-            )
+                BottomToolbarAction(
+                    icon = AppIcons.delete(),
+                    label = stringResource(R.string.action_delete),
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDelete,
+                    modifier = Modifier.testTag("bottom_delete_button")
+                )
+                BottomToolbarAction(
+                    icon = AppIcons.print(),
+                    label = stringResource(R.string.action_print),
+                    onClick = onPrint,
+                    modifier = Modifier.testTag("bottom_print_button")
+                )
+                BottomToolbarAction(
+                    icon = AppIcons.info(),
+                    label = stringResource(R.string.action_info),
+                    onClick = onInfo,
+                    modifier = Modifier.testTag("bottom_info_button")
+                )
+            }
         }
     }
 }
@@ -1055,26 +1083,30 @@ private fun BottomToolbarAction(
                 scaleX = scale
                 scaleY = scale
             }
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(10.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = androidx.compose.material3.ripple(),
                 onClick = onClick
             )
-            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .padding(horizontal = 12.dp, vertical = 2.dp),
+            .defaultMinSize(minWidth = 48.dp, minHeight = 30.dp)
+            .padding(horizontal = 10.dp, vertical = 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
+        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(20.dp)
+            modifier = Modifier.size(AppIcons.scaledSize(16.dp))
         )
         Text(
             text = label,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.sp,
+                lineHeight = 11.sp,
+                platformStyle = PlatformTextStyle(includeFontPadding = false)
+            ),
             color = tint
         )
     }
@@ -1162,7 +1194,7 @@ private fun AllDocTypesHiddenState(
                     Icon(
                         AppIcons.settings(),
                         contentDescription = null,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(AppIcons.scaledSize(18.dp))
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text("Settings")
@@ -1204,7 +1236,7 @@ private fun StoragePermissionBannerCard(
                         imageVector = AppIcons.folderOpen(),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(20.dp)
+                        modifier = Modifier.size(AppIcons.scaledSize(20.dp))
                     )
                 }
             }

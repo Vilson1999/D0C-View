@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -78,11 +79,11 @@ fun CategoryPillsRow(
     AnimatedVisibility(
         visible = visible && visibleTypes.isNotEmpty(),
         enter = expandVertically(
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-        ) + fadeIn(tween(200)),
+            animationSpec = tween(180, easing = FastOutSlowInEasing)
+        ) + fadeIn(tween(180)),
         exit = shrinkVertically(
-            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-        ) + fadeOut(tween(150)),
+            animationSpec = tween(160, easing = FastOutSlowInEasing)
+        ) + fadeOut(tween(160)),
         modifier = modifier
     ) {
         val horizontalArrangement = if (visibleTypes.size <= 3) {
@@ -184,7 +185,7 @@ private fun CategoryPill(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(14.72.dp)
+                    modifier = Modifier.size(AppIcons.scaledSize(14.72.dp))
                 )
                 Spacer(modifier = Modifier.width(4.8.dp))
                 Text(

@@ -237,7 +237,7 @@ private fun CompactMenuActionItem(
                 imageVector = icon,
                 contentDescription = null,
                 tint = effectiveTint,
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(AppIcons.scaledSize(18.dp))
             )
             Text(
                 text = label,
@@ -252,7 +252,7 @@ private fun CompactMenuActionItem(
                     imageVector = AppIcons.check(),
                     contentDescription = null,
                     tint = effectiveTint,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(AppIcons.scaledSize(16.dp))
                 )
             }
         }

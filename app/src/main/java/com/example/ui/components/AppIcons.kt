@@ -1,37 +1,218 @@
 package com.example.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.materialIcon
-import androidx.compose.material.icons.materialPath
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.MoreVert
-import androidx.compose.material.icons.rounded.Refresh
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathBuilder
 import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.ui.theme.LocalMaterialIconsEnabled
 
+private inline fun boldMaterialIcon(
+    name: String,
+    autoMirror: Boolean = false,
+    block: ImageVector.Builder.() -> Unit
+): ImageVector = ImageVector.Builder(
+    name = "MaterialBold.$name",
+    defaultWidth = 26.4.dp,
+    defaultHeight = 26.4.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+    autoMirror = autoMirror
+).apply(block).build()
+
+private inline fun ImageVector.Builder.boldMaterialPath(
+    strokeWidth: Float = 0.55f,
+    fillType: PathFillType = PathFillType.NonZero,
+    block: PathBuilder.() -> Unit
+) = path(
+    fill = SolidColor(Color.Black),
+    stroke = if (strokeWidth > 0f) SolidColor(Color.Black) else null,
+    strokeLineWidth = strokeWidth,
+    strokeLineCap = StrokeCap.Round,
+    strokeLineJoin = StrokeJoin.Round,
+    pathFillType = fillType,
+    pathBuilder = block
+)
+
+private inline fun ImageVector.Builder.boldMaterialStroke(
+    strokeWidth: Float = 2.85f,
+    block: PathBuilder.() -> Unit
+) = path(
+    fill = null,
+    stroke = SolidColor(Color.Black),
+    strokeLineWidth = strokeWidth,
+    strokeLineCap = StrokeCap.Round,
+    strokeLineJoin = StrokeJoin.Round,
+    pathBuilder = block
+)
+
 /**
- * Lightweight, tree-shaken Material vector icons so the app never depends on
- * the multi-megabyte material-icons-extended artifact.
+ * Lightweight, tree-shaken bold Material & classic vector icons so the app never depends
+ * on the multi-megabyte material-icons-extended artifact.
  */
 object AppIcons {
 
+    @Composable
+    fun scaledSize(baseSize: Dp): Dp =
+        if (LocalMaterialIconsEnabled.current) baseSize * 1.10f else baseSize
+
+    val SearchBold: ImageVector by lazy {
+        boldMaterialIcon(name = "SearchBold") {
+            boldMaterialStroke(strokeWidth = 2.85f) {
+                circleSubpath(10.5f, 10.5f, 6f)
+                moveTo(15f, 15f)
+                lineTo(20.2f, 20.2f)
+            }
+        }
+    }
+
+    val SettingsBold: ImageVector by lazy {
+        boldMaterialIcon(name = "SettingsBold") {
+            boldMaterialPath(strokeWidth = 0.45f) {
+                moveTo(19.14f, 12.94f)
+                curveToRelative(0.04f, -0.3f, 0.06f, -0.61f, 0.06f, -0.94f)
+                curveToRelative(0f, -0.32f, -0.02f, -0.64f, -0.07f, -0.94f)
+                lineToRelative(2.03f, -1.58f)
+                curveToRelative(0.18f, -0.14f, 0.23f, -0.41f, 0.12f, -0.61f)
+                lineToRelative(-1.92f, -3.32f)
+                curveToRelative(-0.12f, -0.22f, -0.37f, -0.29f, -0.59f, -0.22f)
+                lineToRelative(-2.39f, 0.96f)
+                curveToRelative(-0.5f, -0.38f, -1.03f, -0.7f, -1.62f, -0.94f)
+                lineToRelative(-0.36f, -2.54f)
+                curveToRelative(-0.04f, -0.24f, -0.24f, -0.41f, -0.48f, -0.41f)
+                horizontalLineToRelative(-3.84f)
+                curveToRelative(-0.24f, 0f, -0.43f, 0.17f, -0.47f, 0.41f)
+                lineTo(9.25f, 5.35f)
+                curveTo(8.66f, 5.59f, 8.12f, 5.92f, 7.63f, 6.29f)
+                lineTo(5.24f, 5.33f)
+                curveToRelative(-0.22f, -0.08f, -0.47f, 0f, -0.59f, 0.22f)
+                lineTo(2.74f, 8.87f)
+                curveTo(2.62f, 9.08f, 2.66f, 9.34f, 2.86f, 9.48f)
+                lineToRelative(2.03f, 1.58f)
+                curveTo(4.84f, 11.36f, 4.8f, 11.69f, 4.8f, 12f)
+                reflectiveCurveToRelative(0.02f, 0.64f, 0.07f, 0.94f)
+                lineToRelative(-2.03f, 1.58f)
+                curveToRelative(-0.18f, 0.14f, -0.23f, 0.41f, -0.12f, 0.61f)
+                lineToRelative(1.92f, 3.32f)
+                curveToRelative(0.12f, 0.22f, 0.37f, 0.29f, 0.59f, 0.22f)
+                lineToRelative(2.39f, -0.96f)
+                curveToRelative(0.5f, 0.38f, 1.03f, 0.7f, 1.62f, 0.94f)
+                lineToRelative(0.36f, 2.54f)
+                curveToRelative(0.05f, 0.24f, 0.24f, 0.41f, 0.48f, 0.41f)
+                horizontalLineToRelative(3.84f)
+                curveToRelative(0.24f, 0f, 0.44f, -0.17f, 0.47f, -0.41f)
+                lineToRelative(0.36f, -2.54f)
+                curveToRelative(0.59f, -0.24f, 1.13f, -0.56f, 1.62f, -0.94f)
+                lineToRelative(2.39f, 0.96f)
+                curveToRelative(0.22f, 0.08f, 0.47f, 0f, 0.59f, -0.22f)
+                lineToRelative(1.92f, -3.32f)
+                curveToRelative(0.12f, -0.22f, 0.07f, -0.47f, -0.12f, -0.61f)
+                lineTo(19.14f, 12.94f)
+                close()
+                moveTo(12f, 15.6f)
+                curveToRelative(-1.98f, 0f, -3.6f, -1.62f, -3.6f, -3.6f)
+                reflectiveCurveToRelative(1.62f, -3.6f, 3.6f, -3.6f)
+                reflectiveCurveToRelative(3.6f, 1.62f, 3.6f, 3.6f)
+                reflectiveCurveToRelative(-1.62f, 3.6f, -3.6f, 3.6f)
+                close()
+            }
+        }
+    }
+
+    val CloseBold: ImageVector by lazy {
+        boldMaterialIcon(name = "CloseBold") {
+            boldMaterialStroke(strokeWidth = 2.95f) {
+                moveTo(5.8f, 5.8f)
+                lineTo(18.2f, 18.2f)
+                moveTo(18.2f, 5.8f)
+                lineTo(5.8f, 18.2f)
+            }
+        }
+    }
+
+    val ArrowBackBold: ImageVector by lazy {
+        boldMaterialIcon(name = "ArrowBackBold", autoMirror = true) {
+            boldMaterialStroke(strokeWidth = 2.9f) {
+                moveTo(19.5f, 12f)
+                lineTo(5f, 12f)
+                moveTo(11.5f, 5.5f)
+                lineTo(5f, 12f)
+                lineTo(11.5f, 18.5f)
+            }
+        }
+    }
+
+    val MoreVertBold: ImageVector by lazy {
+        boldMaterialIcon(name = "MoreVertBold") {
+            boldMaterialPath(strokeWidth = 0f) {
+                circleSubpath(12f, 5.5f, 2.25f)
+                circleSubpath(12f, 12f, 2.25f)
+                circleSubpath(12f, 18.5f, 2.25f)
+            }
+        }
+    }
+
+    val RefreshBold: ImageVector by lazy {
+        boldMaterialIcon(name = "RefreshBold") {
+            boldMaterialStroke(strokeWidth = 2.85f) {
+                moveTo(19.2f, 12f)
+                arcTo(7.2f, 7.2f, 0f, true, true, 17.1f, 6.9f)
+                moveTo(14.5f, 7.6f)
+                lineTo(19.2f, 7.6f)
+                lineTo(19.2f, 3.2f)
+            }
+        }
+    }
+
+    val ShareBold: ImageVector by lazy {
+        boldMaterialIcon(name = "ShareBold") {
+            boldMaterialPath(strokeWidth = 0f) {
+                circleSubpath(17.5f, 5.5f, 3.1f)
+                circleSubpath(6.5f, 12f, 3.1f)
+                circleSubpath(17.5f, 18.5f, 3.1f)
+            }
+            boldMaterialStroke(strokeWidth = 2.5f) {
+                moveTo(9f, 10.6f)
+                lineTo(15f, 7f)
+                moveTo(9f, 13.4f)
+                lineTo(15f, 17f)
+            }
+        }
+    }
+
+    val InfoBold: ImageVector by lazy {
+        boldMaterialIcon(name = "InfoBold") {
+            boldMaterialPath(strokeWidth = 0.4f, fillType = PathFillType.EvenOdd) {
+                circleSubpath(12f, 12f, 9.8f)
+                circleSubpath(12f, 7.6f, 1.45f)
+                moveTo(10.75f, 10.7f)
+                lineTo(13.25f, 10.7f)
+                lineTo(13.25f, 17.2f)
+                lineTo(10.75f, 17.2f)
+                close()
+            }
+        }
+    }
+
+    val CheckBold: ImageVector by lazy {
+        boldMaterialIcon(name = "CheckBold") {
+            boldMaterialStroke(strokeWidth = 3.0f) {
+                moveTo(4.5f, 12.5f)
+                lineTo(9.5f, 17.5f)
+                lineTo(19.5f, 6.5f)
+            }
+        }
+    }
+
     val PictureAsPdf: ImageVector by lazy {
-        materialIcon(name = "PictureAsPdf") {
-            materialPath {
+        boldMaterialIcon(name = "PictureAsPdf") {
+            boldMaterialPath(strokeWidth = 0.25f) {
                 moveTo(20f, 2f)
                 horizontalLineTo(8f)
                 curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
@@ -98,8 +279,8 @@ object AppIcons {
     }
 
     val Description: ImageVector by lazy {
-        materialIcon(name = "Description") {
-            materialPath {
+        boldMaterialIcon(name = "Description") {
+            boldMaterialPath(strokeWidth = 0.45f) {
                 moveTo(14f, 2f)
                 horizontalLineTo(6f)
                 curveToRelative(-1.1f, 0f, -1.99f, 0.9f, -1.99f, 2f)
@@ -132,8 +313,8 @@ object AppIcons {
     }
 
     val TableChart: ImageVector by lazy {
-        materialIcon(name = "TableChart") {
-            materialPath {
+        boldMaterialIcon(name = "TableChart") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(10f, 10.02f)
                 horizontalLineToRelative(5f)
                 verticalLineTo(21f)
@@ -167,8 +348,8 @@ object AppIcons {
     }
 
     val Slideshow: ImageVector by lazy {
-        materialIcon(name = "Slideshow") {
-            materialPath {
+        boldMaterialIcon(name = "Slideshow") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(10f, 8f)
                 verticalLineToRelative(8f)
                 lineToRelative(5f, -4f)
@@ -195,8 +376,8 @@ object AppIcons {
     }
 
     val Notes: ImageVector by lazy {
-        materialIcon(name = "Notes", autoMirror = true) {
-            materialPath {
+        boldMaterialIcon(name = "Notes", autoMirror = true) {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(3f, 18f)
                 horizontalLineToRelative(12f)
                 verticalLineToRelative(-2f)
@@ -220,8 +401,8 @@ object AppIcons {
     }
 
     val DarkMode: ImageVector by lazy {
-        materialIcon(name = "DarkMode") {
-            materialPath {
+        boldMaterialIcon(name = "DarkMode") {
+            boldMaterialPath(strokeWidth = 0.60f) {
                 moveTo(12f, 3f)
                 curveToRelative(-4.97f, 0f, -9f, 4.03f, -9f, 9f)
                 reflectiveCurveToRelative(4.03f, 9f, 9f, 9f)
@@ -237,8 +418,8 @@ object AppIcons {
     }
 
     val LightMode: ImageVector by lazy {
-        materialIcon(name = "LightMode") {
-            materialPath {
+        boldMaterialIcon(name = "LightMode") {
+            boldMaterialPath(strokeWidth = 0.45f) {
                 moveTo(12f, 7f)
                 curveToRelative(-2.76f, 0f, -5f, 2.24f, -5f, 5f)
                 reflectiveCurveToRelative(2.24f, 5f, 5f, 5f)
@@ -314,8 +495,8 @@ object AppIcons {
     }
 
     val BrightnessAuto: ImageVector by lazy {
-        materialIcon(name = "BrightnessAuto") {
-            materialPath {
+        boldMaterialIcon(name = "BrightnessAuto") {
+            boldMaterialPath(strokeWidth = 0.30f) {
                 moveTo(10.85f, 12.65f)
                 horizontalLineToRelative(2.3f)
                 lineTo(12f, 9f)
@@ -354,8 +535,8 @@ object AppIcons {
     }
 
     val Sort: ImageVector by lazy {
-        materialIcon(name = "Sort", autoMirror = true) {
-            materialPath {
+        boldMaterialIcon(name = "Sort", autoMirror = true) {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(3f, 18f)
                 horizontalLineToRelative(6f)
                 verticalLineToRelative(-2f)
@@ -379,8 +560,8 @@ object AppIcons {
     }
 
     val SelectAll: ImageVector by lazy {
-        materialIcon(name = "SelectAll") {
-            materialPath {
+        boldMaterialIcon(name = "SelectAll") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(3f, 5f)
                 horizontalLineToRelative(2f)
                 verticalLineTo(3f)
@@ -490,8 +671,8 @@ object AppIcons {
     }
 
     val ViewCarousel: ImageVector by lazy {
-        materialIcon(name = "ViewCarousel") {
-            materialPath {
+        boldMaterialIcon(name = "ViewCarousel") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(2f, 7f)
                 horizontalLineToRelative(4f)
                 verticalLineToRelative(10f)
@@ -515,8 +696,8 @@ object AppIcons {
     }
 
     val ViewStream: ImageVector by lazy {
-        materialIcon(name = "ViewStream") {
-            materialPath {
+        boldMaterialIcon(name = "ViewStream") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(3f, 17f)
                 verticalLineToRelative(-2f)
                 curveToRelative(0f, -1.1f, 0.9f, -2f, 2f, -2f)
@@ -542,8 +723,8 @@ object AppIcons {
     }
 
     val Rename: ImageVector by lazy {
-        materialIcon(name = "Rename") {
-            materialPath {
+        boldMaterialIcon(name = "Rename") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(18.41f, 5.8f)
                 lineTo(17.2f, 4.59f)
                 curveToRelative(-0.78f, -0.78f, -2.05f, -0.78f, -2.83f, 0f)
@@ -573,8 +754,8 @@ object AppIcons {
     }
 
     val Print: ImageVector by lazy {
-        materialIcon(name = "Print") {
-            materialPath {
+        boldMaterialIcon(name = "Print") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(19f, 8f)
                 horizontalLineTo(5f)
                 curveToRelative(-1.66f, 0f, -3f, 1.34f, -3f, 3f)
@@ -610,8 +791,8 @@ object AppIcons {
     }
 
     val DeleteOutline: ImageVector by lazy {
-        materialIcon(name = "DeleteOutline") {
-            materialPath {
+        boldMaterialIcon(name = "DeleteOutline") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(6f, 19f)
                 curveToRelative(0f, 1.1f, 0.9f, 2f, 2f, 2f)
                 horizontalLineToRelative(8f)
@@ -640,8 +821,8 @@ object AppIcons {
     }
 
     val Folder: ImageVector by lazy {
-        materialIcon(name = "Folder") {
-            materialPath {
+        boldMaterialIcon(name = "Folder") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(10f, 4f)
                 horizontalLineTo(4f)
                 curveToRelative(-1.1f, 0f, -1.99f, 0.9f, -1.99f, 2f)
@@ -659,8 +840,8 @@ object AppIcons {
     }
 
     val FolderOpen: ImageVector by lazy {
-        materialIcon(name = "FolderOpen") {
-            materialPath {
+        boldMaterialIcon(name = "FolderOpen") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(20f, 6f)
                 horizontalLineToRelative(-8f)
                 lineToRelative(-2f, -2f)
@@ -684,8 +865,8 @@ object AppIcons {
     }
 
     val CreateNewFolder: ImageVector by lazy {
-        materialIcon(name = "CreateNewFolder") {
-            materialPath {
+        boldMaterialIcon(name = "CreateNewFolder") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(20f, 6f)
                 horizontalLineToRelative(-8f)
                 lineToRelative(-2f, -2f)
@@ -717,8 +898,8 @@ object AppIcons {
     }
 
     val FileOpen: ImageVector by lazy {
-        materialIcon(name = "FileOpen") {
-            materialPath {
+        boldMaterialIcon(name = "FileOpen") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(15f, 22f)
                 horizontalLineTo(6f)
                 curveToRelative(-1.1f, 0f, -2f, -0.9f, -2f, -2f)
@@ -752,8 +933,8 @@ object AppIcons {
     }
 
     val Storage: ImageVector by lazy {
-        materialIcon(name = "Storage") {
-            materialPath {
+        boldMaterialIcon(name = "Storage") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(2f, 20f)
                 horizontalLineToRelative(20f)
                 verticalLineToRelative(-4f)
@@ -795,8 +976,8 @@ object AppIcons {
     }
 
     val CalendarToday: ImageVector by lazy {
-        materialIcon(name = "CalendarToday") {
-            materialPath {
+        boldMaterialIcon(name = "CalendarToday") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(20f, 3f)
                 horizontalLineToRelative(-1f)
                 verticalLineTo(1f)
@@ -826,8 +1007,8 @@ object AppIcons {
     }
 
     val VisibilityOff: ImageVector by lazy {
-        materialIcon(name = "VisibilityOff") {
-            materialPath {
+        boldMaterialIcon(name = "VisibilityOff") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(12f, 7f)
                 curveToRelative(2.76f, 0f, 5f, 2.24f, 5f, 5f)
                 curveToRelative(0f, 0.65f, -0.13f, 1.26f, -0.36f, 1.83f)
@@ -865,8 +1046,8 @@ object AppIcons {
     }
 
     val InsertDriveFile: ImageVector by lazy {
-        materialIcon(name = "InsertDriveFile", autoMirror = true) {
-            materialPath {
+        boldMaterialIcon(name = "InsertDriveFile", autoMirror = true) {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(14f, 2f)
                 horizontalLineTo(6f)
                 curveToRelative(-1.1f, 0f, -1.99f, 0.9f, -1.99f, 2f)
@@ -890,8 +1071,8 @@ object AppIcons {
     }
 
     val ErrorOutline: ImageVector by lazy {
-        materialIcon(name = "ErrorOutline") {
-            materialPath {
+        boldMaterialIcon(name = "ErrorOutline") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(11f, 15f)
                 horizontalLineToRelative(2f)
                 verticalLineToRelative(2f)
@@ -919,8 +1100,8 @@ object AppIcons {
     }
 
     val ExpandLess: ImageVector by lazy {
-        materialIcon(name = "ExpandLess") {
-            materialPath {
+        boldMaterialIcon(name = "ExpandLess") {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(12f, 8f)
                 lineToRelative(-6f, 6f)
                 lineToRelative(1.41f, 1.41f)
@@ -933,8 +1114,8 @@ object AppIcons {
     }
 
     val ExpandMore: ImageVector by lazy {
-        materialIcon(name = "ExpandMore") {
-            materialPath {
+        boldMaterialIcon(name = "ExpandMore") {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(16.59f, 8.59f)
                 lineTo(12f, 13.17f)
                 lineTo(7.41f, 8.59f)
@@ -947,8 +1128,8 @@ object AppIcons {
     }
 
     val CheckCircle: ImageVector by lazy {
-        materialIcon(name = "CheckCircle") {
-            materialPath {
+        boldMaterialIcon(name = "CheckCircle") {
+            boldMaterialPath(strokeWidth = 0.50f) {
                 moveTo(12f, 2f)
                 curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
                 reflectiveCurveToRelative(4.48f, 10f, 10f, 10f)
@@ -968,8 +1149,8 @@ object AppIcons {
     }
 
     val RadioButtonUnchecked: ImageVector by lazy {
-        materialIcon(name = "RadioButtonUnchecked") {
-            materialPath {
+        boldMaterialIcon(name = "RadioButtonUnchecked") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(12f, 2f)
                 curveTo(6.48f, 2f, 2f, 6.48f, 2f, 12f)
                 reflectiveCurveToRelative(4.48f, 10f, 10f, 10f)
@@ -987,8 +1168,8 @@ object AppIcons {
     }
 
     val ScreenRotation: ImageVector by lazy {
-        materialIcon(name = "ScreenRotation") {
-            materialPath {
+        boldMaterialIcon(name = "ScreenRotation") {
+            boldMaterialPath(strokeWidth = 0.40f) {
                 moveTo(16.48f, 2.52f)
                 curveToRelative(3.27f, 1.55f, 5.61f, 4.72f, 5.97f, 8.48f)
                 horizontalLineToRelative(1.5f)
@@ -1026,8 +1207,8 @@ object AppIcons {
     }
 
     val Palette: ImageVector by lazy {
-        materialIcon(name = "Palette") {
-            materialPath {
+        boldMaterialIcon(name = "Palette") {
+            boldMaterialPath(strokeWidth = 0.30f) {
                 moveTo(12f, 3f)
                 curveToRelative(-4.97f, 0f, -9f, 4.03f, -9f, 9f)
                 reflectiveCurveToRelative(4.03f, 9f, 9f, 9f)
@@ -1068,8 +1249,8 @@ object AppIcons {
     }
 
     val CropPortrait: ImageVector by lazy {
-        materialIcon(name = "CropPortrait") {
-            materialPath {
+        boldMaterialIcon(name = "CropPortrait") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(17f, 3f)
                 horizontalLineTo(7f)
                 curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
@@ -1091,8 +1272,8 @@ object AppIcons {
     }
 
     val CropLandscape: ImageVector by lazy {
-        materialIcon(name = "CropLandscape") {
-            materialPath {
+        boldMaterialIcon(name = "CropLandscape") {
+            boldMaterialPath(strokeWidth = 0.55f) {
                 moveTo(19f, 5f)
                 horizontalLineTo(5f)
                 curveToRelative(-1.1f, 0f, -2f, 0.9f, -2f, 2f)
@@ -1114,8 +1295,8 @@ object AppIcons {
     }
 
     val Check: ImageVector by lazy {
-        materialIcon(name = "Check") {
-            materialPath {
+        boldMaterialIcon(name = "Check") {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(9f, 16.17f)
                 lineTo(4.83f, 12f)
                 lineToRelative(-1.42f, 1.41f)
@@ -1128,8 +1309,8 @@ object AppIcons {
     }
 
     val ZoomIn: ImageVector by lazy {
-        materialIcon(name = "ZoomIn") {
-            materialPath {
+        boldMaterialIcon(name = "ZoomIn") {
+            boldMaterialPath(strokeWidth = 0.35f) {
                 moveTo(15.5f, 14f)
                 horizontalLineToRelative(-0.79f)
                 lineToRelative(-0.28f, -0.27f)
@@ -1169,8 +1350,8 @@ object AppIcons {
     }
 
     val ZoomOut: ImageVector by lazy {
-        materialIcon(name = "ZoomOut") {
-            materialPath {
+        boldMaterialIcon(name = "ZoomOut") {
+            boldMaterialPath(strokeWidth = 0.35f) {
                 moveTo(15.5f, 14f)
                 horizontalLineToRelative(-0.79f)
                 lineToRelative(-0.28f, -0.27f)
@@ -1201,8 +1382,8 @@ object AppIcons {
     }
 
     val ChevronRight: ImageVector by lazy {
-        materialIcon(name = "ChevronRight", autoMirror = true) {
-            materialPath {
+        boldMaterialIcon(name = "ChevronRight", autoMirror = true) {
+            boldMaterialPath(strokeWidth = 0.65f) {
                 moveTo(10f, 6f)
                 lineTo(8.59f, 7.41f)
                 lineTo(13.17f, 12f)
@@ -1215,31 +1396,31 @@ object AppIcons {
     }
 
     @Composable fun search(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Search else ClassicIcons.Search
+        if (LocalMaterialIconsEnabled.current) SearchBold else ClassicIcons.Search
 
     @Composable fun settings(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Settings else ClassicIcons.Settings
+        if (LocalMaterialIconsEnabled.current) SettingsBold else ClassicIcons.Settings
 
     @Composable fun close(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Close else ClassicIcons.Close
+        if (LocalMaterialIconsEnabled.current) CloseBold else ClassicIcons.Close
 
     @Composable fun arrowBack(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.AutoMirrored.Rounded.ArrowBack else ClassicIcons.ArrowBack
+        if (LocalMaterialIconsEnabled.current) ArrowBackBold else ClassicIcons.ArrowBack
 
     @Composable fun moreVert(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.MoreVert else ClassicIcons.MoreVert
+        if (LocalMaterialIconsEnabled.current) MoreVertBold else ClassicIcons.MoreVert
 
     @Composable fun refresh(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Refresh else ClassicIcons.Refresh
+        if (LocalMaterialIconsEnabled.current) RefreshBold else ClassicIcons.Refresh
 
     @Composable fun share(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Share else ClassicIcons.Share
+        if (LocalMaterialIconsEnabled.current) ShareBold else ClassicIcons.Share
 
     @Composable fun info(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Info else ClassicIcons.Info
+        if (LocalMaterialIconsEnabled.current) InfoBold else ClassicIcons.Info
 
     @Composable fun check(): ImageVector =
-        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Check else ClassicIcons.Check
+        if (LocalMaterialIconsEnabled.current) CheckBold else ClassicIcons.Check
 
     @Composable fun sort(): ImageVector =
         if (LocalMaterialIconsEnabled.current) Sort else ClassicIcons.Sort
