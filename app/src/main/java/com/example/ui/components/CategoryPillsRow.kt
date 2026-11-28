@@ -87,17 +87,17 @@ fun CategoryPillsRow(
         modifier = modifier
     ) {
         val horizontalArrangement = if (visibleTypes.size <= 3) {
-            Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
+            Arrangement.spacedBy(4.2.dp, Alignment.CenterHorizontally)
         } else {
-            Arrangement.spacedBy(6.dp)
+            Arrangement.spacedBy(4.2.dp)
         }
 
         LazyRow(
             state = rowState,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(12.dp),
-            contentPadding = PaddingValues(horizontal = 10.dp),
+                .height(16.dp),
+            contentPadding = PaddingValues(horizontal = 7.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -158,10 +158,10 @@ private fun CategoryPill(
         label = "pillBorder"
     )
 
-    // 12.dp pill bar row holding 10.8.dp (10% smaller) document pill
+    // 16.dp pill bar row holding 15.dp compact-padding document pill with 60% larger icon/text
     Box(
         modifier = Modifier
-            .height(12.dp)
+            .height(16.dp)
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
@@ -180,33 +180,33 @@ private fun CategoryPill(
             color = containerColor,
             border = BorderStroke(0.5.dp, borderColor),
             shadowElevation = elevation,
-            modifier = Modifier.height(10.8.dp)
+            modifier = Modifier.height(15.dp)
         ) {
             Row(
                 modifier = Modifier
-                    .height(10.8.dp)
-                    .padding(horizontal = 5.dp),
+                    .height(15.dp)
+                    .padding(horizontal = 3.5.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(7.dp)
+                    modifier = Modifier.size(11.2.dp)
                 )
-                Spacer(modifier = Modifier.width(2.dp))
+                Spacer(modifier = Modifier.width(2.5.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
                     style = MaterialTheme.typography.labelSmall.copy(
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                        fontSize = 7.5.sp,
-                        lineHeight = 8.sp,
+                        fontSize = 12.sp,
+                        lineHeight = 13.sp,
                         platformStyle = PlatformTextStyle(includeFontPadding = false)
                     )
                 )
                 if (count > 0) {
-                    Spacer(modifier = Modifier.width(2.dp))
+                    Spacer(modifier = Modifier.width(2.5.dp))
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
@@ -223,12 +223,12 @@ private fun CategoryPill(
                                 text = targetCount.toString(),
                                 color = contentColor,
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 6.5.sp,
-                                    lineHeight = 7.sp,
+                                    fontSize = 10.4.sp,
+                                    lineHeight = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     platformStyle = PlatformTextStyle(includeFontPadding = false)
                                 ),
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.dp)
+                                modifier = Modifier.padding(horizontal = 2.dp, vertical = 0.dp)
                             )
                         }
                     }

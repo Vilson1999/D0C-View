@@ -67,22 +67,22 @@ fun TopBarSearchField(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
         modifier = modifier
             .fillMaxWidth()
-            .height(25.2.dp)
+            .height(29.2.dp)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(25.2.dp)
-                .padding(start = 8.dp, end = 0.dp),
+                .height(29.2.dp)
+                .padding(start = 6.4.dp, end = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
                 imageVector = Icons.Rounded.Search,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(19.2.dp)
             )
-            Spacer(modifier = Modifier.width(6.dp))
+            Spacer(modifier = Modifier.width(5.dp))
             Box(
                 modifier = Modifier.weight(1f),
                 contentAlignment = Alignment.CenterStart
@@ -91,8 +91,8 @@ fun TopBarSearchField(
                     Text(
                         text = placeholder,
                         style = MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 12.sp,
-                            lineHeight = 14.sp,
+                            fontSize = 13.sp,
+                            lineHeight = 15.sp,
                             platformStyle = PlatformTextStyle(includeFontPadding = false)
                         ),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -105,8 +105,8 @@ fun TopBarSearchField(
                     onValueChange = onQueryChange,
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodySmall.copy(
-                        fontSize = 12.sp,
-                        lineHeight = 14.sp,
+                        fontSize = 13.sp,
+                        lineHeight = 15.sp,
                         platformStyle = PlatformTextStyle(includeFontPadding = false),
                         color = MaterialTheme.colorScheme.onSurface
                     ),
@@ -124,7 +124,7 @@ fun TopBarSearchField(
                         .testTag(inputTestTag)
                 )
             }
-            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 25.2.dp) {
+            CompositionLocalProvider(LocalMinimumInteractiveComponentSize provides 29.2.dp) {
                 IconButton(
                     onClick = {
                         keyboardController?.hide()
@@ -132,14 +132,14 @@ fun TopBarSearchField(
                         onClose()
                     },
                     modifier = Modifier
-                        .size(25.2.dp)
+                        .size(29.2.dp)
                         .testTag(closeTestTag)
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = stringResource(R.string.action_close_search),
                         tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(22.68.dp)
+                        modifier = Modifier.size(27.2.dp)
                     )
                 }
             }
