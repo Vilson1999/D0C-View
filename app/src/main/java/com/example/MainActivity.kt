@@ -16,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -35,7 +36,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +55,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.model.ScreenOrientationPolicy
 import com.example.model.ThemeMode
+import com.example.ui.screens.AppOpenLoadingScreen
 import com.example.ui.screens.DocumentViewerScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.SettingsScreen
@@ -67,6 +72,11 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { splashScreenView ->
+                splashScreenView.remove()
+            }
+        }
         enableEdgeToEdge()
         handleIncomingIntent(intent)
 
@@ -98,6 +108,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val navController = rememberNavController()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showAppOpenLoading by rememberSaveable { mutableStateOf(true) }
 
     val systemDark = isSystemInDarkTheme()
     val isDarkTheme = when (uiState.settings.themeMode) {
@@ -306,7 +317,8 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                         onDeleteDocuments = { docs -> viewModel.deleteDocuments(docs) },
                         onRequestStorageAccess = requestStorageAccess,
                         onPullRefresh = viewModel::pullToRefreshDocuments,
-                        onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) }
+                        onShowAllDocTypes = { viewModel.setAllDocTypesVisible(true) },
+                        suppressPermissionDialog = showAppOpenLoading
                     )
                 }
 
@@ -400,8 +412,21 @@ private fun DocVaultApp(viewModel: MainViewModel) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
-                    .padding(bottom = if (uiState.isSelectionMode) 76.dp else 12.dp)
+                    .padding(bottom = if (uiState.isSelectionMode) 64.dp else 12.dp)
             )
+
+            AnimatedVisibility(
+                visible = showAppOpenLoading,
+                enter = fadeIn(tween(0)),
+                exit = fadeOut(tween(240, easing = FastOutSlowInEasing)) + scaleOut(
+                    targetScale = 1.03f,
+                    animationSpec = tween(240, easing = FastOutSlowInEasing)
+                )
+            ) {
+                AppOpenLoadingScreen(
+                    onFinished = { showAppOpenLoading = false }
+                )
+            }
         }
     }
 }

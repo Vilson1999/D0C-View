@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -140,7 +141,8 @@ fun HomeScreen(
     onDeleteDocuments: (List<DocumentItem>) -> Unit,
     onRequestStorageAccess: () -> Unit,
     onPullRefresh: () -> Unit,
-    onShowAllDocTypes: () -> Unit
+    onShowAllDocTypes: () -> Unit,
+    suppressPermissionDialog: Boolean = false
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -309,10 +311,9 @@ fun HomeScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            val materialUi = LocalMaterialUiEnabled.current
             Surface(
-                color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.background,
-                tonalElevation = if (materialUi) 1.dp else 0.dp,
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Column(
@@ -494,7 +495,7 @@ fun HomeScreen(
                             contentPadding = PaddingValues(
                                 start = 16.dp,
                                 end = 16.dp,
-                                top = 8.dp,
+                                top = 2.dp,
                                 bottom = if (uiState.isSelectionMode) 20.dp else 28.dp
                             ),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -587,7 +588,7 @@ fun HomeScreen(
         )
     }
 
-    if (!uiState.hasFullStorageAccess && !permissionDialogDismissed) {
+    if (!suppressPermissionDialog && !uiState.hasFullStorageAccess && !permissionDialogDismissed) {
         StoragePermissionDialog(
             onAllow = onRequestStorageAccess,
             onDismiss = { permissionDialogDismissed = true }
@@ -744,7 +745,7 @@ private fun SelectionTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 3.dp),
+                .padding(horizontal = 8.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -795,8 +796,8 @@ private fun SelectionBottomToolbar(
                 .fillMaxWidth()
                 .displayCutoutPadding()
                 .navigationBarsPadding()
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                .padding(horizontal = 8.dp, vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomToolbarAction(
@@ -855,15 +856,16 @@ private fun BottomToolbarAction(
                 indication = androidx.compose.material3.ripple(),
                 onClick = onClick
             )
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+            .padding(horizontal = 12.dp, vertical = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp)
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         Icon(
             imageVector = icon,
             contentDescription = label,
             tint = tint,
-            modifier = Modifier.size(22.dp)
+            modifier = Modifier.size(20.dp)
         )
         Text(
             text = label,

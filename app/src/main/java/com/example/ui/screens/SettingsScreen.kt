@@ -151,10 +151,9 @@ fun SettingsScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {
-            val materialUi = LocalMaterialUiEnabled.current
             Surface(
-                color = if (materialUi) MaterialTheme.colorScheme.surfaceContainerLow else MaterialTheme.colorScheme.surface,
-                tonalElevation = if (materialUi) 2.dp else 1.dp,
+                color = MaterialTheme.colorScheme.background,
+                tonalElevation = 0.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Row(
@@ -192,7 +191,7 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .displayCutoutPadding()
                 .navigationBarsPadding(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(start = 16.dp, top = 8.dp, end = 16.dp, bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {

@@ -1,0 +1,180 @@
+name: Build Beta APKs (ARMv7, ARMv8 & Universal)
+
+on:
+  push:
+    branches:
+      - beta
+    tags:
+      - "v*-beta*"
+      - "beta-*"
+  pull_request:
+    branches:
+      - beta
+  workflow_dispatch:
+    inputs:
+      beta_tag:
+        description: "Optional beta tag (e.g. v1.2.0-beta.1). Leave empty to auto-tag."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build-beta:
+    name: Build Beta ARMv7, ARMv8 & Universal APKs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Restore Persistent Fallback Keystore
+        uses: actions/cache@v4
+        with:
+          path: ~/.docview-keystore
+          key: docview-fallback-keystore-v1
+
+      - name: Prepare Release Keystore & Version Code
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          SECRET_STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
+          SECRET_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          KEYSTORE_FILE="${{ github.workspace }}/my-upload-key.jks"
+          FALLBACK_CACHE_DIR="$HOME/.docview-keystore"
+          FALLBACK_CACHED_JKS="$FALLBACK_CACHE_DIR/my-upload-key.jks"
+          DEBUG_KEYSTORE_FILE="${{ github.workspace }}/debug.keystore"
+          DEBUG_B64_FILE="${{ github.workspace }}/debug.keystore.base64"
+
+          if [ ! -f "$DEBUG_KEYSTORE_FILE" ]; then
+            if [ -f "$DEBUG_B64_FILE" ]; then
+              base64 -d "$DEBUG_B64_FILE" > "$DEBUG_KEYSTORE_FILE"
+            else
+              keytool -genkeypair -v \
+                -keystore "$DEBUG_KEYSTORE_FILE" \
+                -storetype PKCS12 \
+                -alias androiddebugkey \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass android \
+                -keypass android \
+                -dname "CN=Android Debug, O=Android, C=US"
+            fi
+          fi
+
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$SECRET_STORE_PASSWORD" ] && [ -n "$SECRET_KEY_PASSWORD" ]; then
+            echo "$KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_FILE"
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$SECRET_STORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$SECRET_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "Using repository release keystore secrets."
+          elif [ -f "$DEBUG_B64_FILE" ] && base64 -d "$DEBUG_B64_FILE" > "$KEYSTORE_FILE" && \
+            keytool -changealias -keystore "$KEYSTORE_FILE" -storepass android -alias androiddebugkey -destalias upload; then
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=android" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=android" >> "$GITHUB_ENV"
+            echo "Prepared release keystore from debug.keystore.base64."
+          else
+            FALLBACK_PASS="docview-release-key"
+            mkdir -p "$FALLBACK_CACHE_DIR"
+            if [ ! -f "$FALLBACK_CACHED_JKS" ]; then
+              keytool -genkeypair -v \
+                -keystore "$FALLBACK_CACHED_JKS" \
+                -storetype PKCS12 \
+                -alias upload \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -storepass "$FALLBACK_PASS" \
+                -keypass "$FALLBACK_PASS" \
+                -dname "CN=Vilson Sonkar, O=D0C View, C=IN"
+              echo "Generated persistent fallback PKCS12 release keystore."
+            else
+              echo "Reusing cached fallback PKCS12 release keystore for consistent updates."
+            fi
+            cp "$FALLBACK_CACHED_JKS" "$KEYSTORE_FILE"
+            echo "KEYSTORE_PATH=$KEYSTORE_FILE" >> "$GITHUB_ENV"
+            echo "STORE_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$FALLBACK_PASS" >> "$GITHUB_ENV"
+          fi
+
+          CI_VERSION_CODE=$(( $(date -u +%s) / 60 ))
+          echo "CI_VERSION_CODE=$CI_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "Using monotonic versionCode: $CI_VERSION_CODE"
+
+      - name: Run Unit Tests
+        run: gradle :app:testDebugUnitTest --tests com.example.ExampleUnitTest --no-daemon --no-configuration-cache
+
+      - name: Upload Test Report on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta-unit-test-report
+          path: app/build/reports/tests/testDebugUnitTest/
+
+      - name: Build Compressed Beta APKs (ARMv7, ARMv8 & Universal)
+        run: gradle :app:assembleRelease --no-daemon --no-configuration-cache
+
+      - name: Collect Separate ARMv7, ARMv8 & Universal Beta APKs
+        run: |
+          mkdir -p beta-apks
+          cp app/build/outputs/apk/release/app-armeabi-v7a-release.apk beta-apks/D0C-View-armeabi-v7a-beta.apk
+          cp app/build/outputs/apk/release/app-arm64-v8a-release.apk beta-apks/D0C-View-arm64-v8a-beta.apk
+          cp app/build/outputs/apk/release/app-universal-release.apk beta-apks/D0C-View-universal-beta.apk
+          ls -lh beta-apks/
+
+      - name: Upload Beta APKs as Workflow Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: D0C-View-Beta-APKs
+          path: beta-apks/*.apk
+          if-no-files-found: error
+
+      - name: Prepare Beta Release Metadata
+        id: beta_meta
+        if: github.event_name != 'pull_request'
+        env:
+          INPUT_TAG: ${{ inputs.beta_tag }}
+          EVENT_REF: ${{ github.ref }}
+          EVENT_REF_NAME: ${{ github.ref_name }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          if [[ "$EVENT_REF" == refs/tags/* ]]; then
+            TAG="$EVENT_REF_NAME"
+          elif [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+          else
+            TAG="v1.2.${RUN_NUMBER}-beta"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=D0C View Beta $TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Beta Pre-Release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ steps.beta_meta.outputs.tag }}
+          name: ${{ steps.beta_meta.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: true
+          make_latest: false
+          generate_release_notes: true
+          files: |
+            beta-apks/D0C-View-armeabi-v7a-beta.apk
+            beta-apks/D0C-View-arm64-v8a-beta.apk
+            beta-apks/D0C-View-universal-beta.apk

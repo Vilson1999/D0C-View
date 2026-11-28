@@ -26,7 +26,7 @@ android {
 
   splits {
     abi {
-      isEnable = true
+      isEnable = gradle.startParameter.taskNames.any { it.contains("release", ignoreCase = true) }
       reset()
       include("armeabi-v7a", "arm64-v8a")
       isUniversalApk = true
