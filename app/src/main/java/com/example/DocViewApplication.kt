@@ -2,9 +2,13 @@ package com.example
 
 import android.app.Activity
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
 import android.os.Bundle
 import android.os.Handler
+import android.os.IBinder
 import android.os.Looper
 import android.os.Process
 import com.example.service.BackgroundLifecyclePolicy
@@ -14,9 +18,11 @@ import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Tracks foreground/background transitions and active document work.
- * - Starts [LiteBackgroundService] only when work is actively needed.
- * - Closes the app cleanly if it remains in the background for 1 minute (60 seconds).
+ * Tracks foreground/background transitions and active document work:
+ * - When switching to another app without closing: trims heavy memory caches, pauses speculative
+ *   background prewarming, and runs [LiteBackgroundService] very low until work completes or timeout.
+ * - When closed from the mobile Recent menu: stops [LiteBackgroundService], cancels all pending
+ *   work, finishes activities, and terminates the process cleanly so no background service remains.
  */
 class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks {
 
@@ -29,13 +35,23 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
     @Volatile
     private var backgroundEnteredAtMs = 0L
 
+    @Volatile
+    private var isTaskWatcherBound = false
+
+    private val taskWatcherConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) = Unit
+        override fun onServiceDisconnected(name: ComponentName?) {
+            isTaskWatcherBound = false
+        }
+    }
+
     private val backgroundCloseRunnable = Runnable {
         if (startedActivityCount > 0) return@Runnable
         val elapsed = System.currentTimeMillis() - backgroundEnteredAtMs
         if (!BackgroundLifecyclePolicy.shouldAutoCloseBackgroundApp(startedActivityCount, elapsed)) {
             return@Runnable
         }
-        performBackgroundAutoClose()
+        performBackgroundIdleStop()
     }
 
     private val processExitRunnable = Runnable {
@@ -53,32 +69,56 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         registerActivityLifecycleCallbacks(this)
     }
 
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (level >= TRIM_MEMORY_UI_HIDDEN || startedActivityCount <= 0) {
+            lowBackgroundListeners.forEach { listener ->
+                runCatching { listener() }
+            }
+        }
+    }
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         synchronized(liveActivities) {
             liveActivities.removeAll { it.get() == null || it.get() === activity }
             liveActivities.add(WeakReference(activity))
         }
+        bindTaskWatcher()
     }
 
     override fun onActivityStarted(activity: Activity) {
         val wasInBackground = startedActivityCount == 0
         startedActivityCount++
+        bindTaskWatcher()
         if (wasInBackground) {
             cancelScheduledClose()
             backgroundEnteredAtMs = 0L
-            // App is in foreground now; background service is not needed in foreground.
+            // App is in foreground now; stop background service immediately.
             LiteBackgroundService.stop(this)
         }
     }
 
     override fun onActivityResumed(activity: Activity) = Unit
 
-    override fun onActivityPaused(activity: Activity) = Unit
+    override fun onActivityPaused(activity: Activity) {
+        // Start LiteBackgroundService while still foreground-eligible if active work must finish
+        // when switching directly to another app.
+        if (!activity.isChangingConfigurations && startedActivityCount <= 1 && activeWorkCount.get() > 0) {
+            LiteBackgroundService.startIfNeeded(
+                context = this,
+                activeWorkCount = activeWorkCount.get(),
+                canStart = true
+            )
+        }
+    }
 
     override fun onActivityStopped(activity: Activity) {
         startedActivityCount = (startedActivityCount - 1).coerceAtLeast(0)
-        if (startedActivityCount == 0 && !activity.isChangingConfigurations) {
+        if (BackgroundLifecyclePolicy.shouldEnterLowBackgroundMode(startedActivityCount, activity.isChangingConfigurations)) {
             backgroundEnteredAtMs = System.currentTimeMillis()
+            lowBackgroundListeners.forEach { listener ->
+                runCatching { listener() }
+            }
             if (activeWorkCount.get() > 0) {
                 LiteBackgroundService.startIfNeeded(
                     context = this,
@@ -98,8 +138,10 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
             liveActivities.size
         }
         if (!activity.isChangingConfigurations && remainingCount <= 0) {
-            // Foreground UI closed completely: shut down background service & pending work too.
+            // Last activity closed cleanly: stop background service & pending work completely.
             cancelScheduledClose()
+            activeWorkCount.set(0)
+            unbindTaskWatcher()
             LiteBackgroundService.stop(this)
             closeListeners.forEach { listener ->
                 runCatching { listener() }
@@ -107,12 +149,40 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         }
     }
 
+    private fun bindTaskWatcher() {
+        if (isTaskWatcherBound) return
+        val intent = Intent(this, LiteBackgroundService::class.java)
+        isTaskWatcherBound = runCatching {
+            bindService(intent, taskWatcherConnection, Context.BIND_AUTO_CREATE)
+        }.getOrDefault(false)
+    }
+
+    private fun unbindTaskWatcher() {
+        if (!isTaskWatcherBound) return
+        isTaskWatcherBound = false
+        runCatching { unbindService(taskWatcherConnection) }
+    }
+
     private fun performTaskRemovedCleanup() {
         cancelScheduledClose()
         activeWorkCount.set(0)
+        unbindTaskWatcher()
+        LiteBackgroundService.stop(this)
+        lowBackgroundListeners.forEach { listener ->
+            runCatching { listener() }
+        }
         closeListeners.forEach { listener ->
             runCatching { listener() }
         }
+        val snapshot = synchronized(liveActivities) {
+            liveActivities.mapNotNull { it.get() }
+        }
+        snapshot.forEach { activity ->
+            if (!activity.isFinishing && !activity.isDestroyed) {
+                runCatching { activity.finishAndRemoveTask() }
+            }
+        }
+        mainHandler.postDelayed(processExitRunnable, 120L)
     }
 
     private fun scheduleBackgroundClose() {
@@ -125,20 +195,18 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         mainHandler.removeCallbacks(processExitRunnable)
     }
 
-    private fun performBackgroundAutoClose() {
+    private fun performBackgroundIdleStop() {
+        // When user switched apps without closing from Recents, stop background service & active jobs
+        // after timeout so zero background services remain running while keeping the app task intact.
+        activeWorkCount.set(0)
+        unbindTaskWatcher()
         LiteBackgroundService.stop(this)
+        lowBackgroundListeners.forEach { listener ->
+            runCatching { listener() }
+        }
         closeListeners.forEach { listener ->
             runCatching { listener() }
         }
-        val snapshot = synchronized(liveActivities) {
-            liveActivities.mapNotNull { it.get() }
-        }
-        snapshot.forEach { activity ->
-            if (!activity.isFinishing && !activity.isDestroyed) {
-                runCatching { activity.finishAndRemoveTask() }
-            }
-        }
-        mainHandler.postDelayed(processExitRunnable, 250L)
     }
 
     companion object {
@@ -146,11 +214,10 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         private var instance: DocViewApplication? = null
         private val activeWorkCount = AtomicInteger(0)
         private val closeListeners = CopyOnWriteArraySet<() -> Unit>()
+        private val lowBackgroundListeners = CopyOnWriteArraySet<() -> Unit>()
 
         fun beginBackgroundWork(context: Context) {
             activeWorkCount.incrementAndGet()
-            // Do not spin up a background Service while the app is actively in the foreground;
-            // it only starts on-demand if the app transitions to background while work is running.
         }
 
         fun endBackgroundWork(context: Context) {
@@ -167,5 +234,14 @@ class DocViewApplication : Application(), Application.ActivityLifecycleCallbacks
         fun unregisterBackgroundCloseListener(listener: () -> Unit) {
             closeListeners.remove(listener)
         }
+
+        fun registerLowBackgroundListener(listener: () -> Unit) {
+            lowBackgroundListeners.add(listener)
+        }
+
+        fun unregisterLowBackgroundListener(listener: () -> Unit) {
+            lowBackgroundListeners.remove(listener)
+        }
     }
 }
+

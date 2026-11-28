@@ -576,7 +576,7 @@ fun DocumentViewerScreen(
                             .windowInsetsPadding(WindowInsets.statusBars)
                             .displayCutoutPadding()
                             .height(43.dp)
-                            .padding(start = 14.dp, end = 4.dp),
+                            .padding(start = 8.dp, end = 2.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
@@ -591,7 +591,7 @@ fun DocumentViewerScreen(
                                 .testTag("viewer_doc_title")
                         )
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
 
                         val rotateRotation by animateFloatAsState(
                             targetValue = if (isLandscape) 90f else 0f,

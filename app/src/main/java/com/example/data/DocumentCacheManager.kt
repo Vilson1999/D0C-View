@@ -276,6 +276,12 @@ class DocumentCacheManager(private val context: Context) {
         )
     }
 
+    fun trimMemoryForBackground() {
+        memoryBitmapCache.evictAll()
+        memoryParsedCache.trimToSize(2)
+        memorySummaryCache.trimToSize(16)
+    }
+
     fun clearAllCache(): Long {
         memoryParsedCache.evictAll()
         memorySummaryCache.evictAll()

@@ -28,7 +28,7 @@ enum class DocType(
     PDF(
         label = "PDF",
         extensions = setOf("pdf"),
-        mimeTypes = setOf("application/pdf"),
+        mimeTypes = setOf("application/pdf", "application/x-pdf"),
         pillColor = PdfPillColor,
         tintLight = PdfPillTintLight,
         tintDark = PdfPillTintDark
@@ -39,7 +39,8 @@ enum class DocType(
         mimeTypes = setOf(
             "application/msword",
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/rtf"
+            "application/rtf",
+            "text/rtf"
         ),
         pillColor = DocPillColor,
         tintLight = DocPillTintLight,
@@ -72,7 +73,13 @@ enum class DocType(
     TEXT(
         label = "TEXT",
         extensions = setOf("txt", "log", "md", "csv", "json", "ini", "cfg"),
-        mimeTypes = setOf("text/plain", "text/csv", "text/markdown", "application/json"),
+        mimeTypes = setOf(
+            "text/plain",
+            "text/csv",
+            "text/comma-separated-values",
+            "text/markdown",
+            "application/json"
+        ),
         pillColor = TextPillColor,
         tintLight = TextPillTintLight,
         tintDark = TextPillTintDark
@@ -92,7 +99,7 @@ enum class DocType(
 
         fun fromMimeType(mime: String?): DocType? {
             if (mime.isNullOrBlank()) return null
-            val lower = mime.lowercase()
+            val lower = mime.substringBefore(';').trim().lowercase()
             return entries.firstOrNull { lower in it.mimeTypes }
         }
     }

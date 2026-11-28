@@ -420,18 +420,21 @@ class DocumentScanner(private val context: Context) {
         }
     }
 
-    fun resolveContentUriToDocument(uri: Uri): DocumentItem? {
+    fun resolveContentUriToDocument(uri: Uri, mimeTypeHint: String? = null): DocumentItem? {
         if (uri.scheme == "file") {
             val file = uri.path?.let { File(it) } ?: return null
             if (!file.exists()) return null
-            val docType = DocType.fromFileName(file.name) ?: return null
+            val docType = DocType.fromFileName(file.name)
+                ?: DocType.fromMimeType(mimeTypeHint)
+                ?: return null
+            val ext = file.extension.lowercase().ifBlank { docType.extensions.first() }
             return DocumentItem(
                 id = file.absolutePath,
                 name = file.name,
                 path = file.absolutePath,
                 uriString = uri.toString(),
                 type = docType,
-                extension = file.extension.lowercase(),
+                extension = ext,
                 sizeBytes = file.length(),
                 lastModified = file.lastModified(),
                 parentFolderName = file.parentFile?.name ?: "Storage",
@@ -442,23 +445,32 @@ class DocumentScanner(private val context: Context) {
 
         val readable = runCatching {
             context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } ?: false
-        }.getOrDefault(false)
+        }.getOrElse {
+            runCatching {
+                context.contentResolver.openInputStream(uri)?.use { true } ?: false
+            }.getOrDefault(false)
+        }
         if (!readable) return null
 
-        val mime = context.contentResolver.getType(uri)
-        var name = "Document"
+        val resolverMime = runCatching { context.contentResolver.getType(uri) }.getOrNull()
+        var name = uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "Document"
         var size = 0L
         runCatching {
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                 if (cursor.moveToFirst()) {
                     val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
                     val sizeIdx = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (nameIdx >= 0) name = cursor.getString(nameIdx) ?: name
+                    if (nameIdx >= 0) {
+                        cursor.getString(nameIdx)?.takeIf { it.isNotBlank() }?.let { name = it }
+                    }
                     if (sizeIdx >= 0) size = cursor.getLong(sizeIdx)
                 }
             }
         }
-        val docType = DocType.fromFileName(name) ?: DocType.fromMimeType(mime) ?: DocType.TEXT
+        val docType = DocType.fromFileName(name)
+            ?: DocType.fromMimeType(resolverMime)
+            ?: DocType.fromMimeType(mimeTypeHint)
+            ?: DocType.TEXT
         val ext = name.substringAfterLast('.', docType.extensions.first()).lowercase()
 
         return DocumentItem(

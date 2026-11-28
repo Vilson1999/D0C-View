@@ -86,15 +86,15 @@ fun CategoryPillsRow(
         modifier = modifier
     ) {
         val horizontalArrangement = if (visibleTypes.size <= 3) {
-            Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+            Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally)
         } else {
-            Arrangement.spacedBy(8.dp)
+            Arrangement.spacedBy(6.dp)
         }
 
         LazyRow(
             state = rowState,
             modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(horizontal = 10.dp),
             horizontalArrangement = horizontalArrangement,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -179,16 +179,16 @@ private fun CategoryPill(
             shadowElevation = elevation
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
                     imageVector = docTypeIcon(type),
                     contentDescription = type.label,
                     tint = contentColor,
-                    modifier = Modifier.size(15.dp)
+                    modifier = Modifier.size(14.dp)
                 )
-                Spacer(modifier = Modifier.width(5.dp))
+                Spacer(modifier = Modifier.width(4.dp))
                 Text(
                     text = type.label,
                     color = contentColor,
@@ -198,7 +198,7 @@ private fun CategoryPill(
                     )
                 )
                 if (count > 0) {
-                    Spacer(modifier = Modifier.width(5.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Surface(
                         shape = RoundedCornerShape(50),
                         color = if (selected) Color.White.copy(alpha = 0.24f) else type.pillColor.copy(alpha = 0.16f)
@@ -218,7 +218,7 @@ private fun CategoryPill(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
-                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
                     }

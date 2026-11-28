@@ -328,11 +328,42 @@ class DocumentParser(private val context: Context) {
         doc: DocumentItem,
         documentOrientation: DocumentViewOrientation
     ): ParsedDocument {
-        val pfd = openParcelFileDescriptor(doc)
-            ?: return ParsedDocument.Error("Cannot access PDF file offline.")
+        val sessionKey = DocumentCacheManager.docKey(doc)
+        val pfd = runCatching { openParcelFileDescriptor(doc) }.getOrNull()
+        if (pfd != null) {
+            val directResult = openPdfFromPfd(
+                pfd = pfd,
+                sessionKey = sessionKey,
+                summary = null,
+                documentOrientation = documentOrientation
+            )
+            if (directResult !is ParsedDocument.Error || doc.isFilePath) {
+                return directResult
+            }
+        } else if (doc.isFilePath) {
+            return ParsedDocument.Error("Cannot access PDF file offline.")
+        }
+
+        // Fallback for non-seekable or pipe-backed content:// URIs opened from other apps
+        val localCopy = File(context.cacheDir, "ext_pdf_${sessionKey}.pdf")
+        val copied = runCatching {
+            val stream = openInputStream(doc) ?: return@runCatching false
+            stream.use { input ->
+                localCopy.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            localCopy.exists() && localCopy.length() > 0L
+        }.getOrDefault(false)
+        if (!copied) {
+            return ParsedDocument.Error("Cannot access PDF file offline.")
+        }
+        val copyPfd = runCatching {
+            ParcelFileDescriptor.open(localCopy, ParcelFileDescriptor.MODE_READ_ONLY)
+        }.getOrNull() ?: return ParsedDocument.Error("Cannot access PDF file offline.")
         return openPdfFromPfd(
-            pfd = pfd,
-            sessionKey = DocumentCacheManager.docKey(doc),
+            pfd = copyPfd,
+            sessionKey = sessionKey,
             summary = null,
             documentOrientation = documentOrientation
         )

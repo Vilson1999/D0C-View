@@ -105,6 +105,17 @@ class ExampleUnitTest {
         assertTrue(defaults.textWordWrap)
         assertTrue(defaults.textMonospace)
         assertTrue(defaults.autoHideReaderUi)
+
+        // TEXT pill is hidden from Home by default, while PDF, DOC, EXCEL, PPT stay visible
+        assertFalse(DocType.TEXT in defaults.visibleDocTypes)
+        assertEquals(
+            setOf(DocType.PDF, DocType.DOC, DocType.EXCEL, DocType.PPT),
+            defaults.visibleDocTypes
+        )
+        // Hiding a pill from Home never disables file type recognition / external opening
+        assertEquals(DocType.PDF, DocType.fromMimeType("application/pdf; charset=utf-8"))
+        assertEquals(DocType.PDF, DocType.fromMimeType("application/x-pdf"))
+        assertEquals(DocType.TEXT, DocType.fromMimeType("text/plain; charset=utf-8"))
     }
 
     @Test
@@ -387,6 +398,16 @@ class ExampleUnitTest {
         assertFalse(BackgroundLifecyclePolicy.shouldStopOnForegroundClose(remainingActivityCount = 0, isChangingConfigurations = true, isServiceRunning = true))
         assertFalse(BackgroundLifecyclePolicy.shouldStopOnForegroundClose(remainingActivityCount = 1, isChangingConfigurations = false, isServiceRunning = true))
         assertFalse(BackgroundLifecyclePolicy.shouldStopOnForegroundClose(remainingActivityCount = 0, isChangingConfigurations = false, isServiceRunning = false))
+
+        // Enters ultra-low background mode when switching away to another app (not rotating)
+        assertEquals(android.os.Process.THREAD_PRIORITY_LOWEST, BackgroundLifecyclePolicy.LOW_BACKGROUND_THREAD_PRIORITY)
+        assertTrue(BackgroundLifecyclePolicy.shouldEnterLowBackgroundMode(startedActivityCount = 0, isChangingConfigurations = false))
+        assertFalse(BackgroundLifecyclePolicy.shouldEnterLowBackgroundMode(startedActivityCount = 1, isChangingConfigurations = false))
+        assertFalse(BackgroundLifecyclePolicy.shouldEnterLowBackgroundMode(startedActivityCount = 0, isChangingConfigurations = true))
+
+        // Fully closes app and stops all services when dismissed from mobile Recent menu
+        assertTrue(BackgroundLifecyclePolicy.shouldFullyStopOnTaskRemoved(isTaskRemoved = true))
+        assertFalse(BackgroundLifecyclePolicy.shouldFullyStopOnTaskRemoved(isTaskRemoved = false))
     }
 
     @Test

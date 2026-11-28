@@ -202,7 +202,7 @@ fun SettingsScreen(
                         .statusBarsPadding()
                         .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Horizontal))
                         .displayCutoutPadding()
-                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                        .padding(horizontal = 4.dp, vertical = 0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -437,7 +437,7 @@ private fun SettingsFoldersOverview(
         item(key = SettingsFolderId.DOC_VISIBILITY.name) {
             SettingsFolderCard(
                 folder = SettingsFolderId.DOC_VISIBILITY,
-                subtitle = "Show or hide PDF, DOC, EXCEL, PPT, TEXT ($visibleCount/${DocType.entries.size} shown)",
+                subtitle = "Show or hide home screen pills ($visibleCount/${DocType.entries.size} shown)",
                 onClick = { onOpenFolder(SettingsFolderId.DOC_VISIBILITY) }
             )
         }
@@ -904,6 +904,12 @@ private fun SettingsFolderDetailScreen(
                         }
 
                         SettingsFolderId.DOC_VISIBILITY -> {
+                            Text(
+                                text = "Hiding a pill only removes it from the home screen. Opening files from a file manager or other apps and all reader features stay enabled.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            HorizontalDivider()
                             DocType.entries.forEachIndexed { index, type ->
                                 if (index > 0) HorizontalDivider()
                                 val isShown = type in settings.visibleDocTypes
@@ -1208,11 +1214,16 @@ private fun DocTypeVisibilityRow(
         Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "${type.label} Documents",
+                text = "${type.label} Pill",
                 style = MaterialTheme.typography.titleSmall
             )
             Text(
-                text = "$extPreview • $countLabel",
+                text = buildString {
+                    append(extPreview)
+                    append(" • ")
+                    append(countLabel)
+                    if (!checked) append(" • Hidden on Home")
+                },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

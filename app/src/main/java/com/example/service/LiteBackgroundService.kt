@@ -3,16 +3,19 @@ package com.example.service
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.Process
 
 /**
- * Policy constants and pure-Kotlin decision helpers for the 1-minute background auto-close
- * and on-demand lite background service lifecycle.
+ * Policy constants and pure-Kotlin decision helpers for very-low background service mode
+ * when switching apps and full shutdown when closed from the mobile Recent menu.
  */
 object BackgroundLifecyclePolicy {
     const val BACKGROUND_TIMEOUT_MS: Long = 60_000L
+    const val LOW_BACKGROUND_THREAD_PRIORITY: Int = Process.THREAD_PRIORITY_LOWEST
 
     fun shouldStartLiteService(
         activeWorkCount: Int,
@@ -35,24 +38,41 @@ object BackgroundLifecyclePolicy {
         isChangingConfigurations: Boolean,
         isServiceRunning: Boolean
     ): Boolean = remainingActivityCount <= 0 && !isChangingConfigurations && isServiceRunning
+
+    fun shouldEnterLowBackgroundMode(
+        startedActivityCount: Int,
+        isChangingConfigurations: Boolean
+    ): Boolean = startedActivityCount <= 0 && !isChangingConfigurations
+
+    fun shouldFullyStopOnTaskRemoved(isTaskRemoved: Boolean): Boolean = isTaskRemoved
 }
 
 /**
- * Ultra-lightweight, non-sticky background Service started only while active document work
- * (scanning, PDF conversion, cache maintenance) needs to finish briefly in background.
- * Stops immediately when work completes, when returning to foreground, when the foreground
- * task/activity closes, or at the 1-minute background cap.
+ * Ultra-lightweight, non-sticky Service:
+ * - Bound lightly to live tasks so [onTaskRemoved] fires reliably when swiped from Recent menu.
+ * - Started on-demand when switching away to another app with active work, running at lowest priority.
+ * - Stops immediately and shuts down completely when closed from the mobile Recent menu.
  */
 class LiteBackgroundService : Service() {
 
+    inner class LocalBinder : Binder() {
+        fun getService(): LiteBackgroundService = this@LiteBackgroundService
+    }
+
+    private val binder = LocalBinder()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val hardStopRunnable = Runnable { stopSelf() }
+    private val hardStopRunnable = Runnable {
+        isRunning = false
+        stopSelf()
+    }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(intent: Intent?): IBinder = binder
 
-    override fun onCreate() {
-        super.onCreate()
-        isRunning = true
+    override fun onUnbind(intent: Intent?): Boolean {
+        if (!isRunning) {
+            stopSelf()
+        }
+        return false
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -63,7 +83,7 @@ class LiteBackgroundService : Service() {
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        mainHandler.removeCallbacks(hardStopRunnable)
+        mainHandler.removeCallbacksAndMessages(null)
         isRunning = false
         onTaskRemovedCallback?.invoke()
         stopSelf()
@@ -71,7 +91,7 @@ class LiteBackgroundService : Service() {
     }
 
     override fun onDestroy() {
-        mainHandler.removeCallbacks(hardStopRunnable)
+        mainHandler.removeCallbacksAndMessages(null)
         isRunning = false
         super.onDestroy()
     }
@@ -107,3 +127,4 @@ class LiteBackgroundService : Service() {
         }
     }
 }
+

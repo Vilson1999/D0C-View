@@ -76,7 +76,7 @@ class SettingsRepository(private val context: Context) {
         raw?.let { runCatching { PageViewMode.valueOf(it) }.getOrNull() } ?: fallback
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
-        val hiddenTypeNames = prefs[Keys.HIDDEN_DOC_TYPES] ?: emptySet()
+        val hiddenTypeNames = prefs[Keys.HIDDEN_DOC_TYPES] ?: DEFAULT_HIDDEN_TYPE_NAMES
         val defaultPageMode = parsePageViewMode(prefs[Keys.DEFAULT_PAGE_VIEW_MODE], PageViewMode.SINGLE_PAGE)
         val defaultOfficeFormat = prefs[Keys.OFFICE_RENDER_FORMAT]?.let {
             runCatching { OfficeRenderFormat.valueOf(it) }.getOrNull()
@@ -343,7 +343,7 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setDocTypeVisible(type: DocType, visible: Boolean) {
         context.dataStore.edit { prefs ->
-            val current = prefs[Keys.HIDDEN_DOC_TYPES] ?: emptySet()
+            val current = prefs[Keys.HIDDEN_DOC_TYPES] ?: DEFAULT_HIDDEN_TYPE_NAMES
             prefs[Keys.HIDDEN_DOC_TYPES] = if (visible) current - type.name else current + type.name
         }
     }
@@ -377,5 +377,10 @@ class SettingsRepository(private val context: Context) {
             val current = prefs[Keys.IMPORTED_FILE_URIS] ?: emptySet()
             prefs[Keys.IMPORTED_FILE_URIS] = current + uriString
         }
+    }
+
+    companion object {
+        private val DEFAULT_HIDDEN_TYPE_NAMES: Set<String> =
+            AppSettings.DEFAULT_HIDDEN_DOC_TYPES.map { it.name }.toSet()
     }
 }

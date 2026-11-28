@@ -681,7 +681,7 @@ fun HomeScreen(
                                     contentPadding = PaddingValues(
                                         start = 16.dp,
                                         end = 16.dp,
-                                        top = 2.dp,
+                                        top = 0.dp,
                                         bottom = if (uiState.isSelectionMode) 20.dp else 28.dp
                                     ),
                                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -829,7 +829,7 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp)
+                    .padding(horizontal = 8.dp, vertical = 0.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
                 TopBarSearchField(
@@ -845,13 +845,13 @@ private fun HomeTopBar(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 2.dp),
+                    .padding(start = 10.dp, end = 2.dp, top = 0.dp, bottom = 0.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 DocViewerAppIcon(
-                    size = 34.dp,
+                    size = 30.dp,
                     modifier = Modifier
-                        .padding(end = 10.dp)
+                        .padding(end = 6.dp)
                         .testTag("topbar_app_icon")
                 )
                 Spacer(modifier = Modifier.weight(1f))
@@ -937,7 +937,7 @@ private fun SelectionTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 0.dp),
+                .padding(horizontal = 2.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
@@ -1129,12 +1129,12 @@ private fun AllDocTypesHiddenState(
                 size = 156.dp
             )
             Text(
-                text = "All document types are hidden",
+                text = "All document pills are hidden",
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center
             )
             Text(
-                text = "PDF, DOC, EXCEL, PPT, and TEXT are currently turned off in Settings.",
+                text = "PDF, DOC, EXCEL, PPT, and TEXT pills are hidden on Home. Files still open from file managers or other apps.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center

@@ -68,7 +68,7 @@ fun TopBarSearchField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = 12.dp, end = 2.dp),
+                .padding(start = 10.dp, end = 0.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(

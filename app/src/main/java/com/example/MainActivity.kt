@@ -91,10 +91,14 @@ class MainActivity : ComponentActivity() {
                 android.graphics.Color.TRANSPARENT
             )
         )
+        val launchedExternalView = extractIncomingViewUri(intent) != null
         handleIncomingIntent(intent)
 
         setContent {
-            DocVaultApp(viewModel = viewModel)
+            DocVaultApp(
+                viewModel = viewModel,
+                startedFromExternalOpen = launchedExternalView
+            )
         }
     }
 
@@ -104,17 +108,22 @@ class MainActivity : ComponentActivity() {
         handleIncomingIntent(intent)
     }
 
+    private fun extractIncomingViewUri(intent: Intent?): Uri? {
+        if (intent?.action != Intent.ACTION_VIEW) return null
+        return intent.data ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
+    }
+
     private fun handleIncomingIntent(intent: Intent?) {
-        if (intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { uri ->
-                viewModel.handleIncomingViewUri(uri)
-            }
-        }
+        val uri = extractIncomingViewUri(intent) ?: return
+        viewModel.handleIncomingViewUri(uri, intent?.type)
     }
 }
 
 @Composable
-private fun DocVaultApp(viewModel: MainViewModel) {
+private fun DocVaultApp(
+    viewModel: MainViewModel,
+    startedFromExternalOpen: Boolean = false
+) {
     val uiState by viewModel.homeUiState.collectAsStateWithLifecycle()
     val externalDoc by viewModel.openExternalDoc.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -123,7 +132,7 @@ private fun DocVaultApp(viewModel: MainViewModel) {
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = currentBackStackEntry?.destination?.route
     val snackbarHostState = remember { SnackbarHostState() }
-    var showAppOpenLoading by rememberSaveable { mutableStateOf(true) }
+    var showAppOpenLoading by rememberSaveable { mutableStateOf(!startedFromExternalOpen) }
 
     val systemDark = isSystemInDarkTheme()
     val isDarkTheme = when (uiState.settings.themeMode) {
@@ -177,9 +186,10 @@ private fun DocVaultApp(viewModel: MainViewModel) {
         }
     }
 
-    // Navigate directly if an external VIEW intent opened a file
+    // Navigate directly if an external VIEW intent opened a file (even if its Home pill is hidden)
     LaunchedEffect(externalDoc) {
         val doc = externalDoc ?: return@LaunchedEffect
+        showAppOpenLoading = false
         viewModel.recordDocumentOpened(doc)
         val encodedId = Uri.encode(doc.id)
         viewModel.consumeExternalDocNavigation(doc)

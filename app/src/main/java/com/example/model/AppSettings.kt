@@ -63,7 +63,7 @@ data class AppSettings(
     val textWordWrap: Boolean = true,
     val textMonospace: Boolean = true,
     val textFontSizeSp: Float = 14f,
-    val visibleDocTypes: Set<DocType> = DocType.entries.toSet(),
+    val visibleDocTypes: Set<DocType> = DEFAULT_VISIBLE_DOC_TYPES,
     val customFolderUris: Set<String> = emptySet(),
     val importedFileUris: Set<String> = emptySet()
 ) {
@@ -97,5 +97,11 @@ data class AppSettings(
         DocType.PPT -> pptOrgZoomScale
         DocType.TEXT -> textOrgZoomScale
         DocType.PDF -> 1f
+    }
+
+    companion object {
+        val DEFAULT_HIDDEN_DOC_TYPES: Set<DocType> = setOf(DocType.TEXT)
+        val DEFAULT_VISIBLE_DOC_TYPES: Set<DocType> =
+            DocType.entries.filterNotTo(LinkedHashSet()) { it in DEFAULT_HIDDEN_DOC_TYPES }
     }
 }

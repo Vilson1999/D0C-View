@@ -44,7 +44,7 @@ data class HomeUiState(
     val hasDocumentWritePermission: Boolean = false,
     val hasFullStorageAccess: Boolean = false,
     val selectedCategory: DocType = DocType.PDF,
-    val visibleDocTypes: List<DocType> = DocType.entries,
+    val visibleDocTypes: List<DocType> = AppSettings.DEFAULT_VISIBLE_DOC_TYPES.toList(),
     val searchQuery: String = "",
     val isSearchActive: Boolean = false,
     val selectedDocIds: Set<String> = emptySet(),
@@ -150,6 +150,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var hasUserSelectedCategory = false
     private val renamedIdAliases = HashMap<String, String>()
     private var activeViewingExternalDoc: DocumentItem? = null
+    private val externalDocsById = LinkedHashMap<String, DocumentItem>()
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
     val messages = _messages.asSharedFlow()
@@ -246,12 +247,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scanJob?.cancel()
         pullRefreshJob?.cancel()
         prewarmJob?.cancel()
+        cacheManager.trimMemoryForBackground()
         _isPullRefreshing.value = false
         _isAccessGrantScanning.value = false
     }
 
+    private val lowBackgroundListener: () -> Unit = {
+        prewarmJob?.cancel()
+        cacheManager.trimMemoryForBackground()
+    }
+
     init {
         DocViewApplication.registerBackgroundCloseListener(backgroundCloseListener)
+        DocViewApplication.registerLowBackgroundListener(lowBackgroundListener)
         viewModelScope.launch {
             val initialSettings = settingsRepo.settingsFlow.first()
             if (!hasUserSelectedCategory) {
@@ -274,6 +282,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         pullRefreshJob?.cancel()
         prewarmJob?.cancel()
+        DocViewApplication.unregisterLowBackgroundListener(lowBackgroundListener)
         DocViewApplication.unregisterBackgroundCloseListener(backgroundCloseListener)
         super.onCleared()
     }
@@ -701,6 +710,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         return _rawDocuments.value.firstOrNull { it.id == resolvedId }
             ?: _openExternalDoc.value?.takeIf { it.id == resolvedId }
             ?: activeViewingExternalDoc?.takeIf { it.id == resolvedId }
+            ?: externalDocsById[resolvedId]
     }
 
     fun renameDocument(doc: DocumentItem, newName: String, onRenamed: ((DocumentItem) -> Unit)? = null) {
@@ -717,6 +727,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     if (activeViewingExternalDoc?.id == doc.id) {
                         activeViewingExternalDoc = updated
+                    }
+                    if (externalDocsById.containsKey(doc.id)) {
+                        externalDocsById.remove(doc.id)
+                        externalDocsById[updated.id] = updated
                     }
                     _selectedDocIds.value = _selectedDocIds.value.map {
                         if (it == doc.id) updated.id else it
@@ -794,29 +808,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onImportedFilePicked(uri: Uri) {
         viewModelScope.launch {
             settingsRepo.addImportedFileUri(uri.toString())
-            val resolved = scanner.resolveContentUriToDocument(uri)
+            val resolved = withContext(Dispatchers.IO) {
+                scanner.resolveContentUriToDocument(uri)
+            }
             if (resolved != null) {
-                hasUserSelectedCategory = true
-                _selectedCategory.value = resolved.type
-                settingsRepo.setSelectedCategory(resolved.type)
+                if (resolved.type in settingsFlow.value.visibleDocTypes) {
+                    hasUserSelectedCategory = true
+                    _selectedCategory.value = resolved.type
+                    settingsRepo.setSelectedCategory(resolved.type)
+                } else {
+                    // Even if the category pill is hidden on Home, open the document directly
+                    externalDocsById[resolved.id] = resolved
+                    activeViewingExternalDoc = resolved
+                    _openExternalDoc.value = resolved
+                }
             }
             scanDocuments(forceRestart = true)
         }
     }
 
-    fun handleIncomingViewUri(uri: Uri) {
+    fun handleIncomingViewUri(uri: Uri, mimeTypeHint: String? = null) {
         viewModelScope.launch {
             val resolved = withContext(Dispatchers.IO) {
-                scanner.resolveContentUriToDocument(uri)
+                scanner.resolveContentUriToDocument(uri, mimeTypeHint)
             }
             if (resolved != null) {
+                externalDocsById[resolved.id] = resolved
                 activeViewingExternalDoc = resolved
                 _openExternalDoc.value = resolved
+            } else {
+                _messages.tryEmit("Unable to open this document")
             }
         }
     }
 
     fun consumeExternalDocNavigation(doc: DocumentItem) {
+        externalDocsById[doc.id] = doc
         activeViewingExternalDoc = doc
         if (_openExternalDoc.value?.id == doc.id) {
             _openExternalDoc.value = null
