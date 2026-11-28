@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 
 val LocalMaterialUiEnabled = staticCompositionLocalOf { true }
+val LocalMaterialIconsEnabled = staticCompositionLocalOf { true }
 
 object SystemBarContrastPolicy {
     fun shouldUseDarkIcons(backgroundLuminance: Float): Boolean = backgroundLuminance >= 0.5f
@@ -275,6 +276,7 @@ private fun rememberAnimatedColorScheme(target: ColorScheme): ColorScheme {
 fun DocVaultTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     useMaterialUi: Boolean = true,
+    useMaterialIcons: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
@@ -294,7 +296,10 @@ fun DocVaultTheme(
         navigationBarColor = colorScheme.background
     )
 
-    CompositionLocalProvider(LocalMaterialUiEnabled provides useMaterialUi) {
+    CompositionLocalProvider(
+        LocalMaterialUiEnabled provides useMaterialUi,
+        LocalMaterialIconsEnabled provides useMaterialIcons
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

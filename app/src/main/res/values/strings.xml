@@ -23,7 +23,7 @@
     <string name="action_clear_selection">Clear selection</string>
     <string name="action_select_all">Select all</string>
     <string name="grant_storage_title">Enable Document Read &amp; Write</string>
-    <string name="grant_storage_desc">Allow offline access to read all folders (including hidden dot folders) and rename or delete documents.</string>
+    <string name="grant_storage_desc">Allow offline access to read all folders (including hidden folders) and rename or delete documents.</string>
     <string name="grant_storage_button">Grant Access</string>
     <string name="empty_category_title">No %1$s documents found</string>
     <string name="loading_documents">Loading documents…</string>

@@ -13,9 +13,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -73,7 +70,7 @@ fun TopBarSearchField(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Icon(
-                imageVector = Icons.Rounded.Search,
+                imageVector = AppIcons.search(),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(20.dp)
@@ -122,7 +119,7 @@ fun TopBarSearchField(
                 modifier = Modifier.testTag(closeTestTag)
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Close,
+                    imageVector = AppIcons.close(),
                     contentDescription = stringResource(R.string.action_close_search),
                     tint = MaterialTheme.colorScheme.onSurface
                 )

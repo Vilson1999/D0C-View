@@ -54,12 +54,6 @@ import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Share
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -831,8 +825,8 @@ private fun HomeTopBar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp)
-                    .padding(horizontal = 12.dp, vertical = 4.dp)
+                    .height(52.8.dp)
+                    .padding(horizontal = 12.dp, vertical = 2.4.dp)
                     .onGloballyPositioned { onSearchBarBoundsChange(it.boundsInRoot()) }
             ) {
                 TopBarSearchField(
@@ -849,7 +843,7 @@ private fun HomeTopBar(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 0.dp),
+                        .padding(start = 16.dp, end = 4.dp, top = 4.8.dp, bottom = 0.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     DocViewerAppIcon(
@@ -885,9 +879,9 @@ private fun HomeTopBar(
                         ) { mode ->
                             Icon(
                                 imageVector = when (mode) {
-                                    ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
-                                    ThemeMode.DARK -> AppIcons.DarkMode
-                                    ThemeMode.LIGHT -> AppIcons.LightMode
+                                    ThemeMode.SYSTEM -> AppIcons.brightnessAuto()
+                                    ThemeMode.DARK -> AppIcons.darkMode()
+                                    ThemeMode.LIGHT -> AppIcons.lightMode()
                                 },
                                 contentDescription = stringResource(R.string.action_toggle_theme),
                                 tint = MaterialTheme.colorScheme.onBackground
@@ -901,7 +895,7 @@ private fun HomeTopBar(
                             .testTag("topbar_sort_button")
                     ) {
                         Icon(
-                            imageVector = AppIcons.Sort,
+                            imageVector = AppIcons.sort(),
                             contentDescription = stringResource(R.string.action_sort),
                             tint = MaterialTheme.colorScheme.onBackground
                         )
@@ -913,7 +907,7 @@ private fun HomeTopBar(
                             .testTag("topbar_search_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Search,
+                            imageVector = AppIcons.search(),
                             contentDescription = stringResource(R.string.action_search),
                             tint = MaterialTheme.colorScheme.onBackground
                         )
@@ -925,7 +919,7 @@ private fun HomeTopBar(
                             .testTag("topbar_settings_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Rounded.Settings,
+                            imageVector = AppIcons.settings(),
                             contentDescription = stringResource(R.string.action_settings),
                             tint = MaterialTheme.colorScheme.onBackground
                         )
@@ -959,7 +953,7 @@ private fun SelectionTopBar(
                 modifier = Modifier.testTag("selection_clear_button")
             ) {
                 Icon(
-                    imageVector = Icons.Rounded.Close,
+                    imageVector = AppIcons.close(),
                     contentDescription = stringResource(R.string.action_clear_selection)
                 )
             }
@@ -976,7 +970,7 @@ private fun SelectionTopBar(
                 modifier = Modifier.testTag("selection_select_all_button")
             ) {
                 Icon(
-                    imageVector = AppIcons.SelectAll,
+                    imageVector = AppIcons.selectAll(),
                     contentDescription = stringResource(R.string.action_select_all)
                 )
             }
@@ -1012,26 +1006,26 @@ private fun SelectionBottomToolbar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomToolbarAction(
-                icon = Icons.Outlined.Share,
+                icon = AppIcons.share(),
                 label = stringResource(R.string.action_share),
                 onClick = onShare,
                 modifier = Modifier.testTag("bottom_share_button")
             )
             BottomToolbarAction(
-                icon = AppIcons.DeleteOutline,
+                icon = AppIcons.delete(),
                 label = stringResource(R.string.action_delete),
                 tint = MaterialTheme.colorScheme.error,
                 onClick = onDelete,
                 modifier = Modifier.testTag("bottom_delete_button")
             )
             BottomToolbarAction(
-                icon = AppIcons.Print,
+                icon = AppIcons.print(),
                 label = stringResource(R.string.action_print),
                 onClick = onPrint,
                 modifier = Modifier.testTag("bottom_print_button")
             )
             BottomToolbarAction(
-                icon = Icons.Outlined.Info,
+                icon = AppIcons.info(),
                 label = stringResource(R.string.action_info),
                 onClick = onInfo,
                 modifier = Modifier.testTag("bottom_info_button")
@@ -1166,7 +1160,7 @@ private fun AllDocTypesHiddenState(
                     modifier = Modifier.testTag("hidden_open_settings_button")
                 ) {
                     Icon(
-                        Icons.Rounded.Settings,
+                        AppIcons.settings(),
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
@@ -1207,7 +1201,7 @@ private fun StoragePermissionBannerCard(
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        imageVector = AppIcons.FolderOpen,
+                        imageVector = AppIcons.folderOpen(),
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(20.dp)

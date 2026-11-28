@@ -314,7 +314,8 @@ private fun DocVaultApp(
 
     DocVaultTheme(
         darkTheme = isDarkTheme,
-        useMaterialUi = uiState.settings.useMaterialUi
+        useMaterialUi = uiState.settings.useMaterialUi,
+        useMaterialIcons = uiState.settings.useMaterialIcons
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
             NavHost(
@@ -434,6 +435,7 @@ private fun DocVaultApp(
                         cacheSizeBytes = uiState.cacheSizeBytes,
                         onBack = { navController.popBackStack() },
                         onSetUseMaterialUi = viewModel::setUseMaterialUi,
+                        onSetUseMaterialIcons = viewModel::setUseMaterialIcons,
                         onSetThemeMode = viewModel::setThemeMode,
                         onSetDocTypeVisible = viewModel::setDocTypeVisible,
                         onSetScanDotFolders = viewModel::setScanDotFolders,

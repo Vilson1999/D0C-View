@@ -177,7 +177,7 @@ private fun CategoryPill(
             shadowElevation = elevation
         ) {
             Row(
-                modifier = Modifier.padding(horizontal = 9.6.dp, vertical = 5.6.dp),
+                modifier = Modifier.padding(horizontal = 9.6.dp, vertical = 3.36.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(
@@ -228,10 +228,11 @@ private fun CategoryPill(
     }
 }
 
+@Composable
 fun docTypeIcon(type: DocType): ImageVector = when (type) {
-    DocType.PDF -> AppIcons.PictureAsPdf
-    DocType.DOC -> AppIcons.Description
-    DocType.EXCEL -> AppIcons.TableChart
-    DocType.PPT -> AppIcons.Slideshow
-    DocType.TEXT -> AppIcons.Notes
+    DocType.PDF -> AppIcons.pdf()
+    DocType.DOC -> AppIcons.doc()
+    DocType.EXCEL -> AppIcons.excel()
+    DocType.PPT -> AppIcons.ppt()
+    DocType.TEXT -> AppIcons.textDoc()
 }

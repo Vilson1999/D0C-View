@@ -1,8 +1,27 @@
 package com.example.ui.components
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.materialIcon
 import androidx.compose.material.icons.materialPath
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Info
+import androidx.compose.material.icons.rounded.MoreVert
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material.icons.rounded.Share
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.PathBuilder
+import androidx.compose.ui.graphics.vector.path
+import androidx.compose.ui.unit.dp
+import com.example.ui.theme.LocalMaterialIconsEnabled
 
 /**
  * Lightweight, tree-shaken Material vector icons so the app never depends on
@@ -1191,6 +1210,587 @@ object AppIcons {
                 lineTo(10f, 18f)
                 lineToRelative(6f, -6f)
                 close()
+            }
+        }
+    }
+
+    @Composable fun search(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Search else ClassicIcons.Search
+
+    @Composable fun settings(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Settings else ClassicIcons.Settings
+
+    @Composable fun close(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Close else ClassicIcons.Close
+
+    @Composable fun arrowBack(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.AutoMirrored.Rounded.ArrowBack else ClassicIcons.ArrowBack
+
+    @Composable fun moreVert(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.MoreVert else ClassicIcons.MoreVert
+
+    @Composable fun refresh(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Refresh else ClassicIcons.Refresh
+
+    @Composable fun share(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Share else ClassicIcons.Share
+
+    @Composable fun info(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Info else ClassicIcons.Info
+
+    @Composable fun check(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Icons.Rounded.Check else ClassicIcons.Check
+
+    @Composable fun sort(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Sort else ClassicIcons.Sort
+
+    @Composable fun darkMode(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) DarkMode else ClassicIcons.DarkMode
+
+    @Composable fun lightMode(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) LightMode else ClassicIcons.LightMode
+
+    @Composable fun brightnessAuto(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) BrightnessAuto else ClassicIcons.BrightnessAuto
+
+    @Composable fun selectAll(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) SelectAll else ClassicIcons.SelectAll
+
+    @Composable fun viewCarousel(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) ViewCarousel else ClassicIcons.ViewCarousel
+
+    @Composable fun viewStream(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) ViewStream else ClassicIcons.ViewStream
+
+    @Composable fun screenRotation(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) ScreenRotation else ClassicIcons.ScreenRotation
+
+    @Composable fun rename(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Rename else ClassicIcons.Rename
+
+    @Composable fun print(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Print else ClassicIcons.Print
+
+    @Composable fun delete(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) DeleteOutline else ClassicIcons.Delete
+
+    @Composable fun folder(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Folder else ClassicIcons.Folder
+
+    @Composable fun folderOpen(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) FolderOpen else ClassicIcons.FolderOpen
+
+    @Composable fun createNewFolder(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) CreateNewFolder else ClassicIcons.CreateNewFolder
+
+    @Composable fun fileOpen(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) FileOpen else ClassicIcons.FileOpen
+
+    @Composable fun storage(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Storage else ClassicIcons.Storage
+
+    @Composable fun palette(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Palette else ClassicIcons.Palette
+
+    @Composable fun calendarToday(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) CalendarToday else ClassicIcons.CalendarToday
+
+    @Composable fun visibilityOff(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) VisibilityOff else ClassicIcons.VisibilityOff
+
+    @Composable fun insertDriveFile(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) InsertDriveFile else ClassicIcons.InsertDriveFile
+
+    @Composable fun errorOutline(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) ErrorOutline else ClassicIcons.ErrorOutline
+
+    @Composable fun checkCircle(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) CheckCircle else ClassicIcons.CheckCircle
+
+    @Composable fun radioButtonUnchecked(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) RadioButtonUnchecked else ClassicIcons.RadioButtonUnchecked
+
+    @Composable fun cropPortrait(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) CropPortrait else ClassicIcons.CropPortrait
+
+    @Composable fun cropLandscape(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) CropLandscape else ClassicIcons.CropLandscape
+
+    @Composable fun chevronRight(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) ChevronRight else ClassicIcons.ChevronRight
+
+    @Composable fun pdf(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) PictureAsPdf else ClassicIcons.Pdf
+
+    @Composable fun doc(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Description else ClassicIcons.Doc
+
+    @Composable fun excel(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) TableChart else ClassicIcons.Excel
+
+    @Composable fun ppt(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Slideshow else ClassicIcons.Ppt
+
+    @Composable fun textDoc(): ImageVector =
+        if (LocalMaterialIconsEnabled.current) Notes else ClassicIcons.Text
+}
+
+private inline fun classicIcon(
+    name: String,
+    autoMirror: Boolean = false,
+    block: ImageVector.Builder.() -> Unit
+): ImageVector = ImageVector.Builder(
+    name = "Classic.$name",
+    defaultWidth = 24.dp,
+    defaultHeight = 24.dp,
+    viewportWidth = 24f,
+    viewportHeight = 24f,
+    autoMirror = autoMirror
+).apply(block).build()
+
+private inline fun ImageVector.Builder.strokePath(
+    strokeWidth: Float = 1.75f,
+    block: PathBuilder.() -> Unit
+) = path(
+    fill = null,
+    stroke = SolidColor(Color.Black),
+    strokeLineWidth = strokeWidth,
+    strokeLineCap = StrokeCap.Butt,
+    strokeLineJoin = StrokeJoin.Miter,
+    pathBuilder = block
+)
+
+private inline fun ImageVector.Builder.fillBlock(
+    block: PathBuilder.() -> Unit
+) = path(
+    fill = SolidColor(Color.Black),
+    pathBuilder = block
+)
+
+private fun PathBuilder.circleSubpath(cx: Float, cy: Float, r: Float) {
+    moveTo(cx + r, cy)
+    arcTo(r, r, 0f, false, true, cx - r, cy)
+    arcTo(r, r, 0f, false, true, cx + r, cy)
+    close()
+}
+
+private object ClassicIcons {
+    val Search: ImageVector by lazy {
+        classicIcon("Search") {
+            strokePath {
+                circleSubpath(10.5f, 10.5f, 6.2f)
+                moveTo(15.2f, 15.2f)
+                lineTo(20.5f, 20.5f)
+            }
+        }
+    }
+
+    val Settings: ImageVector by lazy {
+        classicIcon("Settings") {
+            strokePath {
+                circleSubpath(12f, 12f, 3.2f)
+                moveTo(10f, 3.5f); lineTo(14f, 3.5f); lineTo(14.6f, 5.6f)
+                lineTo(16.6f, 6.4f); lineTo(18.5f, 5.3f); lineTo(21f, 7.8f)
+                lineTo(19.6f, 9.8f); lineTo(20.4f, 11.8f); lineTo(21.5f, 12.4f)
+                lineTo(21.5f, 15.6f); lineTo(19.4f, 16.2f); lineTo(18.6f, 18.2f)
+                lineTo(19.7f, 20f); lineTo(17.2f, 21.5f); lineTo(15.2f, 20.1f)
+                lineTo(13.2f, 20.7f); lineTo(12.6f, 21.5f); lineTo(9.4f, 21.5f)
+                lineTo(8.8f, 19.6f); lineTo(6.8f, 18.8f); lineTo(5f, 19.9f)
+                lineTo(3.5f, 17.4f); lineTo(4.9f, 15.4f); lineTo(4.1f, 13.4f)
+                lineTo(3.5f, 12.8f); lineTo(3.5f, 9.6f); lineTo(5.4f, 9f)
+                lineTo(6.2f, 7f); lineTo(5.1f, 5.1f); lineTo(7.6f, 3.6f)
+                lineTo(9.4f, 4.9f)
+                close()
+            }
+        }
+    }
+
+    val Close: ImageVector by lazy {
+        classicIcon("Close") {
+            strokePath {
+                moveTo(5.5f, 5.5f); lineTo(18.5f, 18.5f)
+                moveTo(18.5f, 5.5f); lineTo(5.5f, 18.5f)
+            }
+        }
+    }
+
+    val ArrowBack: ImageVector by lazy {
+        classicIcon("ArrowBack", autoMirror = true) {
+            strokePath {
+                moveTo(20f, 12f); lineTo(5f, 12f)
+                moveTo(11f, 6f); lineTo(5f, 12f); lineTo(11f, 18f)
+            }
+        }
+    }
+
+    val MoreVert: ImageVector by lazy {
+        classicIcon("MoreVert") {
+            fillBlock {
+                moveTo(10.75f, 4.75f); lineTo(13.25f, 4.75f); lineTo(13.25f, 7.25f); lineTo(10.75f, 7.25f); close()
+                moveTo(10.75f, 10.75f); lineTo(13.25f, 10.75f); lineTo(13.25f, 13.25f); lineTo(10.75f, 13.25f); close()
+                moveTo(10.75f, 16.75f); lineTo(13.25f, 16.75f); lineTo(13.25f, 19.25f); lineTo(10.75f, 19.25f); close()
+            }
+        }
+    }
+
+    val Refresh: ImageVector by lazy {
+        classicIcon("Refresh") {
+            strokePath {
+                moveTo(19.5f, 12f)
+                arcTo(7.5f, 7.5f, 0f, true, true, 17.5f, 6.9f)
+                moveTo(14.5f, 7.5f); lineTo(18.5f, 7.5f); lineTo(18.5f, 3.5f)
+            }
+        }
+    }
+
+    val Share: ImageVector by lazy {
+        classicIcon("Share") {
+            strokePath {
+                circleSubpath(17.5f, 5.5f, 2.5f)
+                circleSubpath(6.5f, 12f, 2.5f)
+                circleSubpath(17.5f, 18.5f, 2.5f)
+                moveTo(8.7f, 10.7f); lineTo(15.3f, 6.8f)
+                moveTo(8.7f, 13.3f); lineTo(15.3f, 17.2f)
+            }
+        }
+    }
+
+    val Info: ImageVector by lazy {
+        classicIcon("Info") {
+            strokePath {
+                circleSubpath(12f, 12f, 8.8f)
+                moveTo(12f, 11f); lineTo(12f, 16.5f)
+                moveTo(12f, 7.2f); lineTo(12f, 9f)
+            }
+        }
+    }
+
+    val Check: ImageVector by lazy {
+        classicIcon("Check") {
+            strokePath {
+                moveTo(4.5f, 12.5f); lineTo(9.5f, 17.5f); lineTo(19.5f, 6.5f)
+            }
+        }
+    }
+
+    val Sort: ImageVector by lazy {
+        classicIcon("Sort", autoMirror = true) {
+            strokePath(strokeWidth = 2f) {
+                moveTo(3.5f, 6.5f); lineTo(20.5f, 6.5f)
+                moveTo(3.5f, 12f); lineTo(15f, 12f)
+                moveTo(3.5f, 17.5f); lineTo(9.5f, 17.5f)
+            }
+        }
+    }
+
+    val DarkMode: ImageVector by lazy {
+        classicIcon("DarkMode") {
+            strokePath {
+                moveTo(13.5f, 3.8f)
+                arcTo(8.4f, 8.4f, 0f, true, false, 20.2f, 14.5f)
+                arcTo(6.2f, 6.2f, 0f, false, true, 13.5f, 3.8f)
+                close()
+            }
+        }
+    }
+
+    val LightMode: ImageVector by lazy {
+        classicIcon("LightMode") {
+            strokePath {
+                circleSubpath(12f, 12f, 4.2f)
+                moveTo(12f, 2.5f); lineTo(12f, 5.2f)
+                moveTo(12f, 18.8f); lineTo(12f, 21.5f)
+                moveTo(2.5f, 12f); lineTo(5.2f, 12f)
+                moveTo(18.8f, 12f); lineTo(21.5f, 12f)
+                moveTo(5.3f, 5.3f); lineTo(7.2f, 7.2f)
+                moveTo(16.8f, 16.8f); lineTo(18.7f, 18.7f)
+                moveTo(18.7f, 5.3f); lineTo(16.8f, 7.2f)
+                moveTo(7.2f, 16.8f); lineTo(5.3f, 18.7f)
+            }
+        }
+    }
+
+    val BrightnessAuto: ImageVector by lazy {
+        classicIcon("BrightnessAuto") {
+            strokePath {
+                moveTo(12f, 3f); lineTo(21f, 12f); lineTo(12f, 21f); lineTo(3f, 12f); close()
+                moveTo(9.4f, 15.8f); lineTo(12f, 8.2f); lineTo(14.6f, 15.8f)
+                moveTo(10.3f, 13.5f); lineTo(13.7f, 13.5f)
+            }
+        }
+    }
+
+    val SelectAll: ImageVector by lazy {
+        classicIcon("SelectAll") {
+            strokePath {
+                moveTo(4f, 7.5f); lineTo(4f, 4f); lineTo(7.5f, 4f)
+                moveTo(16.5f, 4f); lineTo(20f, 4f); lineTo(20f, 7.5f)
+                moveTo(20f, 16.5f); lineTo(20f, 20f); lineTo(16.5f, 20f)
+                moveTo(7.5f, 20f); lineTo(4f, 20f); lineTo(4f, 16.5f)
+                moveTo(8f, 8f); lineTo(16f, 8f); lineTo(16f, 16f); lineTo(8f, 16f); close()
+            }
+        }
+    }
+
+    val ViewCarousel: ImageVector by lazy {
+        classicIcon("ViewCarousel") {
+            strokePath {
+                moveTo(7.5f, 5f); lineTo(16.5f, 5f); lineTo(16.5f, 19f); lineTo(7.5f, 19f); close()
+                moveTo(3.5f, 7f); lineTo(3.5f, 17f)
+                moveTo(20.5f, 7f); lineTo(20.5f, 17f)
+            }
+        }
+    }
+
+    val ViewStream: ImageVector by lazy {
+        classicIcon("ViewStream") {
+            strokePath {
+                moveTo(4f, 5f); lineTo(20f, 5f); lineTo(20f, 10.5f); lineTo(4f, 10.5f); close()
+                moveTo(4f, 13.5f); lineTo(20f, 13.5f); lineTo(20f, 19f); lineTo(4f, 19f); close()
+            }
+        }
+    }
+
+    val ScreenRotation: ImageVector by lazy {
+        classicIcon("ScreenRotation") {
+            strokePath {
+                moveTo(9.5f, 3.2f); lineTo(20.8f, 14.5f); lineTo(14.5f, 20.8f); lineTo(3.2f, 9.5f); close()
+                moveTo(15.5f, 3.2f); lineTo(19.5f, 3.2f); lineTo(19.5f, 7.2f)
+                moveTo(8.5f, 20.8f); lineTo(4.5f, 20.8f); lineTo(4.5f, 16.8f)
+            }
+        }
+    }
+
+    val Rename: ImageVector by lazy {
+        classicIcon("Rename") {
+            strokePath {
+                moveTo(4.5f, 16f); lineTo(15.5f, 5f); lineTo(19f, 8.5f); lineTo(8f, 19.5f); lineTo(4.5f, 19.5f); close()
+                moveTo(13f, 7.5f); lineTo(16.5f, 11f)
+                moveTo(12.5f, 20f); lineTo(20.5f, 20f)
+            }
+        }
+    }
+
+    val Print: ImageVector by lazy {
+        classicIcon("Print") {
+            strokePath {
+                moveTo(6.5f, 8.5f); lineTo(6.5f, 4f); lineTo(17.5f, 4f); lineTo(17.5f, 8.5f)
+                moveTo(3.5f, 8.5f); lineTo(20.5f, 8.5f); lineTo(20.5f, 16f); lineTo(17.5f, 16f)
+                moveTo(6.5f, 16f); lineTo(3.5f, 16f); lineTo(3.5f, 8.5f)
+                moveTo(6.5f, 13f); lineTo(17.5f, 13f); lineTo(17.5f, 20f); lineTo(6.5f, 20f); close()
+            }
+        }
+    }
+
+    val Delete: ImageVector by lazy {
+        classicIcon("Delete") {
+            strokePath {
+                moveTo(4.5f, 6.5f); lineTo(19.5f, 6.5f)
+                moveTo(9f, 6.5f); lineTo(9f, 4f); lineTo(15f, 4f); lineTo(15f, 6.5f)
+                moveTo(6.5f, 6.5f); lineTo(6.5f, 20f); lineTo(17.5f, 20f); lineTo(17.5f, 6.5f)
+                moveTo(10f, 10f); lineTo(10f, 17f)
+                moveTo(14f, 10f); lineTo(14f, 17f)
+            }
+        }
+    }
+
+    val Folder: ImageVector by lazy {
+        classicIcon("Folder") {
+            strokePath {
+                moveTo(3.5f, 5f); lineTo(9.5f, 5f); lineTo(11.5f, 7.2f); lineTo(20.5f, 7.2f)
+                lineTo(20.5f, 19f); lineTo(3.5f, 19f); close()
+            }
+        }
+    }
+
+    val FolderOpen: ImageVector by lazy {
+        classicIcon("FolderOpen") {
+            strokePath {
+                moveTo(3.5f, 18.5f); lineTo(3.5f, 5f); lineTo(9.5f, 5f); lineTo(11.5f, 7.2f); lineTo(19f, 7.2f); lineTo(19f, 10.5f)
+                moveTo(3.5f, 18.5f); lineTo(6f, 10.5f); lineTo(21f, 10.5f); lineTo(18.5f, 18.5f); close()
+            }
+        }
+    }
+
+    val CreateNewFolder: ImageVector by lazy {
+        classicIcon("CreateNewFolder") {
+            strokePath {
+                moveTo(3.5f, 5f); lineTo(9.5f, 5f); lineTo(11.5f, 7.2f); lineTo(20.5f, 7.2f)
+                lineTo(20.5f, 19f); lineTo(3.5f, 19f); close()
+                moveTo(12f, 10.5f); lineTo(12f, 16f)
+                moveTo(9.2f, 13.25f); lineTo(14.8f, 13.25f)
+            }
+        }
+    }
+
+    val FileOpen: ImageVector by lazy {
+        classicIcon("FileOpen") {
+            strokePath {
+                moveTo(5.5f, 20.5f); lineTo(5.5f, 3.5f); lineTo(13.5f, 3.5f); lineTo(18.5f, 8.5f); lineTo(18.5f, 13.5f)
+                moveTo(13.5f, 3.5f); lineTo(13.5f, 8.5f); lineTo(18.5f, 8.5f)
+                moveTo(5.5f, 20.5f); lineTo(13.5f, 20.5f)
+                moveTo(16f, 16f); lineTo(21f, 21f)
+                moveTo(16.5f, 20.5f); lineTo(16f, 16f); lineTo(20.5f, 16.5f)
+            }
+        }
+    }
+
+    val Storage: ImageVector by lazy {
+        classicIcon("Storage") {
+            strokePath {
+                moveTo(3.5f, 4f); lineTo(20.5f, 4f); lineTo(20.5f, 8f); lineTo(3.5f, 8f); close()
+                moveTo(3.5f, 10f); lineTo(20.5f, 10f); lineTo(20.5f, 14f); lineTo(3.5f, 14f); close()
+                moveTo(3.5f, 16f); lineTo(20.5f, 16f); lineTo(20.5f, 20f); lineTo(3.5f, 20f); close()
+                moveTo(6f, 6f); lineTo(8f, 6f)
+                moveTo(6f, 12f); lineTo(8f, 12f)
+                moveTo(6f, 18f); lineTo(8f, 18f)
+            }
+        }
+    }
+
+    val Palette: ImageVector by lazy {
+        classicIcon("Palette") {
+            strokePath {
+                circleSubpath(12f, 12f, 8.6f)
+                circleSubpath(8.5f, 10f, 1f)
+                circleSubpath(12f, 7.8f, 1f)
+                circleSubpath(15.5f, 10f, 1f)
+                circleSubpath(14.5f, 14.5f, 1.4f)
+            }
+        }
+    }
+
+    val CalendarToday: ImageVector by lazy {
+        classicIcon("CalendarToday") {
+            strokePath {
+                moveTo(4f, 5f); lineTo(20f, 5f); lineTo(20f, 20f); lineTo(4f, 20f); close()
+                moveTo(4f, 9.5f); lineTo(20f, 9.5f)
+                moveTo(8f, 2.8f); lineTo(8f, 6.2f)
+                moveTo(16f, 2.8f); lineTo(16f, 6.2f)
+            }
+        }
+    }
+
+    val VisibilityOff: ImageVector by lazy {
+        classicIcon("VisibilityOff") {
+            strokePath {
+                moveTo(3f, 12f); lineTo(8.5f, 6.8f); lineTo(15.5f, 6.8f); lineTo(21f, 12f)
+                lineTo(15.5f, 17.2f); lineTo(8.5f, 17.2f); close()
+                circleSubpath(12f, 12f, 2.4f)
+                moveTo(3.5f, 3.5f); lineTo(20.5f, 20.5f)
+            }
+        }
+    }
+
+    val InsertDriveFile: ImageVector by lazy {
+        classicIcon("InsertDriveFile", autoMirror = true) {
+            strokePath {
+                moveTo(5.5f, 3.5f); lineTo(14f, 3.5f); lineTo(18.5f, 8f); lineTo(18.5f, 20.5f); lineTo(5.5f, 20.5f); close()
+                moveTo(14f, 3.5f); lineTo(14f, 8f); lineTo(18.5f, 8f)
+            }
+        }
+    }
+
+    val ErrorOutline: ImageVector by lazy {
+        classicIcon("ErrorOutline") {
+            strokePath {
+                circleSubpath(12f, 12f, 8.8f)
+                moveTo(12f, 7.5f); lineTo(12f, 13.5f)
+                moveTo(12f, 15.8f); lineTo(12f, 17.5f)
+            }
+        }
+    }
+
+    val CheckCircle: ImageVector by lazy {
+        classicIcon("CheckCircle") {
+            strokePath {
+                circleSubpath(12f, 12f, 8.8f)
+                moveTo(7.8f, 12.2f); lineTo(10.8f, 15.2f); lineTo(16.2f, 9.2f)
+            }
+        }
+    }
+
+    val RadioButtonUnchecked: ImageVector by lazy {
+        classicIcon("RadioButtonUnchecked") {
+            strokePath {
+                circleSubpath(12f, 12f, 8.8f)
+            }
+        }
+    }
+
+    val CropPortrait: ImageVector by lazy {
+        classicIcon("CropPortrait") {
+            strokePath {
+                moveTo(6.5f, 3.5f); lineTo(17.5f, 3.5f); lineTo(17.5f, 20.5f); lineTo(6.5f, 20.5f); close()
+            }
+        }
+    }
+
+    val CropLandscape: ImageVector by lazy {
+        classicIcon("CropLandscape") {
+            strokePath {
+                moveTo(3.5f, 6.5f); lineTo(20.5f, 6.5f); lineTo(20.5f, 17.5f); lineTo(3.5f, 17.5f); close()
+            }
+        }
+    }
+
+    val ChevronRight: ImageVector by lazy {
+        classicIcon("ChevronRight", autoMirror = true) {
+            strokePath {
+                moveTo(9f, 6f); lineTo(15f, 12f); lineTo(9f, 18f)
+            }
+        }
+    }
+
+    val Pdf: ImageVector by lazy {
+        classicIcon("Pdf") {
+            strokePath {
+                moveTo(5.5f, 3.5f); lineTo(14f, 3.5f); lineTo(18.5f, 8f); lineTo(18.5f, 20.5f); lineTo(5.5f, 20.5f); close()
+                moveTo(14f, 3.5f); lineTo(14f, 8f); lineTo(18.5f, 8f)
+                moveTo(8.5f, 12.5f); lineTo(15.5f, 12.5f); lineTo(15.5f, 17f); lineTo(8.5f, 17f); close()
+            }
+        }
+    }
+
+    val Doc: ImageVector by lazy {
+        classicIcon("Doc") {
+            strokePath {
+                moveTo(5.5f, 3.5f); lineTo(14f, 3.5f); lineTo(18.5f, 8f); lineTo(18.5f, 20.5f); lineTo(5.5f, 20.5f); close()
+                moveTo(14f, 3.5f); lineTo(14f, 8f); lineTo(18.5f, 8f)
+                moveTo(8.5f, 12f); lineTo(15.5f, 12f)
+                moveTo(8.5f, 15f); lineTo(15.5f, 15f)
+                moveTo(8.5f, 18f); lineTo(13f, 18f)
+            }
+        }
+    }
+
+    val Excel: ImageVector by lazy {
+        classicIcon("Excel") {
+            strokePath {
+                moveTo(3.5f, 4.5f); lineTo(20.5f, 4.5f); lineTo(20.5f, 19.5f); lineTo(3.5f, 19.5f); close()
+                moveTo(3.5f, 9.5f); lineTo(20.5f, 9.5f)
+                moveTo(3.5f, 14.5f); lineTo(20.5f, 14.5f)
+                moveTo(9.5f, 9.5f); lineTo(9.5f, 19.5f)
+                moveTo(15f, 9.5f); lineTo(15f, 19.5f)
+            }
+        }
+    }
+
+    val Ppt: ImageVector by lazy {
+        classicIcon("Ppt") {
+            strokePath {
+                moveTo(3.5f, 4.5f); lineTo(20.5f, 4.5f); lineTo(20.5f, 19.5f); lineTo(3.5f, 19.5f); close()
+                moveTo(10f, 8.5f); lineTo(15.5f, 12f); lineTo(10f, 15.5f); close()
+            }
+        }
+    }
+
+    val Text: ImageVector by lazy {
+        classicIcon("Text", autoMirror = true) {
+            strokePath(strokeWidth = 2f) {
+                moveTo(4f, 6.5f); lineTo(20f, 6.5f)
+                moveTo(4f, 11.5f); lineTo(20f, 11.5f)
+                moveTo(4f, 16.5f); lineTo(14f, 16.5f)
             }
         }
     }

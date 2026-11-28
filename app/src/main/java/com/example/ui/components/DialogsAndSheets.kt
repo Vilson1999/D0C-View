@@ -26,8 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,7 +72,7 @@ fun RenameDocumentDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        icon = { Icon(AppIcons.Rename, contentDescription = null) },
+        icon = { Icon(AppIcons.rename(), contentDescription = null) },
         title = { Text("Rename Document") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -128,7 +126,7 @@ fun DeleteConfirmDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                AppIcons.DeleteOutline,
+                AppIcons.delete(),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.error
             )
@@ -207,16 +205,16 @@ fun DocumentInfoSheet(
 
                 HorizontalDivider()
 
-                InfoRow(AppIcons.Storage, "Size", "${doc.formattedSize} (${doc.sizeBytes} bytes)")
-                InfoRow(AppIcons.CalendarToday, "Modified", doc.formattedDateTime)
-                InfoRow(AppIcons.FolderOpen, "Folder", doc.parentFolderName)
+                InfoRow(AppIcons.storage(), "Size", "${doc.formattedSize} (${doc.sizeBytes} bytes)")
+                InfoRow(AppIcons.calendarToday(), "Modified", doc.formattedDateTime)
+                InfoRow(AppIcons.folderOpen(), "Folder", doc.parentFolderName)
                 if (doc.isFromDotFolder) {
-                    InfoRow(AppIcons.VisibilityOff, "Location Type", "Hidden (.) dot folder")
+                    InfoRow(AppIcons.visibilityOff(), "Location Type", "Hidden folder")
                 }
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            AppIcons.InsertDriveFile,
+                            AppIcons.insertDriveFile(),
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.size(18.dp)
@@ -251,15 +249,15 @@ fun DocumentInfoSheet(
                     fontWeight = FontWeight.Bold
                 )
                 HorizontalDivider()
-                InfoRow(AppIcons.Storage, "Combined Size", sample.formattedSize)
+                InfoRow(AppIcons.storage(), "Combined Size", sample.formattedSize)
                 InfoRow(
-                    AppIcons.InsertDriveFile,
+                    AppIcons.insertDriveFile(),
                     "Formats",
                     docs.map { it.type.label }.distinct().joinToString(", ")
                 )
                 InfoRow(
-                    AppIcons.VisibilityOff,
-                    "From (.) Dot Folders",
+                    AppIcons.visibilityOff(),
+                    "From Hidden Folders",
                     "${docs.count { it.isFromDotFolder }} file(s)"
                 )
             }
@@ -375,7 +373,7 @@ fun SortOptionsSheet(
                             exit = scaleOut(targetScale = 0.6f) + fadeOut(tween(100))
                         ) {
                             Icon(
-                                imageVector = Icons.Rounded.Check,
+                                imageVector = AppIcons.check(),
                                 contentDescription = "Selected",
                                 tint = MaterialTheme.colorScheme.primary
                             )
@@ -392,16 +390,18 @@ fun StoragePermissionDialog(
     onAllow: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    val permissionItems = remember {
+    val folderOpenIcon = AppIcons.folderOpen()
+    val storageIcon = AppIcons.storage()
+    val permissionItems = remember(folderOpenIcon, storageIcon) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             listOf(
                 Triple(
-                    AppIcons.FolderOpen,
+                    folderOpenIcon,
                     "Read Documents",
-                    "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files across all folders including hidden (.) folders."
+                    "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files across all folders including hidden folders."
                 ),
                 Triple(
-                    AppIcons.Storage,
+                    storageIcon,
                     "Write Documents",
                     "Rename, edit, and delete documents offline directly in device storage."
                 )
@@ -409,12 +409,12 @@ fun StoragePermissionDialog(
         } else {
             listOf(
                 Triple(
-                    AppIcons.FolderOpen,
+                    folderOpenIcon,
                     "Read Documents",
                     "Scan and view PDF, DOC, EXCEL, PPT, and TEXT files stored on your device."
                 ),
                 Triple(
-                    AppIcons.Storage,
+                    storageIcon,
                     "Write Documents",
                     "Rename, edit, and delete documents offline from device folders."
                 )
@@ -426,7 +426,7 @@ fun StoragePermissionDialog(
         onDismissRequest = onDismiss,
         icon = {
             Icon(
-                imageVector = AppIcons.FolderOpen,
+                imageVector = folderOpenIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary
             )

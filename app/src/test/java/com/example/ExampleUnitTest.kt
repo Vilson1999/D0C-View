@@ -101,6 +101,7 @@ class ExampleUnitTest {
         assertEquals(OfficeRenderFormat.PDF, defaults.pptRenderFormat)
         assertEquals(OfficeRenderFormat.PDF, defaults.textRenderFormat)
         assertTrue(defaults.useMaterialUi)
+        assertTrue(defaults.useMaterialIcons)
         assertTrue(defaults.showPptSpeakerNotes)
         assertTrue(defaults.textWordWrap)
         assertTrue(defaults.textMonospace)

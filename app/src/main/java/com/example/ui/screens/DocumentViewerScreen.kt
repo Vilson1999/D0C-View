@@ -60,8 +60,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -394,7 +392,7 @@ fun DocumentViewerScreen(
                                 verticalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 Icon(
-                                    imageVector = AppIcons.ErrorOutline,
+                                    imageVector = AppIcons.errorOutline(),
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.size(44.dp)
@@ -621,7 +619,7 @@ fun DocumentViewerScreen(
                                     .testTag("viewer_rotate_button")
                             ) {
                                 Icon(
-                                    imageVector = AppIcons.ScreenRotation,
+                                    imageVector = AppIcons.screenRotation(),
                                     contentDescription = stringResource(R.string.action_rotate_screen),
                                     tint = MaterialTheme.colorScheme.onSurface,
                                     modifier = Modifier.graphicsLayer { rotationZ = rotateRotation }
@@ -661,9 +659,9 @@ fun DocumentViewerScreen(
                                 ) { currentMode ->
                                     Icon(
                                         imageVector = if (currentMode == PageViewMode.SINGLE_PAGE) {
-                                            AppIcons.ViewCarousel
+                                            AppIcons.viewCarousel()
                                         } else {
-                                            AppIcons.ViewStream
+                                            AppIcons.viewStream()
                                         },
                                         contentDescription = stringResource(R.string.action_page_view_mode),
                                         tint = MaterialTheme.colorScheme.onSurface
@@ -690,7 +688,7 @@ fun DocumentViewerScreen(
                                         .testTag("viewer_more_button")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Rounded.MoreVert,
+                                        imageVector = AppIcons.moreVert(),
                                         contentDescription = stringResource(R.string.action_more_options),
                                         tint = MaterialTheme.colorScheme.onSurface,
                                         modifier = Modifier.graphicsLayer { rotationZ = menuIconRotation }

@@ -27,6 +27,7 @@ class SettingsRepository(private val context: Context) {
         val SELECTED_CATEGORY = stringPreferencesKey("selected_category")
         val THEME_MODE = stringPreferencesKey("theme_mode")
         val USE_MATERIAL_UI = booleanPreferencesKey("use_material_ui")
+        val USE_MATERIAL_ICONS = booleanPreferencesKey("use_material_icons")
         val SCAN_DOT_FOLDERS = booleanPreferencesKey("scan_dot_folders")
         val SHOW_DOT_FOLDER_BADGE = booleanPreferencesKey("show_dot_folder_badge")
         val DEFAULT_PAGE_VIEW_MODE = stringPreferencesKey("default_page_view_mode")
@@ -88,6 +89,7 @@ class SettingsRepository(private val context: Context) {
             themeMode = prefs[Keys.THEME_MODE]?.let { runCatching { ThemeMode.valueOf(it) }.getOrNull() }
                 ?: ThemeMode.SYSTEM,
             useMaterialUi = prefs[Keys.USE_MATERIAL_UI] ?: true,
+            useMaterialIcons = prefs[Keys.USE_MATERIAL_ICONS] ?: true,
             scanDotFolders = prefs[Keys.SCAN_DOT_FOLDERS] ?: true,
             showDotFolderBadge = prefs[Keys.SHOW_DOT_FOLDER_BADGE] ?: true,
             defaultPageViewMode = defaultPageMode,
@@ -151,6 +153,10 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun setUseMaterialUi(enabled: Boolean) {
         context.dataStore.edit { it[Keys.USE_MATERIAL_UI] = enabled }
+    }
+
+    suspend fun setUseMaterialIcons(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.USE_MATERIAL_ICONS] = enabled }
     }
 
     suspend fun setScanDotFolders(enabled: Boolean) {

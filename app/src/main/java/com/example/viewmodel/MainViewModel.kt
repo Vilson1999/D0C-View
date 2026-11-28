@@ -508,6 +508,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { settingsRepo.setUseMaterialUi(enabled) }
     }
 
+    fun setUseMaterialIcons(enabled: Boolean) {
+        viewModelScope.launch { settingsRepo.setUseMaterialIcons(enabled) }
+    }
+
     fun setSortOption(option: SortOption) {
         viewModelScope.launch { settingsRepo.setSortOption(option) }
     }

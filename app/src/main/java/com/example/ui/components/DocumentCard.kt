@@ -27,8 +27,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -156,7 +154,7 @@ fun DocumentCard(
                             val itemSelected = state % 2 == 1
                             if (selectionActive) {
                                 Icon(
-                                    imageVector = if (itemSelected) AppIcons.CheckCircle else AppIcons.RadioButtonUnchecked,
+                                    imageVector = if (itemSelected) AppIcons.checkCircle() else AppIcons.radioButtonUnchecked(),
                                     contentDescription = if (itemSelected) "Selected" else "Not selected",
                                     tint = if (itemSelected) document.type.pillColor else MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.size(24.dp)
@@ -225,7 +223,7 @@ fun DocumentCard(
                             }
                         ) {
                             Text(
-                                text = ".dot",
+                                text = "Hidden",
                                 style = MaterialTheme.typography.labelSmall.copy(
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -248,7 +246,7 @@ fun DocumentCard(
                     modifier = Modifier.testTag("doc_more_${document.name}")
                 ) {
                     Icon(
-                        imageVector = Icons.Rounded.MoreVert,
+                        imageVector = AppIcons.moreVert(),
                         contentDescription = stringResource(R.string.action_more_options),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )

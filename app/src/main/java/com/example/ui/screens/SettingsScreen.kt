@@ -41,9 +41,6 @@ import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -111,7 +108,7 @@ private enum class SettingsFolderId(
     PPT("PPT", "folder_ppt", PptPillColor, 4),
     TEXT("TEXT", "folder_text", TextPillColor, 7),
     DOC_VISIBILITY("Home Screen Documents", "folder_doc_visibility", PdfPillColor, DocType.entries.size),
-    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 3),
+    APPEARANCE("Appearance & Reader UI", "folder_appearance", DocPillColor, 4),
     STORAGE("Storage & Scanning", "folder_storage", PptPillColor, 5),
     CACHE("Cache & Optimization", "folder_compression", TextPillColor, 2)
 }
@@ -127,6 +124,7 @@ fun SettingsScreen(
     cacheSizeBytes: Long,
     onBack: () -> Unit,
     onSetUseMaterialUi: (Boolean) -> Unit,
+    onSetUseMaterialIcons: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -219,7 +217,7 @@ fun SettingsScreen(
                                 .testTag("settings_back_button")
                         ) {
                             Icon(
-                                imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+                                imageVector = AppIcons.arrowBack(),
                                 contentDescription = "Back",
                                 modifier = Modifier.size(22.dp)
                             )
@@ -341,6 +339,7 @@ fun SettingsScreen(
                     countsByType = countsByType,
                     cacheSizeBytes = cacheSizeBytes,
                     onSetUseMaterialUi = onSetUseMaterialUi,
+                    onSetUseMaterialIcons = onSetUseMaterialIcons,
                     onSetThemeMode = onSetThemeMode,
                     onSetDocTypeVisible = onSetDocTypeVisible,
                     onSetScanDotFolders = onSetScanDotFolders,
@@ -384,16 +383,17 @@ fun SettingsScreen(
     }
 }
 
+@Composable
 private fun folderIconFor(folder: SettingsFolderId): ImageVector = when (folder) {
     SettingsFolderId.PDF -> docTypeIcon(DocType.PDF)
     SettingsFolderId.DOCX -> docTypeIcon(DocType.DOC)
     SettingsFolderId.XLSX -> docTypeIcon(DocType.EXCEL)
     SettingsFolderId.PPT -> docTypeIcon(DocType.PPT)
     SettingsFolderId.TEXT -> docTypeIcon(DocType.TEXT)
-    SettingsFolderId.DOC_VISIBILITY -> AppIcons.Folder
-    SettingsFolderId.APPEARANCE -> AppIcons.Palette
-    SettingsFolderId.STORAGE -> AppIcons.Storage
-    SettingsFolderId.CACHE -> AppIcons.Folder
+    SettingsFolderId.DOC_VISIBILITY -> AppIcons.folder()
+    SettingsFolderId.APPEARANCE -> AppIcons.palette()
+    SettingsFolderId.STORAGE -> AppIcons.storage()
+    SettingsFolderId.CACHE -> AppIcons.folder()
 }
 
 @Composable
@@ -409,6 +409,7 @@ private fun SettingsFoldersOverview(
     val appearanceSummary = buildString {
         append(settings.themeMode.label.removeSuffix(" Mode"))
         append(if (settings.useMaterialUi) " • Material UI" else " • Classic UI")
+        append(if (settings.useMaterialIcons) " • Material Icons" else " • Classic Icons")
         if (settings.autoHideReaderUi) append(" • Auto-hide")
     }
 
@@ -481,7 +482,7 @@ private fun SettingsFoldersOverview(
         item(key = SettingsFolderId.STORAGE.name) {
             SettingsFolderCard(
                 folder = SettingsFolderId.STORAGE,
-                subtitle = "$readStatusLabel • $writeStatusLabel • Dot folders & custom trees",
+                subtitle = "$readStatusLabel • $writeStatusLabel • Show hidden folders & custom trees",
                 onClick = { onOpenFolder(SettingsFolderId.STORAGE) }
             )
         }
@@ -630,7 +631,7 @@ private fun SettingsFolderCard(
                 )
             }
             Icon(
-                imageVector = AppIcons.ChevronRight,
+                imageVector = AppIcons.chevronRight(),
                 contentDescription = "Open ${folder.title}",
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -649,6 +650,7 @@ private fun SettingsFolderDetailScreen(
     countsByType: Map<DocType, Int>,
     cacheSizeBytes: Long,
     onSetUseMaterialUi: (Boolean) -> Unit,
+    onSetUseMaterialIcons: (Boolean) -> Unit,
     onSetThemeMode: (ThemeMode) -> Unit,
     onSetDocTypeVisible: (DocType, Boolean) -> Unit,
     onSetScanDotFolders: (Boolean) -> Unit,
@@ -960,6 +962,14 @@ private fun SettingsFolderDetailScreen(
                                 modifier = Modifier.testTag("toggle_material_ui")
                             )
                             HorizontalDivider()
+                            SettingsSwitchRow(
+                                title = "Material icons",
+                                subtitle = "Use rounded Material Design icons across bars, pills, cards, and menus",
+                                checked = settings.useMaterialIcons,
+                                onCheckedChange = onSetUseMaterialIcons,
+                                modifier = Modifier.testTag("toggle_material_icons")
+                            )
+                            HorizontalDivider()
                             OptionChipsFlowRow(
                                 title = "Theme",
                                 options = ThemeMode.entries,
@@ -999,10 +1009,11 @@ private fun SettingsFolderDetailScreen(
                             }
                             HorizontalDivider()
                             SettingsSwitchRow(
-                                title = "Scan (.) dot folders",
+                                title = "Show hidden folder",
                                 subtitle = "Automatically include hidden folders ($dotFolderDocCount found)",
                                 checked = settings.scanDotFolders,
-                                onCheckedChange = onSetScanDotFolders
+                                onCheckedChange = onSetScanDotFolders,
+                                modifier = Modifier.testTag("toggle_show_hidden_folder")
                             )
                             HorizontalDivider()
                             Row(
@@ -1014,7 +1025,7 @@ private fun SettingsFolderDetailScreen(
                                     Text(text = "All Files Offline Access", style = MaterialTheme.typography.titleSmall)
                                     Text(
                                         text = if (hasFullStorageAccess) {
-                                            "Granted — read & write enabled across internal, external & dot folders"
+                                            "Granted — read & write enabled across internal, external & hidden folders"
                                         } else {
                                             "Limited — grant read & write access for all folders"
                                         },
@@ -1033,7 +1044,7 @@ private fun SettingsFolderDetailScreen(
                                         onClick = onRescanNow,
                                         modifier = Modifier.testTag("settings_rescan_button")
                                     ) {
-                                        Icon(Icons.Rounded.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Icon(AppIcons.refresh(), contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
                                         Text("Rescan")
                                     }
@@ -1045,12 +1056,12 @@ private fun SettingsFolderDetailScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 OutlinedButton(onClick = onPickCustomFolder, modifier = Modifier.weight(1f)) {
-                                    Icon(AppIcons.CreateNewFolder, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(AppIcons.createNewFolder(), contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Add Folder")
                                 }
                                 OutlinedButton(onClick = onImportFile, modifier = Modifier.weight(1f)) {
-                                    Icon(AppIcons.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(AppIcons.fileOpen(), contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("Import File")
                                 }
@@ -1073,7 +1084,7 @@ private fun SettingsFolderDetailScreen(
                                                     .padding(horizontal = 10.dp, vertical = 6.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(AppIcons.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Icon(AppIcons.folder(), contentDescription = null, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text(
                                                     text = uriStr.substringAfterLast("%3A").ifBlank { uriStr },
@@ -1087,7 +1098,7 @@ private fun SettingsFolderDetailScreen(
                                                     modifier = Modifier.size(32.dp)
                                                 ) {
                                                     Icon(
-                                                        AppIcons.DeleteOutline,
+                                                        AppIcons.delete(),
                                                         contentDescription = "Remove folder",
                                                         modifier = Modifier.size(18.dp)
                                                     )

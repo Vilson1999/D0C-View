@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -73,7 +70,7 @@ fun DocumentActionDropdownMenu(
     ) {
         if (toggleFormatLabel != null && onToggleFormat != null) {
             CompactMenuActionItem(
-                icon = AppIcons.Description,
+                icon = AppIcons.doc(),
                 label = toggleFormatLabel,
                 menuExpanded = expanded,
                 staggerIndex = 0,
@@ -94,7 +91,7 @@ fun DocumentActionDropdownMenu(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
             )
             CompactMenuActionItem(
-                icon = AppIcons.CropPortrait,
+                icon = AppIcons.cropPortrait(),
                 label = stringResource(R.string.doc_view_portrait),
                 menuExpanded = expanded,
                 staggerIndex = docViewBaseIdx,
@@ -106,7 +103,7 @@ fun DocumentActionDropdownMenu(
                 testTag = "${tagPrefix}_doc_view_portrait"
             )
             CompactMenuActionItem(
-                icon = AppIcons.CropLandscape,
+                icon = AppIcons.cropLandscape(),
                 label = stringResource(R.string.doc_view_landscape),
                 menuExpanded = expanded,
                 staggerIndex = docViewBaseIdx + 1,
@@ -120,7 +117,7 @@ fun DocumentActionDropdownMenu(
             HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
         }
         CompactMenuActionItem(
-            icon = AppIcons.Rename,
+            icon = AppIcons.rename(),
             label = stringResource(R.string.action_rename),
             menuExpanded = expanded,
             staggerIndex = baseIndex,
@@ -131,7 +128,7 @@ fun DocumentActionDropdownMenu(
             testTag = "${tagPrefix}_rename"
         )
         CompactMenuActionItem(
-            icon = Icons.Outlined.Share,
+            icon = AppIcons.share(),
             label = stringResource(R.string.action_share),
             menuExpanded = expanded,
             staggerIndex = baseIndex + 1,
@@ -142,7 +139,7 @@ fun DocumentActionDropdownMenu(
             testTag = "${tagPrefix}_share"
         )
         CompactMenuActionItem(
-            icon = AppIcons.Print,
+            icon = AppIcons.print(),
             label = stringResource(R.string.action_print),
             menuExpanded = expanded,
             staggerIndex = baseIndex + 2,
@@ -153,7 +150,7 @@ fun DocumentActionDropdownMenu(
             testTag = "${tagPrefix}_print"
         )
         CompactMenuActionItem(
-            icon = Icons.Outlined.Info,
+            icon = AppIcons.info(),
             label = stringResource(R.string.action_info),
             menuExpanded = expanded,
             staggerIndex = baseIndex + 3,
@@ -165,7 +162,7 @@ fun DocumentActionDropdownMenu(
         )
         HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
         CompactMenuActionItem(
-            icon = AppIcons.DeleteOutline,
+            icon = AppIcons.delete(),
             label = stringResource(R.string.action_delete),
             menuExpanded = expanded,
             staggerIndex = baseIndex + 4,
@@ -252,7 +249,7 @@ private fun CompactMenuActionItem(
             if (selected) {
                 Spacer(modifier = Modifier.weight(1f))
                 Icon(
-                    imageVector = AppIcons.Check,
+                    imageVector = AppIcons.check(),
                     contentDescription = null,
                     tint = effectiveTint,
                     modifier = Modifier.size(16.dp)
